@@ -1,0 +1,107 @@
+# Core system
+basesystem
+filesystem
+setup
+glibc
+glibc-common
+glibc-minimal-langpack
+
+# Shell and utilities
+bash
+coreutils
+coreutils-common
+util-linux
+util-linux-core
+sed
+grep
+gawk
+findutils
+which
+file
+
+# Init system
+systemd
+systemd-libs
+systemd-udev
+systemd-pam
+dbus
+dbus-common
+dbus-libs
+
+# Kernel
+kernel
+kernel-core
+kernel-modules
+kernel-modules-core
+linux-firmware
+
+# Live boot
+dracut
+dracut-live
+dracut-squash
+squashfs-tools
+
+# Bootloader
+grub2-common
+grub2-efi-x64
+grub2-efi-x64-modules
+grub2-tools
+grub2-tools-minimal
+shim-x64
+
+# Networking
+NetworkManager
+NetworkManager-libnm
+NetworkManager-tui
+iproute
+iputils
+
+# Disk tools (for installer)
+parted
+dosfstools
+e2fsprogs
+xfsprogs
+
+# User utilities
+tmux
+nano
+less
+tar
+gzip
+xz
+rsync
+
+# Keyboard/Console
+kbd
+
+# Auth/PAM/Sudo
+pam
+shadow-utils
+passwd
+sudo
+
+# Locale support
+glibc-langpack-en
+
+# Libraries (common dependencies)
+ncurses
+ncurses-base
+ncurses-libs
+readline
+zlib
+bzip2-libs
+xz-libs
+libgcc
+libstdc++
+openssl-libs
+pcre2
+libselinux
+libsepol
+libcap
+libacl
+libattr
+libuuid
+libblkid
+libmount
+libsmartcols
+libfdisk

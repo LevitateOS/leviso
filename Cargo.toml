@@ -1,0 +1,9 @@
+[package]
+name = "leviso"
+version = "0.1.0"
+edition = "2021"
+description = "Minimal bootable Linux ISO builder"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4", features = ["derive"] }

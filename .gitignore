@@ -1,0 +1,11 @@
+# Rocky Linux extracted files (large, regeneratable)
+rocky-extracted/
+
+# Downloaded dependencies (syslinux, etc)
+downloads/
+
+# Build output
+output/
+
+# Temporary files
+*.tmp

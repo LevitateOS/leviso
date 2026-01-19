@@ -1,0 +1,19 @@
+#!/bin/bash
+# Minimal init script for leviso
+# Just mount essential filesystems and exec bash
+
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+
+# Mount essential filesystems
+/bin/mount -t proc proc /proc
+/bin/mount -t sysfs sys /sys
+/bin/mount -t devtmpfs dev /dev
+
+# Set hostname
+/bin/hostname leviso
+
+echo "Welcome to Leviso!"
+echo ""
+
+# Exec bash as PID 1 (warnings about job control are harmless)
+exec /bin/bash --login

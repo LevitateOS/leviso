@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub fn build_initramfs(base_dir: &Path) -> Result<()> {
-    let extract_dir = base_dir.join("rocky-extracted");
+    let extract_dir = base_dir.join("downloads");
     let rootfs_dir = extract_dir.join("rootfs");
     let output_dir = base_dir.join("output");
     let initramfs_root = output_dir.join("initramfs-root");

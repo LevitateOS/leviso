@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::Command;
 
 pub fn extract_rocky(base_dir: &Path) -> Result<()> {
-    let extract_dir = base_dir.join("rocky-extracted");
+    let extract_dir = base_dir.join("downloads");
     let iso_path = extract_dir.join("rocky.iso");
     let iso_contents = extract_dir.join("iso-contents");
     let rootfs_dir = extract_dir.join("rootfs");

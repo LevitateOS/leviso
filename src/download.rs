@@ -9,15 +9,15 @@ const SYSLINUX_URL: &str =
     "https://mirrors.edge.kernel.org/pub/linux/utils/boot/syslinux/syslinux-6.03.tar.xz";
 
 pub fn download_rocky(base_dir: &Path) -> Result<()> {
-    let extract_dir = base_dir.join("rocky-extracted");
-    let iso_path = extract_dir.join("rocky.iso");
+    let downloads_dir = base_dir.join("downloads");
+    let iso_path = downloads_dir.join("rocky.iso");
 
     if iso_path.exists() {
         println!("Rocky ISO already exists at {}", iso_path.display());
         return Ok(());
     }
 
-    fs::create_dir_all(&extract_dir)?;
+    fs::create_dir_all(&downloads_dir)?;
     println!("Downloading Rocky Linux 10 Minimal ISO...");
     println!("URL: {}", ROCKY_ISO_URL);
 

@@ -6,7 +6,7 @@ use std::process::Command;
 use crate::download::download_syslinux;
 
 pub fn create_iso(base_dir: &Path) -> Result<()> {
-    let extract_dir = base_dir.join("rocky-extracted");
+    let extract_dir = base_dir.join("downloads");
     let iso_contents = extract_dir.join("iso-contents");
     let output_dir = base_dir.join("output");
     let initramfs = output_dir.join("initramfs.cpio.gz");

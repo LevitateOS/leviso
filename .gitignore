@@ -1,7 +1,4 @@
-# Rocky Linux extracted files (large, regeneratable)
-rocky-extracted/
-
-# Downloaded dependencies (syslinux, etc)
+# Downloads (Rocky ISO, syslinux, extracted files)
 downloads/
 
 # Build output

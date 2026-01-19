@@ -27,8 +27,8 @@ fn find_ovmf() -> Option<PathBuf> {
     None
 }
 
-/// Direct kernel boot (bypasses ISO/bootloader for faster debugging)
-pub fn test_direct(base_dir: &Path, gui: bool) -> Result<()> {
+/// Quick test: direct kernel boot in terminal (for debugging)
+pub fn test_direct(base_dir: &Path) -> Result<()> {
     let downloads_dir = base_dir.join("downloads");
     let output_dir = base_dir.join("output");
 
@@ -50,36 +50,21 @@ pub fn test_direct(base_dir: &Path, gui: bool) -> Result<()> {
         );
     }
 
-    println!("Direct kernel boot (bypasses ISO/bootloader)");
+    println!("Quick test: direct kernel boot (serial console)");
     println!("  Kernel:    {}", kernel_path.display());
     println!("  Initramfs: {}", initramfs_path.display());
+    println!("Press Ctrl+A, X to exit QEMU\n");
 
     let mut cmd = Command::new("qemu-system-x86_64");
     cmd.args([
-        "-cpu",
-        "Skylake-Client",
-        "-m",
-        "512M",
-        "-kernel",
-        kernel_path.to_str().unwrap(),
-        "-initrd",
-        initramfs_path.to_str().unwrap(),
-        "-append",
-        if gui {
-            "console=tty0 rdinit=/init panic=30"
-        } else {
-            "console=tty0 console=ttyS0,115200n8 rdinit=/init panic=30"
-        },
+        "-cpu", "Skylake-Client",
+        "-m", "512M",
+        "-kernel", kernel_path.to_str().unwrap(),
+        "-initrd", initramfs_path.to_str().unwrap(),
+        "-append", "console=tty0 console=ttyS0,115200n8 rdinit=/init panic=30",
+        "-nographic",
+        "-serial", "mon:stdio",
     ]);
-
-    if gui {
-        println!("Running with GUI window");
-        // Add VGA for better console display
-        cmd.args(["-vga", "std"]);
-    } else {
-        println!("Press Ctrl+A, X to exit QEMU\n");
-        cmd.args(["-nographic", "-serial", "mon:stdio"]);
-    }
 
     let status = cmd
         .status()
@@ -92,35 +77,34 @@ pub fn test_direct(base_dir: &Path, gui: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn test_qemu(base_dir: &Path, gui: bool, force_bios: bool) -> Result<()> {
+/// Run the ISO in QEMU GUI (closest to bare metal)
+pub fn run_iso(base_dir: &Path, force_bios: bool) -> Result<()> {
     let output_dir = base_dir.join("output");
     let iso_path = output_dir.join("leviso.iso");
 
     if !iso_path.exists() {
         bail!(
-            "ISO not found at {}. Run 'leviso build' or 'leviso iso' first.",
+            "ISO not found at {}. Run 'leviso iso' first.",
             iso_path.display()
         );
     }
 
-    println!("Starting QEMU with {}...", iso_path.display());
+    println!("Running ISO in QEMU GUI...");
+    println!("  ISO: {}", iso_path.display());
 
     let mut cmd = Command::new("qemu-system-x86_64");
     cmd.args([
-        "-cpu",
-        "Skylake-Client",
-        "-cdrom",
-        iso_path.to_str().unwrap(),
-        "-m",
-        "512M",
+        "-cpu", "Skylake-Client",
+        "-cdrom", iso_path.to_str().unwrap(),
+        "-m", "512M",
+        "-vga", "std",
     ]);
 
     // UEFI boot by default (it's 2026), unless --bios is specified
-    let use_uefi = if force_bios {
-        println!("Using BIOS boot (--bios flag)");
-        false
+    if force_bios {
+        println!("  Boot: BIOS (legacy)");
     } else if let Some(ovmf_path) = find_ovmf() {
-        println!("Using UEFI boot with {}", ovmf_path.display());
+        println!("  Boot: UEFI ({})", ovmf_path.display());
         cmd.args([
             "-drive",
             &format!(
@@ -128,18 +112,8 @@ pub fn test_qemu(base_dir: &Path, gui: bool, force_bios: bool) -> Result<()> {
                 ovmf_path.display()
             ),
         ]);
-        true
     } else {
-        println!("OVMF not found, falling back to BIOS boot");
-        println!("  Install OVMF for UEFI testing (e.g., 'dnf install edk2-ovmf')");
-        false
-    };
-
-    if gui {
-        println!("Running with GUI window ({})", if use_uefi { "UEFI" } else { "BIOS" });
-    } else {
-        println!("Press Ctrl+A, X to exit QEMU\n");
-        cmd.args(["-nographic", "-serial", "mon:stdio"]);
+        println!("  Boot: BIOS (OVMF not found, install edk2-ovmf for UEFI)");
     }
 
     let status = cmd

@@ -28,20 +28,13 @@ enum Commands {
     Initramfs,
     /// Create bootable ISO
     Iso,
-    /// Test the ISO in QEMU
-    Test {
-        /// Use QEMU GUI instead of serial console
-        #[arg(long)]
-        gui: bool,
-        /// Force BIOS boot instead of UEFI (for legacy testing)
+    /// Quick test: direct kernel boot in terminal (for debugging)
+    Test,
+    /// Run the ISO in QEMU GUI (closest to bare metal)
+    Run {
+        /// Force BIOS boot instead of UEFI
         #[arg(long)]
         bios: bool,
-    },
-    /// Direct kernel boot (faster debugging, no ISO needed)
-    Run {
-        /// Use QEMU GUI instead of serial console
-        #[arg(long)]
-        gui: bool,
     },
     /// Clean build artifacts
     Clean,
@@ -62,8 +55,8 @@ fn main() -> Result<()> {
         Commands::Extract => extract::extract_rocky(&base_dir)?,
         Commands::Initramfs => initramfs::build_initramfs(&base_dir)?,
         Commands::Iso => iso::create_iso(&base_dir)?,
-        Commands::Test { gui, bios } => qemu::test_qemu(&base_dir, gui, bios)?,
-        Commands::Run { gui } => qemu::test_direct(&base_dir, gui)?,
+        Commands::Test => qemu::test_direct(&base_dir)?,
+        Commands::Run { bios } => qemu::run_iso(&base_dir, bios)?,
         Commands::Clean => clean::clean(&base_dir)?,
     }
 

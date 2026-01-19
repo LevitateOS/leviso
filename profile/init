@@ -1,6 +1,6 @@
 #!/bin/bash
-# Minimal init script for leviso
-# Just mount essential filesystems and exec bash
+# Init script for LevitateOS Live
+# Mounts essential filesystems then execs systemd
 
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin
 
@@ -9,16 +9,40 @@ export PATH=/bin:/sbin:/usr/bin:/usr/sbin
 /bin/mount -t sysfs sys /sys
 /bin/mount -t devtmpfs dev /dev
 
-# Mount efivarfs if booted in UEFI mode (needed for bootctl)
+# Create /dev nodes that might be missing
+/bin/mkdir -p /dev/pts
+/bin/mount -t devpts devpts /dev/pts
+
+# Create and mount /run (systemd needs this)
+/bin/mkdir -p /run
+/bin/mount -t tmpfs -o mode=755 tmpfs /run
+
+# /var/run should be symlink to /run
+/bin/ln -sf /run /var/run
+
+# Mount cgroups (systemd needs this for service management)
+/bin/mkdir -p /sys/fs/cgroup
+/bin/mount -t cgroup2 cgroup2 /sys/fs/cgroup 2>/dev/null || \
+    /bin/mount -t tmpfs cgroup /sys/fs/cgroup  # fallback if cgroup2 not supported
+
+# Mount efivarfs if booted in UEFI mode
 if [ -d /sys/firmware/efi/efivars ]; then
     /bin/mount -t efivarfs efivarfs /sys/firmware/efi/efivars
 fi
 
-# Set hostname
-/bin/hostname leviso
+# Create required directories for systemd
+/bin/mkdir -p /run/systemd/journal
+/bin/mkdir -p /run/systemd/seats
+/bin/mkdir -p /run/systemd/sessions
+/bin/mkdir -p /run/systemd/users
+/bin/mkdir -p /run/systemd/machines
+/bin/mkdir -p /run/lock
+/bin/mkdir -p /var/log/journal
+/bin/mkdir -p /tmp
+/bin/chmod 1777 /tmp
 
-echo "Welcome to Leviso!"
-echo ""
+# Create /etc/mtab symlink
+/bin/ln -sf /proc/self/mounts /etc/mtab
 
-# Exec bash as PID 1 (warnings about job control are harmless)
-exec /bin/bash --login
+# Hand off to systemd
+exec /usr/lib/systemd/systemd --system --log-target=console

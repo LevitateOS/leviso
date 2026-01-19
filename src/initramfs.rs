@@ -70,11 +70,18 @@ pub fn build_initramfs(base_dir: &Path) -> Result<()> {
 
     // Create directory structure
     for dir in [
-        "bin", "sbin", "lib64", "lib", "etc", "proc", "sys", "dev", "tmp", "root",
-        "run", "var/log", "var/run",
+        "bin", "sbin", "lib64", "lib", "etc", "proc", "sys", "dev", "dev/pts", "tmp", "root",
+        "run", "run/lock", "var/log", "var/tmp",
         "usr/lib/systemd/system", "usr/lib64/systemd", "etc/systemd/system",
+        "mnt",
     ] {
         fs::create_dir_all(initramfs_root.join(dir))?;
+    }
+
+    // Create /var/run as symlink to /run
+    let var_run = initramfs_root.join("var/run");
+    if !var_run.exists() {
+        std::os::unix::fs::symlink("/run", &var_run)?;
     }
 
     // Find bash
@@ -159,6 +166,15 @@ pub fn build_initramfs(base_dir: &Path) -> Result<()> {
 
     // Setup systemd as init
     setup_systemd(&actual_rootfs, &initramfs_root)?;
+
+    // Copy init script (mounts cgroups, then execs systemd)
+    let init_src = base_dir.join("profile/init");
+    let init_dst = initramfs_root.join("init");
+    fs::copy(&init_src, &init_dst)?;
+    let mut perms = fs::metadata(&init_dst)?.permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(&init_dst, perms)?;
+    println!("Copied init script");
 
     // Create /etc/passwd and /etc/group for root
     fs::write(
@@ -349,6 +365,34 @@ fn setup_systemd(rootfs: &Path, initramfs: &Path) -> Result<()> {
     fs::set_permissions(&systemd_dst, perms)?;
     println!("  Copied systemd");
 
+    // Copy essential systemd binaries (required by systemd 255+)
+    // Reference: Arch mkinitcpio systemd hook
+    let systemd_binaries = [
+        "systemd-executor",      // CRITICAL: required since systemd 255
+        "systemd-shutdown",
+        "systemd-sulogin-shell",
+        "systemd-cgroups-agent",
+        "systemd-journald",
+        "systemd-modules-load",
+        "systemd-sysctl",
+        "systemd-tmpfiles-setup",
+    ];
+
+    let systemd_lib_dir = initramfs.join("usr/lib/systemd");
+    for binary in systemd_binaries {
+        let src = rootfs.join("usr/lib/systemd").join(binary);
+        if src.exists() {
+            let dst = systemd_lib_dir.join(binary);
+            fs::copy(&src, &dst)?;
+            let mut perms = fs::metadata(&dst)?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&dst, perms)?;
+            println!("  Copied {}", binary);
+        } else {
+            println!("  Warning: {} not found", binary);
+        }
+    }
+
     // Copy systemd private libraries
     let systemd_lib_src = rootfs.join("usr/lib64/systemd");
     if systemd_lib_src.exists() {
@@ -403,17 +447,14 @@ fn setup_systemd(rootfs: &Path, initramfs: &Path) -> Result<()> {
         }
     }
 
-    // Create /sbin/init symlink to systemd
+    // Create /sbin/init symlink to systemd (for chroot environments)
     let init_link = initramfs.join("sbin/init");
     if !init_link.exists() {
         std::os::unix::fs::symlink("/usr/lib/systemd/systemd", &init_link)?;
     }
 
-    // Create /init symlink for kernel
-    let init_root = initramfs.join("init");
-    if !init_root.exists() {
-        std::os::unix::fs::symlink("/usr/lib/systemd/systemd", &init_root)?;
-    }
+    // Note: /init is the bash script that mounts cgroups then execs systemd
+    // It's copied from profile/init, not a symlink
 
     // Copy essential systemd unit files
     let unit_src = rootfs.join("usr/lib/systemd/system");

@@ -148,12 +148,17 @@ When you add a binary (like `gzip`), the code:
 
 **DO NOT:**
 - Copy binaries from the host system (your Fedora/Arch/whatever)
-- Download binaries from random URLs
+- Download binaries from random URLs without adding proper download logic
 - Build binaries from source (yet - Phase 10 goal)
 
 **DO:**
 - Add the binary name to `coreutils` or `sbin_utils` array
 - Let the build system find it in Rocky rootfs
-- If it's not in Rocky, that's a problem to solve differently
+
+**If a binary is NOT in Rocky rootfs:**
+1. Find an official static/standalone binary download (prefer static binaries)
+2. Add download logic to `download.rs` to fetch it to `downloads/` folder
+3. Add copy logic to `initramfs/` to include it in the initramfs
+4. Document why Rocky doesn't have it and where we get it from
 
 This keeps the build reproducible and self-contained.

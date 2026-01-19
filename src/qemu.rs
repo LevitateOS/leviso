@@ -52,20 +52,34 @@ pub fn test_direct(base_dir: &Path, cmd: Option<String>) -> Result<()> {
         );
     }
 
+    // Create/find disk (8GB default) - use separate file from 'run' command
+    let disk_path = output_dir.join("test-disk.qcow2");
+    if !disk_path.exists() {
+        println!("Creating 8GB virtual disk...");
+        let status = Command::new("qemu-img")
+            .args(["create", "-f", "qcow2", disk_path.to_str().unwrap(), "8G"])
+            .status()
+            .context("Failed to run qemu-img")?;
+        if !status.success() {
+            bail!("qemu-img create failed");
+        }
+    }
+
     println!("Quick test: direct kernel boot (serial console)");
     println!("  Kernel:    {}", kernel_path.display());
     println!("  Initramfs: {}", initramfs_path.display());
+    println!("  Disk:      {}", disk_path.display());
 
     if let Some(ref command) = cmd {
         println!("  Command:   {}", command);
-        run_with_command(kernel_path, initramfs_path, command)
+        run_with_command(kernel_path, initramfs_path, command, Some(disk_path))
     } else {
         println!("Press Ctrl+A, X to exit QEMU\n");
-        run_interactive(kernel_path, initramfs_path)
+        run_interactive(kernel_path, initramfs_path, Some(disk_path))
     }
 }
 
-fn run_interactive(kernel_path: PathBuf, initramfs_path: PathBuf) -> Result<()> {
+fn run_interactive(kernel_path: PathBuf, initramfs_path: PathBuf, disk_path: Option<PathBuf>) -> Result<()> {
     let mut cmd = Command::new("qemu-system-x86_64");
     cmd.args([
         "-cpu", "Skylake-Client",
@@ -76,6 +90,14 @@ fn run_interactive(kernel_path: PathBuf, initramfs_path: PathBuf) -> Result<()> 
         "-nographic",
         "-serial", "mon:stdio",
     ]);
+
+    // Add disk if provided (virtio - fast, module loaded by init)
+    if let Some(disk) = disk_path {
+        cmd.args([
+            "-drive",
+            &format!("file={},format=qcow2,if=virtio", disk.display()),
+        ]);
+    }
 
     let status = cmd
         .status()
@@ -88,12 +110,12 @@ fn run_interactive(kernel_path: PathBuf, initramfs_path: PathBuf) -> Result<()> 
     Ok(())
 }
 
-fn run_with_command(kernel_path: PathBuf, initramfs_path: PathBuf, command: &str) -> Result<()> {
+fn run_with_command(kernel_path: PathBuf, initramfs_path: PathBuf, command: &str, disk_path: Option<PathBuf>) -> Result<()> {
     // Use a unique marker to detect command completion
     const DONE_MARKER: &str = "___LEVISO_CMD_DONE___";
 
-    let mut child = Command::new("qemu-system-x86_64")
-        .args([
+    let mut cmd = Command::new("qemu-system-x86_64");
+    cmd.args([
             "-cpu", "Skylake-Client",
             "-m", "512M",
             "-kernel", kernel_path.to_str().unwrap(),
@@ -102,7 +124,17 @@ fn run_with_command(kernel_path: PathBuf, initramfs_path: PathBuf, command: &str
             "-nographic",
             "-serial", "mon:stdio",
             "-no-reboot",
-        ])
+        ]);
+
+    // Add disk if provided (virtio - fast, module loaded by init)
+    if let Some(disk) = disk_path {
+        cmd.args([
+            "-drive",
+            &format!("file={},format=qcow2,if=virtio", disk.display()),
+        ]);
+    }
+
+    let mut child = cmd
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -193,7 +225,7 @@ fn run_with_command(kernel_path: PathBuf, initramfs_path: PathBuf, command: &str
 }
 
 /// Run the ISO in QEMU GUI (closest to bare metal)
-pub fn run_iso(base_dir: &Path, force_bios: bool) -> Result<()> {
+pub fn run_iso(base_dir: &Path, force_bios: bool, disk_size: Option<String>) -> Result<()> {
     let output_dir = base_dir.join("output");
     let iso_path = output_dir.join("leviso.iso");
 
@@ -214,6 +246,30 @@ pub fn run_iso(base_dir: &Path, force_bios: bool) -> Result<()> {
         "-m", "512M",
         "-vga", "std",
     ]);
+
+    // Handle virtual disk if requested
+    if let Some(size) = disk_size {
+        let disk_path = output_dir.join("virtual-disk.qcow2");
+
+        // Create disk if it doesn't exist
+        if !disk_path.exists() {
+            println!("  Creating {}B virtual disk...", size);
+            let status = Command::new("qemu-img")
+                .args(["create", "-f", "qcow2", disk_path.to_str().unwrap(), &size])
+                .status()
+                .context("Failed to run qemu-img. Is QEMU installed?")?;
+
+            if !status.success() {
+                bail!("qemu-img create failed");
+            }
+        }
+
+        println!("  Disk: {} ({})", disk_path.display(), size);
+        cmd.args([
+            "-drive",
+            &format!("file={},format=qcow2,if=virtio", disk_path.display()),
+        ]);
+    }
 
     // UEFI boot by default (it's 2026), unless --bios is specified
     if force_bios {

@@ -35,6 +35,15 @@ if [ -d /sys/firmware/efi/efivars ]; then
     /bin/mount -t efivarfs efivarfs /sys/firmware/efi/efivars
 fi
 
+# Load essential kernel modules (for disk drivers)
+echo "[init] Loading kernel modules..."
+KVER=$(ls /lib/modules/ 2>/dev/null | head -1)
+if [ -n "$KVER" ] && [ -f "/lib/modules/$KVER/virtio_blk.ko.xz" ]; then
+    /bin/xz -dk "/lib/modules/$KVER/virtio_blk.ko.xz" 2>/dev/null
+    /bin/insmod "/lib/modules/$KVER/virtio_blk.ko" 2>/dev/null && \
+        echo "[init] Loaded virtio_blk" || echo "[init] virtio_blk load failed (may be built-in)"
+fi
+
 # Create required directories for systemd
 /bin/mkdir -p /run/systemd/journal
 /bin/mkdir -p /run/systemd/seats

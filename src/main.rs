@@ -39,6 +39,12 @@ enum Commands {
         /// Force BIOS boot instead of UEFI
         #[arg(long)]
         bios: bool,
+        /// Don't attach the virtual disk
+        #[arg(long)]
+        no_disk: bool,
+        /// Virtual disk size (default: 8G)
+        #[arg(long, default_value = "8G")]
+        disk_size: String,
     },
     /// Clean build artifacts
     Clean,
@@ -63,10 +69,11 @@ fn main() -> Result<()> {
             initramfs::build_initramfs(&base_dir)?;
             qemu::test_direct(&base_dir, cmd)?;
         }
-        Commands::Run { bios } => {
+        Commands::Run { bios, no_disk, disk_size } => {
             initramfs::build_initramfs(&base_dir)?;
             iso::create_iso(&base_dir)?;
-            qemu::run_iso(&base_dir, bios)?;
+            let disk = if no_disk { None } else { Some(disk_size) };
+            qemu::run_iso(&base_dir, bios, disk)?;
         }
         Commands::Clean => clean::clean(&base_dir)?,
     }

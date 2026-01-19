@@ -11,6 +11,7 @@ mod chrony;
 mod context;
 mod dbus;
 mod filesystem;
+mod modules;
 mod pam;
 mod rootfs;
 mod systemd;
@@ -33,7 +34,7 @@ const COREUTILS: &[&str] = &[
     // Phase 3: system config
     "date", "loadkeys",
     // Compression utilities
-    "gzip", "gunzip",
+    "gzip", "gunzip", "xz",
     // Systemd utilities
     "timedatectl", "systemctl", "journalctl", "hostnamectl", "localectl",
     // Console
@@ -42,7 +43,7 @@ const COREUTILS: &[&str] = &[
 
 /// Sbin utilities to copy.
 const SBIN_UTILS: &[&str] = &[
-    "mount", "umount", "hostname",
+    "mount", "umount", "hostname", "insmod",
     // Phase 2: disk utilities
     "blkid", "fdisk", "parted", "wipefs", "mkfs.ext4", "mkfs.fat",
     // Phase 3: system config
@@ -99,6 +100,9 @@ pub fn build_initramfs(base_dir: &Path) -> Result<()> {
 
     // Copy keymaps
     filesystem::copy_keymaps(&ctx)?;
+
+    // Set up kernel modules (for disk drivers)
+    modules::setup_modules(&ctx)?;
 
     // Create root user (must be before dbus adds system users)
     users::create_root_user(&ctx.initramfs)?;

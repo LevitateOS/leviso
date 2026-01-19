@@ -130,7 +130,7 @@ pub fn build_initramfs(base_dir: &Path) -> Result<()> {
         // Compression utilities
         "gzip", "gunzip",
         // Systemd utilities
-        "timedatectl", "systemctl", "journalctl",
+        "timedatectl", "systemctl", "journalctl", "hostnamectl", "localectl",
         // Console
         "agetty", "login",
     ];
@@ -164,6 +164,13 @@ pub fn build_initramfs(base_dir: &Path) -> Result<()> {
         copy_dir_recursive(&keymaps_src, &keymaps_dst)?;
     }
 
+    // Create /etc/passwd and /etc/group for root FIRST (before setup_dbus adds dbus user)
+    fs::write(
+        initramfs_root.join("etc/passwd"),
+        "root:x:0:0:root:/root:/bin/bash\n",
+    )?;
+    fs::write(initramfs_root.join("etc/group"), "root:x:0:\n")?;
+
     // Setup systemd as init
     setup_systemd(&actual_rootfs, &initramfs_root)?;
 
@@ -178,13 +185,6 @@ pub fn build_initramfs(base_dir: &Path) -> Result<()> {
     perms.set_mode(0o755);
     fs::set_permissions(&init_dst, perms)?;
     println!("Copied init script");
-
-    // Create /etc/passwd and /etc/group for root
-    fs::write(
-        initramfs_root.join("etc/passwd"),
-        "root:x:0:0:root:/root:/bin/bash\n",
-    )?;
-    fs::write(initramfs_root.join("etc/group"), "root:x:0:\n")?;
 
     // Create simple profile
     fs::write(
@@ -504,6 +504,25 @@ fn setup_systemd(rootfs: &Path, initramfs: &Path) -> Result<()> {
         "systemd-journald-dev-log.socket",
     ];
 
+    // Copy D-Bus activation symlinks (these link dbus service names to systemd units)
+    let dbus_symlinks = [
+        "dbus-org.freedesktop.timedate1.service",
+        "dbus-org.freedesktop.hostname1.service",
+        "dbus-org.freedesktop.locale1.service",
+        "dbus-org.freedesktop.login1.service",
+    ];
+    for symlink in dbus_symlinks {
+        let src = unit_src.join(symlink);
+        let dst = unit_dst.join(symlink);
+        if src.is_symlink() {
+            let target = fs::read_link(&src)?;
+            if !dst.exists() {
+                std::os::unix::fs::symlink(&target, &dst)?;
+                println!("  Created symlink: {} -> {}", symlink, target.display());
+            }
+        }
+    }
+
     for unit in essential_units {
         let src = unit_src.join(unit);
         let dst = unit_dst.join(unit);
@@ -719,20 +738,57 @@ fn setup_dbus(rootfs: &Path, initramfs: &Path) -> Result<()> {
         )?;
     }
 
-    // Copy system.d directory for service configs
+    // Copy only the D-Bus policy files we need (others reference missing users)
     let system_d_src = dbus_conf_src.join("system.d");
     let system_d_dst = dbus_conf_dst.join("system.d");
-    if system_d_src.exists() {
-        copy_dir_recursive(&system_d_src, &system_d_dst)?;
+    fs::create_dir_all(&system_d_dst)?;
+
+    // Only copy systemd-related D-Bus policies
+    let needed_policies = [
+        "org.freedesktop.systemd1.conf",
+        "org.freedesktop.hostname1.conf",
+        "org.freedesktop.locale1.conf",
+        "org.freedesktop.timedate1.conf",
+        "org.freedesktop.login1.conf",
+    ];
+    for policy in needed_policies {
+        let src = system_d_src.join(policy);
+        let dst = system_d_dst.join(policy);
+        if src.exists() {
+            fs::copy(&src, &dst)?;
+            println!("  Copied D-Bus policy: {}", policy);
+        }
+    }
+
+    // Copy D-Bus service activation files (tells dbus how to start services)
+    let services_src = dbus_conf_src.join("system-services");
+    let services_dst = dbus_conf_dst.join("system-services");
+    fs::create_dir_all(&services_dst)?;
+
+    let needed_services = [
+        "org.freedesktop.systemd1.service",
+        "org.freedesktop.hostname1.service",
+        "org.freedesktop.locale1.service",
+        "org.freedesktop.timedate1.service",
+        "org.freedesktop.login1.service",
+    ];
+    for service in needed_services {
+        let src = services_src.join(service);
+        let dst = services_dst.join(service);
+        if src.exists() {
+            fs::copy(&src, &dst)?;
+            println!("  Copied D-Bus service: {}", service);
+        }
     }
 
     // Copy systemd D-Bus service files
+    // Use dbus-daemon instead of dbus-broker (more reliable for minimal systems)
     let unit_src = rootfs.join("usr/lib/systemd/system");
     let unit_dst = initramfs.join("usr/lib/systemd/system");
 
     let dbus_units = [
         "dbus.socket",
-        "dbus-broker.service",
+        "dbus-daemon.service",
     ];
     for unit in dbus_units {
         let src = unit_src.join(unit);
@@ -743,10 +799,10 @@ fn setup_dbus(rootfs: &Path, initramfs: &Path) -> Result<()> {
         }
     }
 
-    // Create dbus.service symlink to dbus-broker.service
+    // Create dbus.service symlink to dbus-daemon.service
     let dbus_service_link = unit_dst.join("dbus.service");
     if !dbus_service_link.exists() {
-        std::os::unix::fs::symlink("dbus-broker.service", &dbus_service_link)?;
+        std::os::unix::fs::symlink("dbus-daemon.service", &dbus_service_link)?;
     }
 
     // Enable dbus.socket in sockets.target.wants

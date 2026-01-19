@@ -89,6 +89,9 @@ fn run_interactive(kernel_path: PathBuf, initramfs_path: PathBuf) -> Result<()> 
 }
 
 fn run_with_command(kernel_path: PathBuf, initramfs_path: PathBuf, command: &str) -> Result<()> {
+    // Use a unique marker to detect command completion
+    const DONE_MARKER: &str = "___LEVISO_CMD_DONE___";
+
     let mut child = Command::new("qemu-system-x86_64")
         .args([
             "-cpu", "Skylake-Client",
@@ -98,6 +101,7 @@ fn run_with_command(kernel_path: PathBuf, initramfs_path: PathBuf, command: &str
             "-append", "console=tty0 console=ttyS0,115200n8 rdinit=/init panic=30",
             "-nographic",
             "-serial", "mon:stdio",
+            "-no-reboot",
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -107,71 +111,84 @@ fn run_with_command(kernel_path: PathBuf, initramfs_path: PathBuf, command: &str
 
     let mut stdin = child.stdin.take().expect("Failed to get stdin");
     let stdout = child.stdout.take().expect("Failed to get stdout");
-    let reader = BufReader::new(stdout);
+
+    // Use a thread to read output - this avoids blocking on lines() when prompt has no newline
+    let (tx, rx) = std::sync::mpsc::channel();
+    let reader_thread = std::thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            if let Ok(l) = line {
+                if tx.send(l).is_err() {
+                    break;
+                }
+            }
+        }
+    });
 
     let start = Instant::now();
-    let timeout = Duration::from_secs(90);
+    let timeout = Duration::from_secs(30);
     let mut boot_finished = false;
     let mut command_sent = false;
-    let mut output_lines = Vec::new();
+    let mut output_buffer = String::new();
 
     println!("\n--- Waiting for boot ---");
 
-    for line in reader.lines() {
+    loop {
+        // Check timeout
         if start.elapsed() > timeout {
-            eprintln!("Timeout waiting for command completion");
+            eprintln!("\nTimeout after 30 seconds");
             let _ = child.kill();
             break;
         }
 
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => continue,
-        };
+        // Try to receive a line with a short timeout
+        match rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(line) => {
+                println!("{}", line);
+                output_buffer.push_str(&line);
+                output_buffer.push('\n');
 
-        // Print boot output
-        println!("{}", line);
+                // Stage 1: Detect systemd boot completion
+                if !boot_finished && line.contains("Startup finished") {
+                    boot_finished = true;
+                    println!("\n--- Boot finished, sending command ---");
 
-        // Stage 1: Detect systemd boot completion
-        if !boot_finished && line.contains("Startup finished") {
-            boot_finished = true;
-            println!("\n--- Boot finished, sending command in 2 seconds ---");
+                    // Wait for shell to be ready (2s to be safe)
+                    std::thread::sleep(Duration::from_secs(2));
 
-            // Wait for shell to be fully ready
-            std::thread::sleep(Duration::from_secs(2));
+                    // Send command followed by marker
+                    let full_cmd = format!(
+                        "{}; echo '{}'\n",
+                        command, DONE_MARKER
+                    );
+                    if stdin.write_all(full_cmd.as_bytes()).is_ok() {
+                        let _ = stdin.flush();
+                        command_sent = true;
+                        println!(">>> {}", command);
+                    }
+                }
 
-            // Send the command
-            let full_cmd = format!("{}\n", command);
-            if stdin.write_all(full_cmd.as_bytes()).is_ok() {
-                let _ = stdin.flush();
-                command_sent = true;
-                println!(">>> {}", command);
+                // Stage 2: Look for our completion marker (on its own line, from echo)
+                // Don't match the command echo which includes the marker in the command string
+                if command_sent && line.trim() == DONE_MARKER {
+                    println!("\n--- Command completed, shutting down ---");
+                    break;
+                }
             }
-        }
-
-        // Collect output after command is sent
-        if command_sent {
-            output_lines.push(line.clone());
-
-            // Exit when we see the shell prompt AFTER the command output
-            // First few lines are: command echo, then output, then prompt
-            // The prompt format is "root@leviso:~# " or similar
-            if output_lines.len() >= 3 && line.contains("root@") && line.contains("#") && !line.contains(&command[..8.min(command.len())]) {
-                println!("\n--- Command completed ---");
-                let _ = child.kill();
-                break;
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                // No data, continue waiting
+                continue;
             }
-
-            // Fallback: exit after 15 lines or 30 seconds
-            if output_lines.len() >= 15 || start.elapsed() > Duration::from_secs(30) {
-                println!("\n--- Command output collected (timeout) ---");
-                let _ = child.kill();
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                // Reader thread finished (QEMU exited)
                 break;
             }
         }
     }
 
+    let _ = child.kill();
     let _ = child.wait();
+    drop(reader_thread);
     Ok(())
 }
 

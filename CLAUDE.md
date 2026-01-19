@@ -62,6 +62,9 @@ We used `vmlinuz` directly from the Rocky ISO. That makes leviso a Rocky rebrand
 # Claude: Quick debug in terminal (direct kernel boot, serial console)
 cargo run -- test
 
+# Claude: Run a command after boot and exit
+cargo run -- test -c "timedatectl"
+
 # User: Real test in QEMU GUI (full ISO, closest to bare metal)
 cargo run -- run
 
@@ -70,7 +73,23 @@ cargo run -- run --bios
 ```
 
 - `test` = fast iteration, no ISO rebuild needed, output in terminal
+- `test -c "cmd"` = run command after boot, then exit immediately
 - `run` = real experience, requires `cargo run -- iso` first, opens GUI window
+
+### 11. DO NOT PIPE `cargo run -- test` TO tail OR head
+
+**This will break output buffering and cause the test to hang forever.**
+
+```bash
+# WRONG - will hang:
+cargo run -- test -c "echo hello" | tail -20
+cargo run -- test 2>&1 | head -50
+
+# RIGHT - run directly:
+cargo run -- test -c "echo hello"
+```
+
+The QEMU serial console output is line-buffered and piping breaks the readline loop. Just run the command directly.
 
 ---
 

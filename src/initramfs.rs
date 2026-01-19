@@ -143,6 +143,8 @@ pub fn build_initramfs(base_dir: &Path) -> Result<()> {
         "mkfs.ext4", "mkfs.fat",
         // Phase 3: system config
         "chroot", "hwclock",
+        // NTP
+        "chronyd",
     ];
 
     for util in coreutils {
@@ -499,6 +501,7 @@ fn setup_systemd(rootfs: &Path, initramfs: &Path) -> Result<()> {
         "systemd-timedated.service",
         "systemd-hostnamed.service",
         "systemd-localed.service",
+        "chronyd.service",  // NTP client (Rocky uses chrony, not timesyncd)
         // Sockets
         "systemd-journald.socket",
         "systemd-journald-dev-log.socket",
@@ -805,28 +808,88 @@ fn setup_dbus(rootfs: &Path, initramfs: &Path) -> Result<()> {
         std::os::unix::fs::symlink("dbus-daemon.service", &dbus_service_link)?;
     }
 
-    // Enable dbus.socket in sockets.target.wants
+    // Enable sockets in sockets.target.wants
     let sockets_wants = initramfs.join("etc/systemd/system/sockets.target.wants");
     fs::create_dir_all(&sockets_wants)?;
+
     let dbus_socket_link = sockets_wants.join("dbus.socket");
     if !dbus_socket_link.exists() {
         std::os::unix::fs::symlink("/usr/lib/systemd/system/dbus.socket", &dbus_socket_link)?;
     }
 
-    // Create dbus user (some D-Bus configs expect it)
-    // Append to passwd and group
+    // Enable journald sockets (fixes "Failed to connect stdout to the journal socket")
+    let journald_socket_link = sockets_wants.join("systemd-journald.socket");
+    if !journald_socket_link.exists() {
+        std::os::unix::fs::symlink("/usr/lib/systemd/system/systemd-journald.socket", &journald_socket_link)?;
+    }
+    let journald_dev_log_link = sockets_wants.join("systemd-journald-dev-log.socket");
+    if !journald_dev_log_link.exists() {
+        std::os::unix::fs::symlink("/usr/lib/systemd/system/systemd-journald-dev-log.socket", &journald_dev_log_link)?;
+    }
+
+    // Create system users (dbus, chrony)
     let passwd_path = initramfs.join("etc/passwd");
     let mut passwd = fs::read_to_string(&passwd_path).unwrap_or_default();
     if !passwd.contains("dbus:") {
         passwd.push_str("dbus:x:81:81:System message bus:/:/sbin/nologin\n");
-        fs::write(&passwd_path, passwd)?;
     }
+    if !passwd.contains("chrony:") {
+        passwd.push_str("chrony:x:992:987::/var/lib/chrony:/sbin/nologin\n");
+    }
+    fs::write(&passwd_path, passwd)?;
 
     let group_path = initramfs.join("etc/group");
     let mut group = fs::read_to_string(&group_path).unwrap_or_default();
     if !group.contains("dbus:") {
         group.push_str("dbus:x:81:\n");
-        fs::write(&group_path, group)?;
+    }
+    if !group.contains("chrony:") {
+        group.push_str("chrony:x:987:\n");
+    }
+    fs::write(&group_path, group)?;
+
+    // Create chrony directories and config
+    fs::create_dir_all(initramfs.join("var/lib/chrony"))?;
+    fs::create_dir_all(initramfs.join("var/run/chrony"))?;
+
+    // Copy chrony config
+    let chrony_conf_src = rootfs.join("etc/chrony.conf");
+    let chrony_conf_dst = initramfs.join("etc/chrony.conf");
+    if chrony_conf_src.exists() {
+        fs::copy(&chrony_conf_src, &chrony_conf_dst)?;
+    }
+
+    // Copy chrony sysconfig (contains OPTIONS for chronyd)
+    let sysconfig_dir = initramfs.join("etc/sysconfig");
+    fs::create_dir_all(&sysconfig_dir)?;
+    let chrony_sysconfig_src = rootfs.join("etc/sysconfig/chronyd");
+    let chrony_sysconfig_dst = sysconfig_dir.join("chronyd");
+    if chrony_sysconfig_src.exists() {
+        fs::copy(&chrony_sysconfig_src, &chrony_sysconfig_dst)?;
+    }
+
+    // Create /usr/sbin symlink for chronyd (service expects /usr/sbin/chronyd)
+    let usr_sbin = initramfs.join("usr/sbin");
+    fs::create_dir_all(&usr_sbin)?;
+    let chronyd_sbin_link = usr_sbin.join("chronyd");
+    if !chronyd_sbin_link.exists() && initramfs.join("bin/chronyd").exists() {
+        std::os::unix::fs::symlink("/bin/chronyd", &chronyd_sbin_link)?;
+    }
+
+    // Copy ntp-units.d for timedatectl set-ntp support
+    // This tells systemd-timedated to use chronyd.service as NTP implementation
+    let ntp_units_dir = initramfs.join("usr/lib/systemd/ntp-units.d");
+    fs::create_dir_all(&ntp_units_dir)?;
+    let ntp_units_src = rootfs.join("usr/lib/systemd/ntp-units.d/50-chronyd.list");
+    if ntp_units_src.exists() {
+        fs::copy(&ntp_units_src, ntp_units_dir.join("50-chronyd.list"))?;
+    }
+
+    // Enable chronyd.service for NTP support (timedatectl set-ntp)
+    let multi_user_wants = initramfs.join("etc/systemd/system/multi-user.target.wants");
+    let chronyd_link = multi_user_wants.join("chronyd.service");
+    if !chronyd_link.exists() {
+        std::os::unix::fs::symlink("/usr/lib/systemd/system/chronyd.service", &chronyd_link)?;
     }
 
     println!("  D-Bus configured");

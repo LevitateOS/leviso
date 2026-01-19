@@ -59,8 +59,15 @@ fn main() -> Result<()> {
         Commands::Extract => extract::extract_rocky(&base_dir)?,
         Commands::Initramfs => initramfs::build_initramfs(&base_dir)?,
         Commands::Iso => iso::create_iso(&base_dir)?,
-        Commands::Test { cmd } => qemu::test_direct(&base_dir, cmd)?,
-        Commands::Run { bios } => qemu::run_iso(&base_dir, bios)?,
+        Commands::Test { cmd } => {
+            initramfs::build_initramfs(&base_dir)?;
+            qemu::test_direct(&base_dir, cmd)?;
+        }
+        Commands::Run { bios } => {
+            initramfs::build_initramfs(&base_dir)?;
+            iso::create_iso(&base_dir)?;
+            qemu::run_iso(&base_dir, bios)?;
+        }
         Commands::Clean => clean::clean(&base_dir)?,
     }
 

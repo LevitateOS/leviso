@@ -65,11 +65,17 @@ pub fn test_direct(base_dir: &Path, gui: bool) -> Result<()> {
         "-initrd",
         initramfs_path.to_str().unwrap(),
         "-append",
-        "console=tty0 console=ttyS0,115200n8 rdinit=/init panic=30",
+        if gui {
+            "console=tty0 rdinit=/init panic=30"
+        } else {
+            "console=tty0 console=ttyS0,115200n8 rdinit=/init panic=30"
+        },
     ]);
 
     if gui {
         println!("Running with GUI window");
+        // Add VGA for better console display
+        cmd.args(["-vga", "std"]);
     } else {
         println!("Press Ctrl+A, X to exit QEMU\n");
         cmd.args(["-nographic", "-serial", "mon:stdio"]);

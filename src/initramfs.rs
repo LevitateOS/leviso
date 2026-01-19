@@ -505,14 +505,14 @@ fn setup_systemd(rootfs: &Path, initramfs: &Path) -> Result<()> {
     // and systemd ignores non-symlinks. Create only the symlinks we need.
     println!("  Copied essential unit files");
 
-    // Create autologin getty override for tty1
+    // Create autologin getty override for tty1 - bypass login, exec bash directly
     let getty_override_dir = initramfs.join("etc/systemd/system/getty@tty1.service.d");
     fs::create_dir_all(&getty_override_dir)?;
     fs::write(
         getty_override_dir.join("autologin.conf"),
         r#"[Service]
 ExecStart=
-ExecStart=-/bin/agetty --autologin root --noclear --keep-baud %I 115200,38400,9600 $TERM
+ExecStart=-/bin/agetty --autologin root --noclear --login-program /bin/bash --login-options '-l' %I linux
 Type=idle
 "#,
     )?;

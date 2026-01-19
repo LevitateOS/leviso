@@ -167,6 +167,9 @@ pub fn build_initramfs(base_dir: &Path) -> Result<()> {
     // Setup systemd as init
     setup_systemd(&actual_rootfs, &initramfs_root)?;
 
+    // Setup D-Bus (required for systemctl, timedatectl, etc.)
+    setup_dbus(&actual_rootfs, &initramfs_root)?;
+
     // Copy init script (mounts cgroups, then execs systemd)
     let init_src = base_dir.join("profile/init");
     let init_dst = initramfs_root.join("init");
@@ -379,6 +382,10 @@ fn setup_systemd(rootfs: &Path, initramfs: &Path) -> Result<()> {
         "systemd-modules-load",
         "systemd-sysctl",
         "systemd-tmpfiles-setup",
+        // D-Bus activated services (for timedatectl, hostnamectl, etc.)
+        "systemd-timedated",
+        "systemd-hostnamed",
+        "systemd-localed",
     ];
 
     let systemd_lib_dir = initramfs.join("usr/lib/systemd");
@@ -488,6 +495,10 @@ fn setup_systemd(rootfs: &Path, initramfs: &Path) -> Result<()> {
         "systemd-tmpfiles-setup.service",
         "systemd-journald.service",
         "systemd-udevd.service",
+        // D-Bus activated services (for timedatectl, hostnamectl, etc.)
+        "systemd-timedated.service",
+        "systemd-hostnamed.service",
+        "systemd-localed.service",
         // Sockets
         "systemd-journald.socket",
         "systemd-journald-dev-log.socket",
@@ -660,6 +671,108 @@ session    required     pam_permit.so
     fs::write(initramfs.join("etc/shells"), "/bin/bash\n/bin/sh\n")?;
 
     println!("  Created PAM configuration");
+
+    Ok(())
+}
+
+fn setup_dbus(rootfs: &Path, initramfs: &Path) -> Result<()> {
+    println!("Setting up D-Bus...");
+
+    // Create D-Bus directories
+    fs::create_dir_all(initramfs.join("usr/share/dbus-1"))?;
+    fs::create_dir_all(initramfs.join("etc/dbus-1"))?;
+    fs::create_dir_all(initramfs.join("run/dbus"))?;
+
+    // Copy D-Bus binaries
+    let dbus_binaries = ["dbus-broker", "dbus-broker-launch", "dbus-send", "dbus-daemon"];
+    for binary in dbus_binaries {
+        let src = rootfs.join("usr/bin").join(binary);
+        if src.exists() {
+            let dst = initramfs.join("bin").join(binary);
+            fs::copy(&src, &dst)?;
+            let mut perms = fs::metadata(&dst)?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&dst, perms)?;
+            println!("  Copied {}", binary);
+
+            // Get library dependencies
+            let ldd_output = Command::new("ldd").arg(&src).output();
+            if let Ok(output) = ldd_output {
+                if output.status.success() {
+                    let libs = parse_ldd_output(&String::from_utf8_lossy(&output.stdout))?;
+                    for lib in &libs {
+                        let _ = copy_library(rootfs, lib, initramfs);
+                    }
+                }
+            }
+        }
+    }
+
+    // Copy D-Bus config files
+    let dbus_conf_src = rootfs.join("usr/share/dbus-1");
+    let dbus_conf_dst = initramfs.join("usr/share/dbus-1");
+    if dbus_conf_src.join("system.conf").exists() {
+        fs::copy(
+            dbus_conf_src.join("system.conf"),
+            dbus_conf_dst.join("system.conf"),
+        )?;
+    }
+
+    // Copy system.d directory for service configs
+    let system_d_src = dbus_conf_src.join("system.d");
+    let system_d_dst = dbus_conf_dst.join("system.d");
+    if system_d_src.exists() {
+        copy_dir_recursive(&system_d_src, &system_d_dst)?;
+    }
+
+    // Copy systemd D-Bus service files
+    let unit_src = rootfs.join("usr/lib/systemd/system");
+    let unit_dst = initramfs.join("usr/lib/systemd/system");
+
+    let dbus_units = [
+        "dbus.socket",
+        "dbus-broker.service",
+    ];
+    for unit in dbus_units {
+        let src = unit_src.join(unit);
+        let dst = unit_dst.join(unit);
+        if src.exists() {
+            fs::copy(&src, &dst)?;
+            println!("  Copied {}", unit);
+        }
+    }
+
+    // Create dbus.service symlink to dbus-broker.service
+    let dbus_service_link = unit_dst.join("dbus.service");
+    if !dbus_service_link.exists() {
+        std::os::unix::fs::symlink("dbus-broker.service", &dbus_service_link)?;
+    }
+
+    // Enable dbus.socket in sockets.target.wants
+    let sockets_wants = initramfs.join("etc/systemd/system/sockets.target.wants");
+    fs::create_dir_all(&sockets_wants)?;
+    let dbus_socket_link = sockets_wants.join("dbus.socket");
+    if !dbus_socket_link.exists() {
+        std::os::unix::fs::symlink("/usr/lib/systemd/system/dbus.socket", &dbus_socket_link)?;
+    }
+
+    // Create dbus user (some D-Bus configs expect it)
+    // Append to passwd and group
+    let passwd_path = initramfs.join("etc/passwd");
+    let mut passwd = fs::read_to_string(&passwd_path).unwrap_or_default();
+    if !passwd.contains("dbus:") {
+        passwd.push_str("dbus:x:81:81:System message bus:/:/sbin/nologin\n");
+        fs::write(&passwd_path, passwd)?;
+    }
+
+    let group_path = initramfs.join("etc/group");
+    let mut group = fs::read_to_string(&group_path).unwrap_or_default();
+    if !group.contains("dbus:") {
+        group.push_str("dbus:x:81:\n");
+        fs::write(&group_path, group)?;
+    }
+
+    println!("  D-Bus configured");
 
     Ok(())
 }

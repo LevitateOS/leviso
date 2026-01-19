@@ -149,10 +149,10 @@ menuentry 'Leviso' {
     }
 
     println!("Created ISO at: {}", iso_output.display());
-    println!("\nTo test (UEFI by default, BIOS fallback if OVMF not found):");
-    println!("  cargo run -- test --gui");
+    println!("\nTo run in QEMU GUI (UEFI by default):");
+    println!("  cargo run -- run");
     println!("\nTo force BIOS boot:");
-    println!("  cargo run -- test --gui --bios");
+    println!("  cargo run -- run --bios");
 
     Ok(())
 }

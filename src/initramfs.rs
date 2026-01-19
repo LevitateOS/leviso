@@ -683,12 +683,13 @@ fn setup_dbus(rootfs: &Path, initramfs: &Path) -> Result<()> {
     fs::create_dir_all(initramfs.join("etc/dbus-1"))?;
     fs::create_dir_all(initramfs.join("run/dbus"))?;
 
-    // Copy D-Bus binaries
-    let dbus_binaries = ["dbus-broker", "dbus-broker-launch", "dbus-send", "dbus-daemon"];
+    // Copy D-Bus binaries to /usr/bin (where systemd service expects them)
+    fs::create_dir_all(initramfs.join("usr/bin"))?;
+    let dbus_binaries = ["dbus-broker", "dbus-broker-launch", "dbus-send", "dbus-daemon", "busctl"];
     for binary in dbus_binaries {
         let src = rootfs.join("usr/bin").join(binary);
         if src.exists() {
-            let dst = initramfs.join("bin").join(binary);
+            let dst = initramfs.join("usr/bin").join(binary);
             fs::copy(&src, &dst)?;
             let mut perms = fs::metadata(&dst)?.permissions();
             perms.set_mode(0o755);

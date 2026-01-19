@@ -27,6 +27,65 @@ fn find_ovmf() -> Option<PathBuf> {
     None
 }
 
+/// Direct kernel boot (bypasses ISO/bootloader for faster debugging)
+pub fn test_direct(base_dir: &Path, gui: bool) -> Result<()> {
+    let downloads_dir = base_dir.join("downloads");
+    let output_dir = base_dir.join("output");
+
+    // Find kernel
+    let kernel_path = downloads_dir.join("iso-contents/images/pxeboot/vmlinuz");
+    if !kernel_path.exists() {
+        bail!(
+            "Kernel not found at {}. Run 'leviso extract' first.",
+            kernel_path.display()
+        );
+    }
+
+    // Find initramfs
+    let initramfs_path = output_dir.join("initramfs.cpio.gz");
+    if !initramfs_path.exists() {
+        bail!(
+            "Initramfs not found at {}. Run 'leviso initramfs' first.",
+            initramfs_path.display()
+        );
+    }
+
+    println!("Direct kernel boot (bypasses ISO/bootloader)");
+    println!("  Kernel:    {}", kernel_path.display());
+    println!("  Initramfs: {}", initramfs_path.display());
+
+    let mut cmd = Command::new("qemu-system-x86_64");
+    cmd.args([
+        "-cpu",
+        "Skylake-Client",
+        "-m",
+        "512M",
+        "-kernel",
+        kernel_path.to_str().unwrap(),
+        "-initrd",
+        initramfs_path.to_str().unwrap(),
+        "-append",
+        "console=tty0 console=ttyS0,115200n8 rdinit=/init panic=30",
+    ]);
+
+    if gui {
+        println!("Running with GUI window");
+    } else {
+        println!("Press Ctrl+A, X to exit QEMU\n");
+        cmd.args(["-nographic", "-serial", "mon:stdio"]);
+    }
+
+    let status = cmd
+        .status()
+        .context("Failed to run qemu-system-x86_64. Is QEMU installed?")?;
+
+    if !status.success() {
+        bail!("QEMU exited with status: {}", status);
+    }
+
+    Ok(())
+}
+
 pub fn test_qemu(base_dir: &Path, gui: bool, force_bios: bool) -> Result<()> {
     let output_dir = base_dir.join("output");
     let iso_path = output_dir.join("leviso.iso");

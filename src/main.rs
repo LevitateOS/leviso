@@ -37,6 +37,12 @@ enum Commands {
         #[arg(long)]
         bios: bool,
     },
+    /// Direct kernel boot (faster debugging, no ISO needed)
+    Run {
+        /// Use QEMU GUI instead of serial console
+        #[arg(long)]
+        gui: bool,
+    },
     /// Clean build artifacts
     Clean,
 }
@@ -57,6 +63,7 @@ fn main() -> Result<()> {
         Commands::Initramfs => initramfs::build_initramfs(&base_dir)?,
         Commands::Iso => iso::create_iso(&base_dir)?,
         Commands::Test { gui, bios } => qemu::test_qemu(&base_dir, gui, bios)?,
+        Commands::Run { gui } => qemu::test_direct(&base_dir, gui)?,
         Commands::Clean => clean::clean(&base_dir)?,
     }
 

@@ -203,6 +203,9 @@ export PS1='root@leviso:\w# '
 "#,
     )?;
 
+    // Setup PAM (required for login/agetty)
+    setup_pam(&actual_rootfs, &initramfs_root)?;
+
     // Build cpio archive
     println!("Building initramfs cpio archive...");
     let initramfs_cpio = output_dir.join("initramfs.cpio.gz");
@@ -498,15 +501,8 @@ fn setup_systemd(rootfs: &Path, initramfs: &Path) -> Result<()> {
         }
     }
 
-    // Copy target .wants directories
-    for target in ["basic.target.wants", "sysinit.target.wants", "multi-user.target.wants", "getty.target.wants"] {
-        let src = unit_src.join(target);
-        let dst = unit_dst.join(target);
-        if src.exists() {
-            copy_dir_recursive(&src, &dst)?;
-        }
-    }
-
+    // Don't copy .wants directories from rootfs - they contain files instead of symlinks
+    // and systemd ignores non-symlinks. Create only the symlinks we need.
     println!("  Copied essential unit files");
 
     // Create autologin getty override for tty1
@@ -516,16 +512,64 @@ fn setup_systemd(rootfs: &Path, initramfs: &Path) -> Result<()> {
         getty_override_dir.join("autologin.conf"),
         r#"[Service]
 ExecStart=
-ExecStart=-/sbin/agetty --autologin root --noclear %I $TERM
+ExecStart=-/bin/agetty --autologin root --noclear --keep-baud %I 115200,38400,9600 $TERM
+Type=idle
 "#,
     )?;
 
-    // Enable getty on tty1
+    // Create a simple serial console service - just run bash directly
+    // This is simpler for a live environment than agetty+login
+    let serial_console = initramfs.join("etc/systemd/system/serial-console.service");
+    fs::write(
+        &serial_console,
+        r#"[Unit]
+Description=Serial Console Shell
+After=basic.target
+Conflicts=rescue.service emergency.service
+
+[Service]
+Environment=HOME=/root
+Environment=TERM=vt100
+WorkingDirectory=/root
+ExecStart=/bin/bash --login
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/ttyS0
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=no
+Type=idle
+Restart=always
+RestartSec=0
+
+[Install]
+WantedBy=multi-user.target
+"#,
+    )?;
+
+    // Enable both getty on tty1 and serial-console
     let getty_wants = initramfs.join("etc/systemd/system/getty.target.wants");
     fs::create_dir_all(&getty_wants)?;
     let getty_link = getty_wants.join("getty@tty1.service");
     if !getty_link.exists() {
         std::os::unix::fs::symlink("/usr/lib/systemd/system/getty@.service", &getty_link)?;
+    }
+
+    // Enable serial-console directly (doesn't use udev)
+    let multi_user_wants = initramfs.join("etc/systemd/system/multi-user.target.wants");
+    fs::create_dir_all(&multi_user_wants)?;
+    let serial_link = multi_user_wants.join("serial-console.service");
+    if !serial_link.exists() {
+        std::os::unix::fs::symlink("/etc/systemd/system/serial-console.service", &serial_link)?;
+    }
+
+    // Enable getty.target from multi-user.target
+    let multi_user_wants = initramfs.join("etc/systemd/system/multi-user.target.wants");
+    fs::create_dir_all(&multi_user_wants)?;
+    let getty_target_link = multi_user_wants.join("getty.target");
+    if !getty_target_link.exists() {
+        std::os::unix::fs::symlink("/usr/lib/systemd/system/getty.target", &getty_target_link)?;
     }
 
     // Create machine-id (empty, systemd will populate on first boot)
@@ -542,6 +586,80 @@ PRETTY_NAME="LevitateOS Live"
     )?;
 
     println!("  Configured autologin on tty1");
+
+    Ok(())
+}
+
+fn setup_pam(rootfs: &Path, initramfs: &Path) -> Result<()> {
+    println!("Setting up PAM...");
+
+    // Create PAM directories
+    let pam_d = initramfs.join("etc/pam.d");
+    let security_dir = initramfs.join("lib64/security");
+    fs::create_dir_all(&pam_d)?;
+    fs::create_dir_all(&security_dir)?;
+
+    // Copy essential PAM modules
+    let pam_modules = [
+        "pam_permit.so",
+        "pam_deny.so",
+        "pam_unix.so",
+        "pam_rootok.so",
+        "pam_env.so",
+        "pam_limits.so",
+        "pam_nologin.so",
+        "pam_securetty.so",
+        "pam_shells.so",
+        "pam_succeed_if.so",
+    ];
+
+    let pam_src = rootfs.join("usr/lib64/security");
+    for module in pam_modules {
+        let src = pam_src.join(module);
+        if src.exists() {
+            let dst = security_dir.join(module);
+            fs::copy(&src, &dst)?;
+            println!("  Copied {}", module);
+        }
+    }
+
+    // Create minimal PAM config for login (permissive for live environment)
+    fs::write(
+        pam_d.join("login"),
+        r#"#%PAM-1.0
+auth       sufficient   pam_rootok.so
+auth       required     pam_permit.so
+account    required     pam_permit.so
+password   required     pam_permit.so
+session    required     pam_permit.so
+"#,
+    )?;
+
+    // System-auth (referenced by other PAM configs)
+    fs::write(
+        pam_d.join("system-auth"),
+        r#"#%PAM-1.0
+auth       sufficient   pam_rootok.so
+auth       required     pam_permit.so
+account    required     pam_permit.so
+password   required     pam_permit.so
+session    required     pam_permit.so
+"#,
+    )?;
+
+    // Create /etc/securetty (terminals where root can login)
+    fs::write(
+        initramfs.join("etc/securetty"),
+        "tty1\ntty2\ntty3\ntty4\ntty5\ntty6\nttyS0\n",
+    )?;
+
+    // Create empty /etc/shadow for root (no password = allow login)
+    fs::write(initramfs.join("etc/shadow"), "root::0::::::\n")?;
+
+    // Create /etc/shells (required for login)
+    fs::write(initramfs.join("etc/shells"), "/bin/bash\n/bin/sh\n")?;
+
+    println!("  Created PAM configuration");
 
     Ok(())
 }

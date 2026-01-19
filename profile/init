@@ -4,9 +4,14 @@
 
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin
 
+echo "[init] Starting LevitateOS init..."
+
 # Mount essential filesystems
+echo "[init] Mounting proc..."
 /bin/mount -t proc proc /proc
+echo "[init] Mounting sysfs..."
 /bin/mount -t sysfs sys /sys
+echo "[init] Mounting devtmpfs..."
 /bin/mount -t devtmpfs dev /dev
 
 # Create /dev nodes that might be missing
@@ -43,6 +48,11 @@ fi
 
 # Create /etc/mtab symlink
 /bin/ln -sf /proc/self/mounts /etc/mtab
+
+echo "[init] All mounts complete. Handing off to systemd..."
+echo "[init] systemd path: /usr/lib/systemd/systemd"
+ls -la /usr/lib/systemd/systemd 2>&1 || echo "[init] systemd binary not found!"
+ls -la /usr/lib/systemd/systemd-executor 2>&1 || echo "[init] systemd-executor not found!"
 
 # Hand off to systemd
 exec /usr/lib/systemd/systemd --system --log-target=console

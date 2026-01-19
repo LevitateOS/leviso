@@ -54,6 +54,26 @@ We used `vmlinuz` directly from the Rocky ISO. That makes leviso a Rocky rebrand
 
 ---
 
+## Testing Commands
+
+**Claude uses `test`, User uses `run`.**
+
+```bash
+# Claude: Quick debug in terminal (direct kernel boot, serial console)
+cargo run -- test
+
+# User: Real test in QEMU GUI (full ISO, closest to bare metal)
+cargo run -- run
+
+# User: Same but force BIOS instead of UEFI
+cargo run -- run --bios
+```
+
+- `test` = fast iteration, no ISO rebuild needed, output in terminal
+- `run` = real experience, requires `cargo run -- iso` first, opens GUI window
+
+---
+
 ## Architecture
 
 ### What we're building

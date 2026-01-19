@@ -1,9 +1,0 @@
-# ISO files (large binary files)
-vendor/images/*.iso
-
-# Build outputs
-out/
-work/
-
-# Target directory (Rust builds)
-target/

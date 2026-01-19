@@ -9,6 +9,11 @@ export PATH=/bin:/sbin:/usr/bin:/usr/sbin
 /bin/mount -t sysfs sys /sys
 /bin/mount -t devtmpfs dev /dev
 
+# Mount efivarfs if booted in UEFI mode (needed for bootctl)
+if [ -d /sys/firmware/efi/efivars ]; then
+    /bin/mount -t efivarfs efivarfs /sys/firmware/efi/efivars
+fi
+
 # Set hostname
 /bin/hostname leviso
 

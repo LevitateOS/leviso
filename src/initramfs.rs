@@ -71,6 +71,8 @@ pub fn build_initramfs(base_dir: &Path) -> Result<()> {
     // Create directory structure
     for dir in [
         "bin", "sbin", "lib64", "lib", "etc", "proc", "sys", "dev", "tmp", "root",
+        "run", "var/log", "var/run",
+        "usr/lib/systemd/system", "usr/lib64/systemd", "etc/systemd/system",
     ] {
         fs::create_dir_all(initramfs_root.join(dir))?;
     }
@@ -118,6 +120,12 @@ pub fn build_initramfs(base_dir: &Path) -> Result<()> {
         "lsblk",
         // Phase 3: system config
         "date", "loadkeys",
+        // Compression utilities
+        "gzip", "gunzip",
+        // Systemd utilities
+        "timedatectl", "systemctl", "journalctl",
+        // Console
+        "agetty", "login",
     ];
 
     // Copy essential system binaries (from sbin)
@@ -149,13 +157,8 @@ pub fn build_initramfs(base_dir: &Path) -> Result<()> {
         copy_dir_recursive(&keymaps_src, &keymaps_dst)?;
     }
 
-    // Copy init script
-    let init_src = base_dir.join("profile/init");
-    let init_dst = initramfs_root.join("init");
-    fs::copy(&init_src, &init_dst)?;
-    let mut perms = fs::metadata(&init_dst)?.permissions();
-    perms.set_mode(0o755);
-    fs::set_permissions(&init_dst, perms)?;
+    // Setup systemd as init
+    setup_systemd(&actual_rootfs, &initramfs_root)?;
 
     // Create /etc/passwd and /etc/group for root
     fs::write(
@@ -329,6 +332,175 @@ fn copy_binary_with_libs(rootfs: &Path, binary: &str, initramfs: &Path) -> Resul
             }
         }
     }
+
+    Ok(())
+}
+
+fn setup_systemd(rootfs: &Path, initramfs: &Path) -> Result<()> {
+    println!("Setting up systemd...");
+
+    // Copy systemd binary
+    let systemd_src = rootfs.join("usr/lib/systemd/systemd");
+    let systemd_dst = initramfs.join("usr/lib/systemd/systemd");
+    fs::create_dir_all(systemd_dst.parent().unwrap())?;
+    fs::copy(&systemd_src, &systemd_dst)?;
+    let mut perms = fs::metadata(&systemd_dst)?.permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(&systemd_dst, perms)?;
+    println!("  Copied systemd");
+
+    // Copy systemd private libraries
+    let systemd_lib_src = rootfs.join("usr/lib64/systemd");
+    if systemd_lib_src.exists() {
+        for entry in fs::read_dir(&systemd_lib_src)? {
+            let entry = entry?;
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if name_str.starts_with("libsystemd-") && name_str.ends_with(".so") {
+                let dst = initramfs.join("usr/lib64/systemd").join(&name);
+                fs::copy(entry.path(), &dst)?;
+                println!("  Copied {}", name_str);
+            }
+        }
+    }
+
+    // Copy all libraries needed by systemd (found via recursive readelf analysis)
+    let systemd_libs = [
+        "libacl.so.1",
+        "libattr.so.1",
+        "libaudit.so.1",
+        "libblkid.so.1",
+        "libcap-ng.so.0",
+        "libcap.so.2",
+        "libcrypto.so.3",
+        "libcrypt.so.2",
+        "libc.so.6",
+        "libeconf.so.0",
+        "libgcc_s.so.1",
+        "libmount.so.1",
+        "libm.so.6",
+        "libpam.so.0",
+        "libpcre2-8.so.0",
+        "libseccomp.so.2",
+        "libselinux.so.1",
+        "libz.so.1",
+        "ld-linux-x86-64.so.2",
+    ];
+    for lib in systemd_libs {
+        let src_candidates = [
+            rootfs.join("usr/lib64").join(lib),
+            rootfs.join("lib64").join(lib),
+        ];
+        let dst = initramfs.join("lib64").join(lib);
+        if !dst.exists() {
+            for src in &src_candidates {
+                if src.exists() {
+                    fs::copy(src, &dst)?;
+                    println!("  Copied {}", lib);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Create /sbin/init symlink to systemd
+    let init_link = initramfs.join("sbin/init");
+    if !init_link.exists() {
+        std::os::unix::fs::symlink("/usr/lib/systemd/systemd", &init_link)?;
+    }
+
+    // Create /init symlink for kernel
+    let init_root = initramfs.join("init");
+    if !init_root.exists() {
+        std::os::unix::fs::symlink("/usr/lib/systemd/systemd", &init_root)?;
+    }
+
+    // Copy essential systemd unit files
+    let unit_src = rootfs.join("usr/lib/systemd/system");
+    let unit_dst = initramfs.join("usr/lib/systemd/system");
+
+    let essential_units = [
+        // Targets
+        "basic.target",
+        "sysinit.target",
+        "multi-user.target",
+        "default.target",
+        "getty.target",
+        "local-fs.target",
+        "local-fs-pre.target",
+        "network.target",
+        "network-pre.target",
+        "paths.target",
+        "slices.target",
+        "sockets.target",
+        "timers.target",
+        "swap.target",
+        "shutdown.target",
+        "rescue.target",
+        "emergency.target",
+        // Services
+        "getty@.service",
+        "serial-getty@.service",
+        "systemd-tmpfiles-setup.service",
+        "systemd-journald.service",
+        "systemd-udevd.service",
+        // Sockets
+        "systemd-journald.socket",
+        "systemd-journald-dev-log.socket",
+    ];
+
+    for unit in essential_units {
+        let src = unit_src.join(unit);
+        let dst = unit_dst.join(unit);
+        if src.exists() {
+            fs::copy(&src, &dst)?;
+        }
+    }
+
+    // Copy target .wants directories
+    for target in ["basic.target.wants", "sysinit.target.wants", "multi-user.target.wants", "getty.target.wants"] {
+        let src = unit_src.join(target);
+        let dst = unit_dst.join(target);
+        if src.exists() {
+            copy_dir_recursive(&src, &dst)?;
+        }
+    }
+
+    println!("  Copied essential unit files");
+
+    // Create autologin getty override for tty1
+    let getty_override_dir = initramfs.join("etc/systemd/system/getty@tty1.service.d");
+    fs::create_dir_all(&getty_override_dir)?;
+    fs::write(
+        getty_override_dir.join("autologin.conf"),
+        r#"[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin root --noclear %I $TERM
+"#,
+    )?;
+
+    // Enable getty on tty1
+    let getty_wants = initramfs.join("etc/systemd/system/getty.target.wants");
+    fs::create_dir_all(&getty_wants)?;
+    let getty_link = getty_wants.join("getty@tty1.service");
+    if !getty_link.exists() {
+        std::os::unix::fs::symlink("/usr/lib/systemd/system/getty@.service", &getty_link)?;
+    }
+
+    // Create machine-id (empty, systemd will populate on first boot)
+    fs::write(initramfs.join("etc/machine-id"), "")?;
+
+    // Create os-release
+    fs::write(
+        initramfs.join("etc/os-release"),
+        r#"NAME="LevitateOS"
+ID=levitateos
+VERSION="1.0"
+PRETTY_NAME="LevitateOS Live"
+"#,
+    )?;
+
+    println!("  Configured autologin on tty1");
 
     Ok(())
 }

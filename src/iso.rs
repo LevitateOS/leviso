@@ -16,7 +16,7 @@ pub fn create_iso(base_dir: &Path) -> Result<()> {
         bail!("Initramfs not found. Run 'leviso initramfs' first.");
     }
 
-    // Download syslinux
+    // Download syslinux for BIOS boot
     let syslinux_dir = download_syslinux(base_dir)?;
 
     // Find kernel from Rocky
@@ -40,8 +40,13 @@ pub fn create_iso(base_dir: &Path) -> Result<()> {
 
     fs::create_dir_all(iso_root.join("isolinux"))?;
     fs::create_dir_all(iso_root.join("boot"))?;
+    fs::create_dir_all(iso_root.join("EFI/BOOT"))?;
 
-    // Copy syslinux files
+    // Copy kernel and initramfs
+    fs::copy(kernel_path, iso_root.join("boot/vmlinuz"))?;
+    fs::copy(&initramfs, iso_root.join("boot/initramfs.img"))?;
+
+    // === BIOS Boot Setup (isolinux) ===
     fs::copy(
         syslinux_dir.join("bios/core/isolinux.bin"),
         iso_root.join("isolinux/isolinux.bin"),
@@ -51,11 +56,6 @@ pub fn create_iso(base_dir: &Path) -> Result<()> {
         iso_root.join("isolinux/ldlinux.c32"),
     )?;
 
-    // Copy kernel and initramfs
-    fs::copy(kernel_path, iso_root.join("boot/vmlinuz"))?;
-    fs::copy(&initramfs, iso_root.join("boot/initramfs.img"))?;
-
-    // Create isolinux.cfg
     let isolinux_cfg = r#"DEFAULT leviso
 TIMEOUT 30
 PROMPT 1
@@ -68,42 +68,167 @@ LABEL leviso
 "#;
     fs::write(iso_root.join("isolinux/isolinux.cfg"), isolinux_cfg)?;
 
-    // Create ISO with xorriso
-    println!("Creating bootable ISO with xorriso...");
-    let status = Command::new("xorriso")
-        .args([
-            "-as",
-            "mkisofs",
-            "-o",
-            iso_output.to_str().unwrap(),
-            "-isohybrid-mbr",
-            syslinux_dir
-                .join("bios/mbr/isohdpfx.bin")
-                .to_str()
-                .unwrap(),
-            "-c",
-            "isolinux/boot.cat",
-            "-b",
-            "isolinux/isolinux.bin",
-            "-no-emul-boot",
-            "-boot-load-size",
-            "4",
-            "-boot-info-table",
-            iso_root.to_str().unwrap(),
-        ])
-        .status()
-        .context("Failed to run xorriso")?;
+    // === UEFI Boot Setup (GRUB EFI) ===
+    let efi_src = iso_contents.join("EFI/BOOT");
+    if efi_src.exists() {
+        println!("Setting up UEFI boot...");
 
-    if !status.success() {
-        bail!("xorriso failed");
+        // Copy GRUB EFI bootloader
+        fs::copy(
+            efi_src.join("BOOTX64.EFI"),
+            iso_root.join("EFI/BOOT/BOOTX64.EFI"),
+        )?;
+        fs::copy(
+            efi_src.join("grubx64.efi"),
+            iso_root.join("EFI/BOOT/grubx64.efi"),
+        )?;
+
+        // Create GRUB config for Leviso
+        let grub_cfg = r#"set default=0
+set timeout=5
+
+menuentry 'Leviso' {
+    linuxefi /boot/vmlinuz console=ttyS0,115200n8 console=tty0 earlyprintk=ttyS0,115200 panic=30 rdinit=/init
+    initrdefi /boot/initramfs.img
+}
+"#;
+        fs::write(iso_root.join("EFI/BOOT/grub.cfg"), grub_cfg)?;
+
+        // Create EFI boot image (efiboot.img)
+        let efiboot_img = output_dir.join("efiboot.img");
+        create_efi_boot_image(&iso_root, &efiboot_img)?;
+
+        // Create hybrid ISO with both BIOS and UEFI boot
+        println!("Creating hybrid BIOS/UEFI bootable ISO with xorriso...");
+        let status = Command::new("xorriso")
+            .args([
+                "-as", "mkisofs",
+                "-o", iso_output.to_str().unwrap(),
+                // BIOS boot
+                "-isohybrid-mbr", syslinux_dir.join("bios/mbr/isohdpfx.bin").to_str().unwrap(),
+                "-c", "isolinux/boot.cat",
+                "-b", "isolinux/isolinux.bin",
+                "-no-emul-boot",
+                "-boot-load-size", "4",
+                "-boot-info-table",
+                // UEFI boot
+                "-eltorito-alt-boot",
+                "-e", "efiboot.img",
+                "-no-emul-boot",
+                "-isohybrid-gpt-basdat",
+                // Source
+                iso_root.to_str().unwrap(),
+            ])
+            .status()
+            .context("Failed to run xorriso")?;
+
+        if !status.success() {
+            bail!("xorriso failed");
+        }
+    } else {
+        // Fallback: BIOS-only boot
+        println!("EFI files not found, creating BIOS-only bootable ISO...");
+        let status = Command::new("xorriso")
+            .args([
+                "-as", "mkisofs",
+                "-o", iso_output.to_str().unwrap(),
+                "-isohybrid-mbr", syslinux_dir.join("bios/mbr/isohdpfx.bin").to_str().unwrap(),
+                "-c", "isolinux/boot.cat",
+                "-b", "isolinux/isolinux.bin",
+                "-no-emul-boot",
+                "-boot-load-size", "4",
+                "-boot-info-table",
+                iso_root.to_str().unwrap(),
+            ])
+            .status()
+            .context("Failed to run xorriso")?;
+
+        if !status.success() {
+            bail!("xorriso failed");
+        }
     }
 
     println!("Created ISO at: {}", iso_output.display());
-    println!("\nTo test, run:");
-    println!(
-        "  qemu-system-x86_64 -cpu Skylake-Client -cdrom {} -m 512M",
-        iso_output.display()
-    );
+    println!("\nTo test (UEFI by default, BIOS fallback if OVMF not found):");
+    println!("  cargo run -- test --gui");
+    println!("\nTo force BIOS boot:");
+    println!("  cargo run -- test --gui --bios");
+
+    Ok(())
+}
+
+/// Create a FAT12/16 image containing EFI boot files
+fn create_efi_boot_image(iso_root: &Path, efiboot_img: &Path) -> Result<()> {
+    // Create a FAT image file (16MB for FAT16 minimum + space for EFI files)
+    let size_mb = 16;
+
+    // Create empty file
+    let status = Command::new("dd")
+        .args([
+            "if=/dev/zero",
+            &format!("of={}", efiboot_img.to_str().unwrap()),
+            "bs=1M",
+            &format!("count={}", size_mb),
+        ])
+        .status()
+        .context("Failed to create efiboot.img")?;
+
+    if !status.success() {
+        bail!("dd failed");
+    }
+
+    // Format as FAT16 (FAT12 can't handle files >4MB well)
+    let status = Command::new("mkfs.fat")
+        .args(["-F", "16", efiboot_img.to_str().unwrap()])
+        .status()
+        .context("Failed to format efiboot.img")?;
+
+    if !status.success() {
+        bail!("mkfs.fat failed");
+    }
+
+    // Mount and copy EFI files using mtools (no root required)
+    // Create EFI/BOOT directory structure
+    let status = Command::new("mmd")
+        .args(["-i", efiboot_img.to_str().unwrap(), "::EFI"])
+        .status();
+
+    if status.is_err() || !status.unwrap().success() {
+        // mtools not available, try mcopy directly
+        println!("Note: mtools not fully available, using alternative method");
+    }
+
+    let _ = Command::new("mmd")
+        .args(["-i", efiboot_img.to_str().unwrap(), "::EFI/BOOT"])
+        .status();
+
+    // Copy EFI files
+    let _ = Command::new("mcopy")
+        .args([
+            "-i", efiboot_img.to_str().unwrap(),
+            iso_root.join("EFI/BOOT/BOOTX64.EFI").to_str().unwrap(),
+            "::EFI/BOOT/",
+        ])
+        .status();
+
+    let _ = Command::new("mcopy")
+        .args([
+            "-i", efiboot_img.to_str().unwrap(),
+            iso_root.join("EFI/BOOT/grubx64.efi").to_str().unwrap(),
+            "::EFI/BOOT/",
+        ])
+        .status();
+
+    let _ = Command::new("mcopy")
+        .args([
+            "-i", efiboot_img.to_str().unwrap(),
+            iso_root.join("EFI/BOOT/grub.cfg").to_str().unwrap(),
+            "::EFI/BOOT/",
+        ])
+        .status();
+
+    // Copy efiboot.img into iso-root for xorriso
+    fs::copy(efiboot_img, iso_root.join("efiboot.img"))?;
 
     Ok(())
 }

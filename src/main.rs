@@ -33,6 +33,9 @@ enum Commands {
         /// Use QEMU GUI instead of serial console
         #[arg(long)]
         gui: bool,
+        /// Force BIOS boot instead of UEFI (for legacy testing)
+        #[arg(long)]
+        bios: bool,
     },
     /// Clean build artifacts
     Clean,
@@ -53,7 +56,7 @@ fn main() -> Result<()> {
         Commands::Extract => extract::extract_rocky(&base_dir)?,
         Commands::Initramfs => initramfs::build_initramfs(&base_dir)?,
         Commands::Iso => iso::create_iso(&base_dir)?,
-        Commands::Test { gui } => qemu::test_qemu(&base_dir, gui)?,
+        Commands::Test { gui, bios } => qemu::test_qemu(&base_dir, gui, bios)?,
         Commands::Clean => clean::clean(&base_dir)?,
     }
 

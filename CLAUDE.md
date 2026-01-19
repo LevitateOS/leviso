@@ -51,3 +51,70 @@ If I EVER suggest downgrading to Rocky 9 or any other version because of an issu
 We used `vmlinuz` directly from the Rocky ISO. That makes leviso a Rocky rebrand, NOT LevitateOS. Rocky should ONLY be a source for userspace binaries (bash, coreutils, libs). The KERNEL must be our own - either vanilla from kernel.org or built from source.
 
 **Rule: Rocky = source for userspace binaries ONLY. Kernel must be independent.**
+
+---
+
+## Architecture
+
+### What we're building
+
+We build an **initramfs** - a compressed cpio archive that becomes the live environment. The ISO is just a wrapper containing:
+- Kernel (vmlinuz)
+- Initramfs (initramfs.cpio.gz)
+- Bootloader (isolinux for BIOS, GRUB EFI for UEFI)
+
+### Directory structure
+
+```
+leviso/
+├── downloads/           # Downloaded dependencies (gitignored)
+│   ├── rocky.iso        # Rocky 10 Minimal ISO
+│   ├── iso-contents/    # Extracted ISO (kernel, EFI files)
+│   ├── rootfs/          # Extracted squashfs (userspace binaries)
+│   └── syslinux-6.03/   # Syslinux for BIOS boot
+├── output/              # Build outputs (gitignored)
+│   ├── initramfs-root/  # Unpacked initramfs contents
+│   ├── initramfs.cpio.gz
+│   ├── iso-root/        # ISO contents before packaging
+│   └── leviso.iso       # Final bootable ISO
+├── profile/
+│   └── init             # Init script (runs as PID 1)
+└── src/                 # Rust source
+```
+
+### Adding binaries to the initramfs
+
+Edit `src/initramfs.rs`:
+- `coreutils` array: binaries from /usr/bin or /bin
+- `sbin_utils` array: binaries from /usr/sbin or /sbin
+
+The build automatically copies each binary and its library dependencies.
+
+---
+
+## Where Binaries Come From
+
+**ALL userspace binaries come from the Rocky 10 rootfs.**
+
+The flow:
+1. `leviso download` - Downloads Rocky 10 Minimal ISO
+2. `leviso extract` - Extracts squashfs to `downloads/rootfs/`
+3. `leviso initramfs` - Copies binaries FROM `downloads/rootfs/` INTO the initramfs
+
+When you add a binary (like `gzip`), the code:
+1. Looks in `downloads/rootfs/usr/bin/`, `downloads/rootfs/bin/`, etc.
+2. Copies the binary to the initramfs
+3. Runs `ldd` to find shared library dependencies
+4. Copies those libraries from the rootfs too
+
+**DO NOT:**
+- Copy binaries from the host system (your Fedora/Arch/whatever)
+- Download binaries from random URLs
+- Build binaries from source (yet - Phase 10 goal)
+
+**DO:**
+- Add the binary name to `coreutils` or `sbin_utils` array
+- Let the build system find it in Rocky rootfs
+- If it's not in Rocky, that's a problem to solve differently
+
+This keeps the build reproducible and self-contained.

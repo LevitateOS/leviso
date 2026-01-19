@@ -29,23 +29,23 @@ This document tracks the step-by-step development of Leviso from a minimal bash 
 **Goal:** Partition and format disks for installation
 
 ### 2.1 Disk Information
-- [ ] `lsblk` - list block devices
-- [ ] `blkid` - show UUIDs and labels
-- [ ] `fdisk` or `parted` - partition disks
+- [x] `lsblk` - list block devices
+- [x] `blkid` - show UUIDs and labels
+- [x] `fdisk` - partition disks
 
 ### 2.2 Partitioning
-- [ ] `parted` - GPT partition table, create partitions
-- [ ] `wipefs` - wipe filesystem signatures
+- [x] `parted` - GPT partition table, create partitions
+- [x] `wipefs` - wipe filesystem signatures
 
 ### 2.3 Filesystem Creation
-- [ ] `mkfs.ext4` - format root partition
-- [ ] `mkfs.fat` (or `mkfs.vfat`) - format EFI partition
-- [ ] `e2label` / `fatlabel` - set partition labels
+- [x] `mkfs.ext4` - format root partition
+- [x] `mkfs.fat` (or `mkfs.vfat`) - format EFI partition
+- [ ] `e2label` / `fatlabel` - set partition labels (optional)
 
 ### 2.4 Mount Operations
 - [x] `mount` - mount filesystems
 - [x] `umount` - unmount filesystems
-- [ ] Support for bind mounts (`mount --bind`)
+- [ ] Support for bind mounts (`mount --bind`) - needs testing
 
 ---
 
@@ -57,22 +57,24 @@ This document tracks the step-by-step development of Leviso from a minimal bash 
 - [ ] `passwd` - set passwords
 - [ ] `useradd` - create users
 - [ ] `groupadd` - create groups
-- [ ] `chown` - change ownership (already have)
+- [x] `chown` - change ownership
 - [x] `chmod` - change permissions
 
 ### 3.2 System Configuration
-- [ ] `chroot` - enter new root
+- [x] `chroot` - enter new root
 - [x] `hostname` - set hostname
-- [ ] `ln` - create symlinks (already have)
-- [ ] `hwclock` - sync hardware clock
+- [x] `ln` - create symlinks
+- [x] `hwclock` - sync hardware clock
+- [x] `date` - show/set date
 
 ### 3.3 Text Editing
 - [ ] `nano` or `vi` - text editor for config files
-- [ ] `sed` - stream editor (already have via grep?)
+- [ ] `sed` - stream editor
 
 ### 3.4 Locale & Time
 - [ ] `timedatectl` - time/date management (requires systemd)
-- [ ] `loadkeys` - keyboard layout
+- [x] `loadkeys` - keyboard layout
+- [x] Keymaps (`/usr/lib/kbd/keymaps/`)
 - [ ] `locale-gen` - generate locales
 - [ ] Timezone data (`/usr/share/zoneinfo/`)
 
@@ -118,12 +120,17 @@ This document tracks the step-by-step development of Leviso from a minimal bash 
 
 **Goal:** Install bootloader to target system
 
-### 6.1 UEFI Boot
+### 6.1 UEFI Boot (Live ISO)
+- [ ] Add UEFI boot support to ISO (currently BIOS-only with isolinux)
+- [ ] Use OVMF in QEMU for UEFI testing
+- [ ] `/sys/firmware/efi/efivars` available when booted UEFI
+
+### 6.2 UEFI Boot (Target System)
 - [ ] Mount `/sys/firmware/efi/efivars`
 - [ ] `bootctl` - systemd-boot installer
 - [ ] EFI system partition support
 
-### 6.2 Boot Configuration
+### 6.3 Boot Configuration
 - [ ] Create `/boot/loader/loader.conf`
 - [ ] Create `/boot/loader/entries/*.conf`
 - [ ] Kernel + initramfs installation

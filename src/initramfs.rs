@@ -114,10 +114,21 @@ pub fn build_initramfs(base_dir: &Path) -> Result<()> {
         "ls", "cat", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "chmod", "chown", "echo", "pwd",
         "head", "tail", "grep", "find", "wc", "sort", "uniq", "uname", "env", "printenv", "clear",
         "sleep", "ln", "readlink", "dirname", "basename",
+        // Phase 2: disk info (lsblk is in /usr/bin)
+        "lsblk",
+        // Phase 3: system config
+        "date", "loadkeys",
     ];
 
     // Copy essential system binaries (from sbin)
-    let sbin_utils = ["mount", "umount", "hostname"];
+    let sbin_utils = [
+        "mount", "umount", "hostname",
+        // Phase 2: disk utilities
+        "blkid", "fdisk", "parted", "wipefs",
+        "mkfs.ext4", "mkfs.fat",
+        // Phase 3: system config
+        "chroot", "hwclock",
+    ];
 
     for util in coreutils {
         copy_binary_with_libs(&actual_rootfs, util, &initramfs_root)?;
@@ -129,6 +140,14 @@ pub fn build_initramfs(base_dir: &Path) -> Result<()> {
 
     // Create symlinks
     std::os::unix::fs::symlink("bash", initramfs_root.join("bin/sh"))?;
+
+    // Copy keymaps for loadkeys
+    let keymaps_src = actual_rootfs.join("usr/lib/kbd/keymaps");
+    let keymaps_dst = initramfs_root.join("usr/lib/kbd/keymaps");
+    if keymaps_src.exists() {
+        println!("Copying keymaps...");
+        copy_dir_recursive(&keymaps_src, &keymaps_dst)?;
+    }
 
     // Copy init script
     let init_src = base_dir.join("profile/init");
@@ -308,6 +327,24 @@ fn copy_binary_with_libs(rootfs: &Path, binary: &str, initramfs: &Path) -> Resul
             for lib in &libs {
                 let _ = copy_library(rootfs, lib, initramfs);
             }
+        }
+    }
+
+    Ok(())
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    fs::create_dir_all(dst)?;
+
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let path = entry.path();
+        let dest_path = dst.join(entry.file_name());
+
+        if path.is_dir() {
+            copy_dir_recursive(&path, &dest_path)?;
+        } else {
+            fs::copy(&path, &dest_path)?;
         }
     }
 

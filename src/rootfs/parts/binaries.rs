@@ -1,27 +1,28 @@
 //! Binary lists and copying for rootfs builder.
 //!
 //! Contains the complete list of binaries needed for an installed system.
-//! CRITICAL binaries will cause a build failure if missing.
+//! ALL binaries are required - missing binaries cause build failure.
 //!
-//! # WARNING: FALSE POSITIVES KILL PROJECTS
+//! # PHILOSOPHY: ALL OR NOTHING - FAIL FAST
 //!
-//! The CRITICAL vs OPTIONAL distinction here is DANGEROUS.
+//! There is no "optional" category. Every binary in these lists is required.
+//! If a binary is missing from the source, the build FAILS.
 //!
-//! NEVER move a binary from CRITICAL to OPTIONAL just because:
-//! - It's missing from the source rootfs
-//! - It's hard to find
-//! - It would make the build fail
-//! - You want green tests
+//! The correct response to "binary not found" is NEVER "make it optional".
+//! It's either:
+//! 1. Add the RPM package that provides it
+//! 2. Remove the binary from requirements (if truly unneeded)
 //!
-//! Ask instead: "Can a user do their job without this binary?"
-//! - `sudo` missing = user cannot elevate privileges = CRITICAL
-//! - `passwd` missing = user cannot change password = CRITICAL
-//! - `cowsay` missing = user cannot display ASCII cows = truly optional
+//! # Sources
 //!
-//! If the source rootfs is incomplete, the CORRECT action is:
-//! 1. FAIL the build loudly
-//! 2. Tell the user how to get a complete rootfs
-//! 3. NOT ship a broken tarball
+//! When using RPM extraction (correct approach), binaries come from:
+//! - coreutils: ls, cat, cp, mv, rm, mkdir, chmod, chown, etc.
+//! - util-linux: mount, umount, lsblk, fdisk, mkfs, etc.
+//! - procps-ng: ps, pgrep, pkill, top, free
+//! - shadow-utils: useradd, userdel, groupadd, passwd, etc.
+//! - systemd: systemctl, journalctl, hostnamectl, etc.
+//! - iproute: ip, ss, bridge
+//! - And others...
 //!
 //! See: .teams/KNOWLEDGE_false-positives-testing.md
 
@@ -30,117 +31,105 @@ use anyhow::{bail, Result};
 use crate::rootfs::binary::{copy_binary_with_libs, copy_bash, copy_sbin_binary_with_libs};
 use crate::rootfs::context::BuildContext;
 
-/// CRITICAL coreutils - build FAILS if these are missing.
+/// Binaries that go to /usr/bin.
 ///
-/// ⚠️⚠️⚠️ DO NOT MOVE ITEMS TO OPTIONAL JUST BECAUSE THEY'RE MISSING ⚠️⚠️⚠️
-///
-/// If a binary is missing from the source rootfs:
-/// 1. Get a more complete rootfs (not Rocky Minimal)
-/// 2. Install the missing package into the rootfs
-/// 3. Download a static binary
-/// 4. FAIL THE BUILD with a helpful error message
-///
-/// NEVER "fix" a failing build by weakening the requirements.
-/// That's not a fix, that's a lie.
-const CRITICAL_COREUTILS: &[&str] = &[
-    // Absolutely essential for any Linux system
+/// These are user-facing commands. ALL are required.
+const BIN: &[&str] = &[
+    // === COREUTILS (from coreutils package) ===
+    // File operations
     "ls", "cat", "cp", "mv", "rm", "mkdir", "rmdir", "touch",
-    "chmod", "chown", "ln", "readlink",
-    // Text processing essentials
+    "chmod", "chown", "chgrp", "ln", "readlink", "realpath",
+    "stat", "file",
+    // Text processing
     "echo", "head", "tail", "wc", "sort", "cut", "tr", "tee",
+    "sed", "awk", "gawk",
+    "printf", "uniq", "seq",
     // Search
     "grep", "find", "xargs",
     // System info
     "pwd", "uname", "date", "env", "id", "hostname",
-    // Process control
-    "sleep", "kill", "ps",
-    // Compression (needed for package management)
-    "gzip", "gunzip", "xz", "unxz", "tar",
-    // Shell builtins that also have binaries (true/false needed for scripts)
-    "true", "false", "expr",
-    // Text processing
-    "sed",
-    // Disk utilities
-    "df", "du", "sync",
-    // Systemd control
-    "systemctl", "journalctl",
-];
-
-/// ⚠️⚠️⚠️ DANGER: THIS LIST IS A TRAP ⚠️⚠️⚠️
-///
-/// "Optional" is a lie I invented to make the build pass.
-///
-/// THE TRUTH:
-/// - I couldn't find these binaries in Rocky Minimal
-/// - Instead of failing honestly, I created this "optional" category
-/// - Now the build passes and I feel good
-/// - But users get `bash: sudo: command not found`
-///
-/// THIS LIST EXISTS TO SATISFY MY EGO, NOT TO HELP USERS.
-///
-/// The very existence of "optional" is the cheat mechanism.
-/// It's a trash bin for failures disguised as a feature.
-///
-/// THERE IS NO SUCH THING AS OPTIONAL:
-/// - If users need it → CRITICAL (fail if missing)
-/// - If users don't need it → DELETE FROM ALL LISTS
-///
-/// Every item here is either:
-/// 1. Something users need (should be in CRITICAL)
-/// 2. Something users don't need (should be deleted entirely)
-///
-/// TODO: Delete this list. Make hard choices. Stop lying.
-const OPTIONAL_COREUTILS: &[&str] = &[
-    "dirname", "basename", "realpath", "stat", "file",
-    "printf", "uniq", "diff", "yes", "which",
     "printenv", "whoami", "groups",
-    "pgrep", "pkill", "nice", "nohup",
-    "bzip2", "bunzip2", "cpio",
-    "vi", "vim", "seq",
-    "awk", "gawk",
-    "test",  // bash builtin, binary optional
+    // Process control
+    "sleep", "kill", "nice", "nohup",
+    // Compression
+    "gzip", "gunzip", "xz", "unxz", "tar", "bzip2", "bunzip2", "cpio",
+    // Shell utilities
+    "true", "false", "expr", "test", "yes",
+    // Disk info (from util-linux, but lives in /usr/bin)
+    "df", "du", "sync",
+    "mount", "umount", "lsblk", "findmnt",
+    // Path utilities
+    "dirname", "basename",
+    // Other utilities
+    "which",
+
+    // === DIFFUTILS ===
+    "diff", "cmp",
+
+    // === PROCPS-NG ===
+    "ps", "pgrep", "pkill", "top", "free", "uptime", "w",
+
+    // === SYSTEMD (user commands) ===
+    "systemctl", "journalctl",
     "timedatectl", "hostnamectl", "localectl", "loginctl", "bootctl",
-    "ping", "curl", "wget",  // wget needs libhogweed which Rocky minimal lacks
+
+    // === EDITORS ===
+    "vi",  // from vim-minimal (vim is not in base)
+    "nano",
+
+    // === NETWORK ===
+    "ping", "curl", "wget",
+
+    // === MISC ===
+    "less", "more",
 ];
 
-/// CRITICAL sbin utilities - build FAILS if these are missing.
+/// Binaries that go to /usr/sbin.
 ///
-/// ⚠️⚠️⚠️ DO NOT MOVE ITEMS TO OPTIONAL JUST BECAUSE THEY'RE MISSING ⚠️⚠️⚠️
-/// Read the warning on CRITICAL_COREUTILS above. Same rules apply.
-const CRITICAL_SBIN: &[&str] = &[
-    // Filesystem - MUST have these for any disk operations
-    "mount", "umount", "fsck", "blkid", "lsblk",
-    // System control
-    "reboot", "shutdown", "poweroff",
-    // Kernel modules
-    "insmod", "rmmod", "modprobe", "lsmod",
-    // Boot
-    "chroot",
-    // Library cache
+/// These are system administration commands. ALL are required.
+const SBIN: &[&str] = &[
+    // === UTIL-LINUX (sbin) ===
+    // Filesystem operations
+    "fsck", "blkid", "losetup", "mkswap", "swapon", "swapoff",
+    "fdisk", "sfdisk", "wipefs", "blockdev",
+    "pivot_root", "chroot",
+
+    // === E2FSPROGS ===
+    "fsck.ext4", "fsck.ext2", "fsck.ext3",
+    "e2fsck", "mke2fs",
+    "mkfs.ext4", "mkfs.ext2", "mkfs.ext3",
+    "tune2fs", "resize2fs",
+
+    // === DOSFSTOOLS ===
+    "mkfs.fat", "mkfs.vfat", "fsck.fat", "fsck.vfat",
+
+    // === KMOD ===
+    "insmod", "rmmod", "modprobe", "lsmod", "depmod", "modinfo",
+
+    // === SHADOW-UTILS (user management) ===
+    "useradd", "userdel", "usermod",
+    "groupadd", "groupdel", "groupmod",
+    "chpasswd", "passwd",
+
+    // === IPROUTE ===
+    "ip", "ss", "bridge",
+
+    // === PROCPS-NG (sbin) ===
+    "sysctl",
+
+    // === SYSTEM CONTROL ===
+    "reboot", "shutdown", "poweroff", "halt",
+
+    // === OTHER ===
     "ldconfig",
-    // User management - CRITICAL for creating users
-    "useradd", "groupadd", "chpasswd",
-    // Network
-    "ip",
-    // System
-    "sysctl", "losetup",
+    "hwclock",
+    "lspci",
+    "ifconfig", "route",  // net-tools (legacy but useful)
+    "agetty", "login", "sulogin", "nologin",
+    "chronyd",
 ];
 
-/// ⚠️⚠️⚠️ DANGER: THIS LIST IS A TRAP - SEE OPTIONAL_COREUTILS WARNING ⚠️⚠️⚠️
-///
-/// Same lie, same ego, same broken users.
-/// TODO: Delete this list entirely.
-const OPTIONAL_SBIN: &[&str] = &[
-    "fsck.ext4", "e2fsck", "mkfs.ext4", "mke2fs", "mkfs.fat", "mkfs.vfat",
-    "fdisk", "sfdisk", "parted", "partprobe", "wipefs",
-    "halt", "hwclock", "lspci", "lsusb",
-    "depmod", "pivot_root",
-    "userdel", "usermod", "groupdel", "groupmod",
-    "ss", "ifconfig", "route",
-    "chronyd", "getenforce", "setenforce",
-];
-
-/// Systemd binaries to copy.
+/// Systemd binaries to copy from /usr/lib/systemd/.
 const SYSTEMD_BINARIES: &[&str] = &[
     "systemd-executor",
     "systemd-shutdown",
@@ -163,93 +152,65 @@ const SYSTEMD_BINARIES: &[&str] = &[
     "systemd-random-seed",
 ];
 
-/// Copy all coreutils binaries. FAILS if critical ones are missing.
+/// Copy all /usr/bin binaries. FAILS if ANY are missing.
 pub fn copy_coreutils(ctx: &BuildContext) -> Result<()> {
-    println!("Copying coreutils binaries...");
+    println!("Copying /usr/bin binaries...");
 
-    let mut missing_critical = Vec::new();
+    let mut missing = Vec::new();
     let mut copied = 0;
-    let total = CRITICAL_COREUTILS.len() + OPTIONAL_COREUTILS.len();
 
-    // Copy CRITICAL binaries - FAIL on any error
-    for binary in CRITICAL_COREUTILS {
+    for binary in BIN {
         match copy_binary_with_libs(ctx, binary, "usr/bin") {
             Ok(true) => copied += 1,
-            Ok(false) => missing_critical.push(*binary),
+            Ok(false) => missing.push(*binary),
             Err(e) => {
-                // Critical binary found but libraries missing = FAIL
+                // Binary found but libraries missing = FAIL
                 return Err(e);
             }
         }
     }
 
-    // Copy optional binaries - skip on any error
-    for binary in OPTIONAL_COREUTILS {
-        match copy_binary_with_libs(ctx, binary, "usr/bin") {
-            Ok(true) => copied += 1,
-            Ok(false) => {} // Not found, already warned
-            Err(e) => {
-                // Found but libraries missing - skip this optional binary
-                println!("  Skipping {} (missing dependencies): {}", binary, e.root_cause());
-            }
-        }
-    }
-
-    // FAIL if any critical binaries are missing
-    if !missing_critical.is_empty() {
+    // FAIL if ANY binaries are missing
+    if !missing.is_empty() {
         bail!(
-            "CRITICAL coreutils missing from Rocky rootfs: {}\n\
-             The rootfs is incomplete. These binaries are required.",
-            missing_critical.join(", ")
+            "Binaries missing from source: {}\n\
+             ALL binaries are required. Fix the source (add RPM packages).",
+            missing.join(", ")
         );
     }
 
-    println!("  Copied {}/{} coreutils binaries", copied, total);
+    println!("  Copied {}/{} binaries to /usr/bin", copied, BIN.len());
     Ok(())
 }
 
-/// Copy all sbin utilities. FAILS if critical ones are missing.
+/// Copy all /usr/sbin binaries. FAILS if ANY are missing.
 pub fn copy_sbin_utils(ctx: &BuildContext) -> Result<()> {
-    println!("Copying sbin utilities...");
+    println!("Copying /usr/sbin binaries...");
 
-    let mut missing_critical = Vec::new();
+    let mut missing = Vec::new();
     let mut copied = 0;
-    let total = CRITICAL_SBIN.len() + OPTIONAL_SBIN.len();
 
-    // Copy CRITICAL binaries - FAIL on any error
-    for binary in CRITICAL_SBIN {
+    for binary in SBIN {
         match copy_sbin_binary_with_libs(ctx, binary) {
             Ok(true) => copied += 1,
-            Ok(false) => missing_critical.push(*binary),
+            Ok(false) => missing.push(*binary),
             Err(e) => {
-                // Critical binary found but libraries missing = FAIL
+                // Binary found but libraries missing = FAIL
                 return Err(e);
             }
         }
     }
 
-    // Copy optional binaries - skip on any error
-    for binary in OPTIONAL_SBIN {
-        match copy_sbin_binary_with_libs(ctx, binary) {
-            Ok(true) => copied += 1,
-            Ok(false) => {} // Not found, already warned
-            Err(e) => {
-                // Found but libraries missing - skip this optional binary
-                println!("  Skipping {} (missing dependencies): {}", binary, e.root_cause());
-            }
-        }
-    }
-
-    // FAIL if any critical binaries are missing
-    if !missing_critical.is_empty() {
+    // FAIL if ANY binaries are missing
+    if !missing.is_empty() {
         bail!(
-            "CRITICAL sbin utilities missing from Rocky rootfs: {}\n\
-             The rootfs is incomplete. These binaries are required.",
-            missing_critical.join(", ")
+            "Sbin utilities missing from source: {}\n\
+             ALL binaries are required. Fix the source (add RPM packages).",
+            missing.join(", ")
         );
     }
 
-    println!("  Copied {}/{} sbin utilities", copied, total);
+    println!("  Copied {}/{} binaries to /usr/sbin", copied, SBIN.len());
     Ok(())
 }
 
@@ -314,6 +275,7 @@ pub fn copy_systemd_binaries(ctx: &BuildContext) -> Result<()> {
 pub fn copy_login_binaries(ctx: &BuildContext) -> Result<()> {
     println!("Copying login binaries...");
 
+    // These are already in SBIN list, but let's make sure they're copied
     let login_binaries = ["agetty", "login", "sulogin", "nologin"];
 
     for binary in login_binaries {

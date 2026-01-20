@@ -183,7 +183,7 @@ ISO
 **Goal:** Don't depend on Rocky Linux
 
 - [ ] Vanilla kernel from kernel.org
-- [ ] uutils (Rust coreutils) instead of GNU
+- [ ] GNU coreutils from source (or from trusted binary packages)
 - [ ] Build binaries from source
 - [ ] Remove Rocky dependency entirely
 

@@ -3,8 +3,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const ROCKY_ISO_URL: &str =
-    "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/Rocky-10.1-x86_64-minimal.iso";
 const ROCKY_DVD_URL: &str =
     "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/Rocky-10.1-x86_64-dvd1.iso";
 const ROCKY_DVD_SIZE: &str = "8.6GB";
@@ -13,16 +11,16 @@ const SYSLINUX_URL: &str =
 
 pub fn download_rocky(base_dir: &Path) -> Result<()> {
     let downloads_dir = base_dir.join("downloads");
-    let iso_path = downloads_dir.join("rocky.iso");
+    let iso_path = downloads_dir.join("Rocky-10.1-x86_64-dvd1.iso");
 
     if iso_path.exists() {
-        println!("Rocky ISO already exists at {}", iso_path.display());
+        println!("Rocky DVD ISO already exists at {}", iso_path.display());
         return Ok(());
     }
 
     fs::create_dir_all(&downloads_dir)?;
-    println!("Downloading Rocky Linux 10 Minimal ISO...");
-    println!("URL: {}", ROCKY_ISO_URL);
+    println!("Downloading Rocky Linux 10 DVD ISO ({})...", ROCKY_DVD_SIZE);
+    println!("URL: {}", ROCKY_DVD_URL);
 
     let status = Command::new("curl")
         .args([
@@ -30,7 +28,7 @@ pub fn download_rocky(base_dir: &Path) -> Result<()> {
             "-o",
             iso_path.to_str().unwrap(),
             "--progress-bar",
-            ROCKY_ISO_URL,
+            ROCKY_DVD_URL,
         ])
         .status()
         .context("Failed to run curl")?;
@@ -99,8 +97,8 @@ pub fn download_syslinux(base_dir: &Path) -> Result<PathBuf> {
 /// The DVD contains the full set of packages that Rocky ships, allowing us to
 /// extract a manifest of all binaries that a real distribution includes.
 pub fn download_rocky_dvd(base_dir: &Path, skip_confirm: bool) -> Result<PathBuf> {
-    let vendor_dir = base_dir.join("../vendor/rocky");
-    let dvd_path = vendor_dir.join("Rocky-10.1-x86_64-dvd1.iso");
+    let downloads_dir = base_dir.join("downloads");
+    let dvd_path = downloads_dir.join("Rocky-10.1-x86_64-dvd1.iso");
 
     if dvd_path.exists() {
         println!("Rocky DVD ISO already exists at {}", dvd_path.display());
@@ -134,7 +132,7 @@ pub fn download_rocky_dvd(base_dir: &Path, skip_confirm: bool) -> Result<PathBuf
         }
     }
 
-    fs::create_dir_all(&vendor_dir)?;
+    fs::create_dir_all(&downloads_dir)?;
     println!("Downloading Rocky Linux 10 DVD ISO ({})...", ROCKY_DVD_SIZE);
     println!("URL: {}", ROCKY_DVD_URL);
     println!("This may take a while depending on your connection speed.");

@@ -316,6 +316,30 @@ fi
 "#,
     )?;
 
+    // /etc/profile.d/xdg.sh - XDG Base Directory Specification
+    fs::create_dir_all(etc.join("profile.d"))?;
+    fs::write(
+        etc.join("profile.d/xdg.sh"),
+        r#"# XDG Base Directory Specification
+# https://specifications.freedesktop.org/basedir-spec/latest/
+
+# User directories (defaults per spec)
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+export XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
+
+# System directories
+export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export XDG_CONFIG_DIRS="${XDG_CONFIG_DIRS:-/etc/xdg}"
+
+# Runtime directory (set by pam_systemd, but provide fallback)
+if [ -z "$XDG_RUNTIME_DIR" ]; then
+    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+fi
+"#,
+    )?;
+
     // /etc/bashrc
     fs::write(
         etc.join("bashrc"),
@@ -371,6 +395,13 @@ export PS1='[\u@\h \W]# '
 [ -f ~/.bashrc ] && . ~/.bashrc
 "#,
     )?;
+
+    // XDG directories with .keep files to ensure they're copied by useradd -m
+    for xdg_dir in [".config", ".local/share", ".local/state", ".cache"] {
+        let dir = etc.join("skel").join(xdg_dir);
+        fs::create_dir_all(&dir)?;
+        fs::write(dir.join(".keep"), "")?;
+    }
 
     Ok(())
 }

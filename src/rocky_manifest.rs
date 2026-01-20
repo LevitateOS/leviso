@@ -92,9 +92,9 @@ impl RockyManifest {
     }
 }
 
-/// Load manifest from the default location (vendor/rocky/manifest.json).
+/// Load manifest from the default location (downloads/rocky-manifest.json).
 pub fn load_manifest(base_dir: impl AsRef<Path>) -> Result<RockyManifest> {
-    let manifest_path = base_dir.as_ref().join("../vendor/rocky/manifest.json");
+    let manifest_path = base_dir.as_ref().join("downloads/rocky-manifest.json");
     RockyManifest::load(&manifest_path)
         .with_context(|| format!("Failed to load manifest from {}", manifest_path.display()))
 }
@@ -103,7 +103,7 @@ pub fn load_manifest(base_dir: impl AsRef<Path>) -> Result<RockyManifest> {
 pub fn manifest_exists(base_dir: impl AsRef<Path>) -> bool {
     base_dir
         .as_ref()
-        .join("../vendor/rocky/manifest.json")
+        .join("downloads/rocky-manifest.json")
         .exists()
 }
 

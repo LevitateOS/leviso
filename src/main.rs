@@ -60,6 +60,15 @@ enum Commands {
         /// Path to tarball
         path: PathBuf,
     },
+    /// Extract base tarball to output/rootfs for inspection
+    RootfsExtract {
+        /// Path to tarball (default: output/levitateos-base.tar.xz)
+        #[arg(short, long)]
+        tarball: Option<PathBuf>,
+        /// Output directory (default: output/rootfs)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
     /// Quick test: direct kernel boot in terminal (for debugging)
     Test {
         /// Command to run after boot (then exit)
@@ -99,11 +108,10 @@ fn main() -> Result<()> {
         }
         Commands::ExtractManifest { iso } => {
             let iso_path = iso.unwrap_or_else(|| {
-                base_dir.join("../vendor/rocky/Rocky-10.1-x86_64-dvd1.iso")
+                base_dir.join("downloads/Rocky-10.1-x86_64-dvd1.iso")
             });
             let manifest = rocky_manifest::extract_manifest(&iso_path)?;
-            let output_path = base_dir.join("../vendor/rocky/manifest.json");
-            std::fs::create_dir_all(output_path.parent().unwrap())?;
+            let output_path = base_dir.join("downloads/rocky-manifest.json");
             manifest.save(&output_path)?;
             println!("Manifest saved to {}", output_path.display());
         }
@@ -112,17 +120,31 @@ fn main() -> Result<()> {
         Commands::Iso => iso::create_iso(&base_dir)?,
         Commands::Rootfs { recipe } => {
             // Build base system tarball
+            let iso_contents = base_dir.join("downloads/iso-contents");
             let rocky_rootfs = base_dir.join("downloads/rootfs");
             let output = base_dir.join("output");
 
-            if !rocky_rootfs.exists() {
+            // Prefer extracting from RPMs (correct approach)
+            // Fall back to rootfs if iso-contents not available
+            let mut builder = RootfsBuilder::new(&rocky_rootfs, &output);
+
+            if iso_contents.join("BaseOS/Packages").exists() {
+                println!("Using RPM packages from ISO (correct approach)");
+                builder = builder.with_iso_contents(&iso_contents);
+            } else if rocky_rootfs.exists() {
+                println!("Warning: Using extracted rootfs (may be incomplete)");
+                println!("  For complete builds, ensure ISO is extracted with 'leviso extract'");
+            } else {
                 anyhow::bail!(
-                    "Rocky rootfs not found at {}. Run 'leviso extract' first.",
+                    "Neither RPM packages nor rootfs found.\n\
+                     Expected: {}/BaseOS/Packages\n\
+                     Or:       {}\n\
+                     Run 'leviso extract' first.",
+                    iso_contents.display(),
                     rocky_rootfs.display()
                 );
             }
 
-            let mut builder = RootfsBuilder::new(&rocky_rootfs, &output);
             if let Some(recipe_path) = recipe {
                 builder = builder.with_recipe(recipe_path);
             }
@@ -135,6 +157,15 @@ fn main() -> Result<()> {
         }
         Commands::RootfsVerify { path } => {
             rootfs::builder::verify_tarball(&path)?;
+        }
+        Commands::RootfsExtract { tarball, output } => {
+            let tarball_path = tarball.unwrap_or_else(|| {
+                base_dir.join("output/levitateos-base.tar.xz")
+            });
+            let output_dir = output.unwrap_or_else(|| {
+                base_dir.join("output/rootfs")
+            });
+            rootfs::builder::extract_tarball(&tarball_path, &output_dir)?;
         }
         Commands::Test { cmd } => {
             initramfs::build_initramfs(&base_dir)?;

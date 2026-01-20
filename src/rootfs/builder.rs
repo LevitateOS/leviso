@@ -23,10 +23,13 @@ use std::process::Command;
 
 use super::context::BuildContext;
 use super::parts::{binaries, etc, filesystem, pam, recipe, systemd};
+use super::rpm::{find_packages_dirs, RpmExtractor};
 
 /// Builder for base system tarballs.
 pub struct RootfsBuilder {
-    /// Source directory containing Rocky rootfs
+    /// ISO contents directory (for RPM extraction)
+    iso_contents: Option<PathBuf>,
+    /// Source directory containing Rocky rootfs (fallback if no RPMs)
     source_dir: PathBuf,
     /// Output directory for the tarball
     output_dir: PathBuf,
@@ -37,10 +40,20 @@ pub struct RootfsBuilder {
 impl RootfsBuilder {
     pub fn new(source_dir: impl AsRef<Path>, output_dir: impl AsRef<Path>) -> Self {
         Self {
+            iso_contents: None,
             source_dir: source_dir.as_ref().to_path_buf(),
             output_dir: output_dir.as_ref().to_path_buf(),
             recipe_binary: None,
         }
+    }
+
+    /// Set the ISO contents directory for RPM extraction.
+    ///
+    /// When set, binaries will be extracted from RPM packages instead of
+    /// relying on an incomplete minimal rootfs. This is the CORRECT approach.
+    pub fn with_iso_contents(mut self, iso_contents: impl AsRef<Path>) -> Self {
+        self.iso_contents = Some(iso_contents.as_ref().to_path_buf());
+        self
     }
 
     /// Set the path to the recipe binary.
@@ -52,30 +65,38 @@ impl RootfsBuilder {
     /// Build the base system tarball.
     pub fn build(&self) -> Result<PathBuf> {
         println!("Building base system tarball...");
-        println!("  Source: {}", self.source_dir.display());
         println!("  Output: {}", self.output_dir.display());
-
-        // Validate source directory
-        if !self.source_dir.exists() {
-            anyhow::bail!(
-                "Source directory does not exist: {}",
-                self.source_dir.display()
-            );
-        }
 
         // Create output directory
         fs::create_dir_all(&self.output_dir)?;
 
-        // Create staging directory
+        // Create staging directory for final rootfs
         let staging_dir = self.output_dir.join("staging");
         if staging_dir.exists() {
             fs::remove_dir_all(&staging_dir)?;
         }
         fs::create_dir_all(&staging_dir)?;
 
+        // Determine source directory - extract from RPMs if available
+        let source_dir = if let Some(ref iso_contents) = self.iso_contents {
+            println!("  ISO contents: {}", iso_contents.display());
+            self.extract_rpms(iso_contents)?
+        } else {
+            println!("  Source: {}", self.source_dir.display());
+            // Validate fallback source directory
+            if !self.source_dir.exists() {
+                anyhow::bail!(
+                    "Source directory does not exist: {}\n\
+                     Consider using .with_iso_contents() to extract from RPMs instead.",
+                    self.source_dir.display()
+                );
+            }
+            self.source_dir.clone()
+        };
+
         // Create build context
         let mut ctx = BuildContext::new(
-            self.source_dir.clone(),
+            source_dir.clone(),
             staging_dir.clone(),
             self.output_dir.clone(),
         );
@@ -94,8 +115,44 @@ impl RootfsBuilder {
         println!("Cleaning up staging directory...");
         fs::remove_dir_all(&staging_dir)?;
 
+        // Clean up extracted RPMs if we created them
+        if self.iso_contents.is_some() {
+            let rpm_extracted = self.output_dir.join("rpm-extracted");
+            if rpm_extracted.exists() {
+                println!("Cleaning up extracted RPMs...");
+                fs::remove_dir_all(&rpm_extracted)?;
+            }
+        }
+
         println!("Base tarball created: {}", tarball_path.display());
         Ok(tarball_path)
+    }
+
+    /// Extract required RPM packages to a staging directory.
+    fn extract_rpms(&self, iso_contents: &Path) -> Result<PathBuf> {
+        println!("\n=== Extracting RPM packages ===\n");
+
+        let (baseos, appstream) = find_packages_dirs(iso_contents)?;
+        let rpm_staging = self.output_dir.join("rpm-extracted");
+
+        // Clean existing extraction
+        if rpm_staging.exists() {
+            fs::remove_dir_all(&rpm_staging)?;
+        }
+
+        // Create extractor with BaseOS packages
+        let mut extractor = RpmExtractor::new(&baseos, &rpm_staging);
+
+        // Add AppStream if available (for packages like wget)
+        if let Some(appstream_dir) = appstream {
+            println!("  Including AppStream packages");
+            extractor = extractor.with_packages_dir(appstream_dir);
+        }
+
+        extractor.extract_all()?;
+
+        println!("\n=== RPM extraction complete ===\n");
+        Ok(rpm_staging)
     }
 
     /// Build the complete rootfs in staging directory.
@@ -202,6 +259,54 @@ pub fn list_tarball(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Extract tarball to a directory for inspection.
+pub fn extract_tarball(tarball: &Path, output_dir: &Path) -> Result<()> {
+    if !tarball.exists() {
+        anyhow::bail!(
+            "Tarball not found: {}\nRun 'leviso rootfs' first to build it.",
+            tarball.display()
+        );
+    }
+
+    // Clean and create output directory
+    if output_dir.exists() {
+        println!("Removing existing {}...", output_dir.display());
+        fs::remove_dir_all(output_dir)?;
+    }
+    fs::create_dir_all(output_dir)?;
+
+    println!("Extracting {} to {}...", tarball.display(), output_dir.display());
+
+    let status = Command::new("tar")
+        .args([
+            "-xJf",
+            tarball.to_str().unwrap(),
+            "-C",
+            output_dir.to_str().unwrap(),
+        ])
+        .status()
+        .context("Failed to run tar command")?;
+
+    if !status.success() {
+        anyhow::bail!("tar extraction failed with status: {}", status);
+    }
+
+    // Print summary
+    let bin_count = fs::read_dir(output_dir.join("usr/bin"))
+        .map(|d| d.count())
+        .unwrap_or(0);
+    let sbin_count = fs::read_dir(output_dir.join("usr/sbin"))
+        .map(|d| d.count())
+        .unwrap_or(0);
+
+    println!("\nExtracted rootfs:");
+    println!("  {} binaries in /usr/bin", bin_count);
+    println!("  {} binaries in /usr/sbin", sbin_count);
+    println!("\nInspect at: {}", output_dir.display());
+
+    Ok(())
+}
+
 /// Verify tarball contents - checks ALL critical components.
 ///
 /// # ⚠️ WARNING: DO NOT WEAKEN THIS VERIFICATION ⚠️
@@ -240,6 +345,7 @@ pub fn verify_tarball(path: &Path) -> Result<()> {
     // Critical binaries - SAME list as in binaries.rs
     // ⚠️ DO NOT REMOVE ITEMS FROM THIS LIST JUST BECAUSE THEY'RE MISSING ⚠️
     // If something is missing, FIX THE BUILD, don't weaken the test
+    // Note: In Rocky 10, mount/umount/lsblk are in /usr/bin, not /usr/sbin
     let critical_coreutils = [
         "ls", "cat", "cp", "mv", "rm", "mkdir", "rmdir", "touch",
         "chmod", "chown", "ln", "readlink",
@@ -251,16 +357,17 @@ pub fn verify_tarball(path: &Path) -> Result<()> {
         "true", "false", "expr",
         "sed",
         "df", "du", "sync",
+        "mount", "umount", "lsblk", "findmnt",  // disk utils in /usr/bin
         "systemctl", "journalctl",
     ];
 
     let critical_sbin = [
-        "mount", "umount", "fsck", "blkid", "lsblk",
+        "fsck", "blkid", "losetup",
         "reboot", "shutdown", "poweroff",
         "insmod", "rmmod", "modprobe", "lsmod",
         "chroot", "ldconfig",
         "useradd", "groupadd", "chpasswd",
-        "ip", "sysctl", "losetup",
+        "ip", "sysctl",
     ];
 
     // Check critical coreutils

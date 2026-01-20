@@ -30,13 +30,23 @@ pub fn create_fhs_structure(staging: &Path) -> Result<()> {
         "usr/local/bin",
         "usr/local/sbin",
         "usr/local/lib",
+        "usr/local/share",
         // /etc configuration
         "etc",
         "etc/systemd/system",
         "etc/pam.d",
         "etc/security",
         "etc/profile.d",
+        // XDG Base Directory spec - system-wide
+        "etc/xdg",
+        "etc/xdg/autostart",
+        // User skeleton with XDG structure
         "etc/skel",
+        "etc/skel/.config",
+        "etc/skel/.local",
+        "etc/skel/.local/share",
+        "etc/skel/.local/state",
+        "etc/skel/.cache",
         // Volatile directories
         "proc",
         "sys",

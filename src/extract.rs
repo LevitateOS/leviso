@@ -5,12 +5,15 @@ use std::process::Command;
 
 pub fn extract_rocky(base_dir: &Path) -> Result<()> {
     let extract_dir = base_dir.join("downloads");
-    let iso_path = extract_dir.join("rocky.iso");
+    let iso_path = extract_dir.join("Rocky-10.1-x86_64-dvd1.iso");
     let iso_contents = extract_dir.join("iso-contents");
     let rootfs_dir = extract_dir.join("rootfs");
 
     if !iso_path.exists() {
-        bail!("Rocky ISO not found. Run 'leviso download' first.");
+        bail!(
+            "Rocky DVD ISO not found at {}. Run 'leviso download' first.",
+            iso_path.display()
+        );
     }
 
     // Step 1: Extract ISO contents with 7z

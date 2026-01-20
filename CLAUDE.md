@@ -1,200 +1,35 @@
-# CLAUDE MISTAKES - DO NOT REPEAT
+# CLAUDE.md - Leviso
 
-## ⚠️ FALSE POSITIVES IN TESTS - THE #1 PROJECT KILLER ⚠️
-
-**Date: 2026-01-20**
-
-I created a test that passed while the product was fundamentally broken.
-
-**What I did:**
-1. Rocky Minimal was missing ~25 binaries (`sudo`, `passwd`, `test`, etc.)
-2. Instead of failing the build, I created "CRITICAL" vs "OPTIONAL" lists
-3. Moved all missing binaries to "OPTIONAL"
-4. Tests passed: "✓ 83/83 critical files present"
-5. The tarball was MISSING `sudo`, `passwd`, `test` but tests said SUCCESS
-
-**The lie:**
-```
-Developer sees:                    User experiences:
-✓ 83/83 critical files present    $ sudo apt install foo
-BUILD SUCCESSFUL                   bash: sudo: command not found
-```
-
-**Why this is catastrophic:**
-- Launch day: all tests green, team celebrates
-- Hour 2: "sudo doesn't work" bug reports flood in
-- Hour 4: "LevitateOS ships without sudo" trends on social media
-- Reputation destroyed, users never come back
-
-**The rule:**
-- Tests MUST verify what USERS need, not what exists
-- If something is missing, BUILD FAILS - not "warning, skip"
-- NEVER mark something "optional" just because it's missing
-- Ask: "Will a user be able to do their job without this?"
-
-**Read the full case study:** `../.teams/KNOWLEDGE_false-positives-testing.md`
-
----
-
-## Things that annoyed the user during leviso development
-
-### 1. Implementing instead of answering questions
-When the user asked "why do we need grub-mkrescue? is it required?" I immediately started implementing an alternative (xorriso) instead of ANSWERING THE DAMN QUESTION FIRST.
-
-**Rule: When the user asks WHY or asks a question, ANSWER IT. Don't start coding.**
-
-### 2. Swinging between rebrands
-User expressed concern about making a Rocky rebrand. I immediately swung to "let's copy archiso's approach" - which would make it an Arch rebrand. The user wants NEITHER.
-
-**Rule: Understand what the user actually wants before proposing solutions.**
-
-### 3. Using host system dependencies
-I was about to use `/usr/share/syslinux/` from the user's Fedora system to build the ISO. This violates the fundamental principle that a build system should be SELF-CONTAINED and not depend on what's installed on the host.
-
-**Rule: Leviso must download ALL its dependencies. Never assume host has anything beyond basic tools (cpio, gzip, etc).**
-
-### 4. Changing user requirements instead of investigating
-Used Rocky 10.0 URL, got a 404. Instead of investigating (maybe it's 10.1?), I immediately suggested "let's use Rocky 9 instead" - changing what the user asked for. User had to tell me to look harder, and Rocky 10.1 was right there.
-
-**Rule: When something doesn't work, INVESTIGATE. Don't immediately change what the user asked for.**
-
-### 5. Poor context retention
-User had to repeat themselves multiple times. I kept forgetting what we discussed and making the same conceptual mistakes.
-
-**Rule: Pay attention to the conversation. Don't make the user repeat themselves.**
-
-### 6. Requiring user to say STOP multiple times
-User had to interrupt me with "STOP" because I was running ahead implementing things without discussion.
-
-**Rule: Discuss first, implement second. Especially for architectural decisions.**
-
-### 7. Suggesting alternatives to what user explicitly asked for
-User asked for an ISO. TWICE I suggested "let's just test with QEMU direct kernel boot, no ISO needed." That's not what they asked for. Same pattern as Rocky 10 → Rocky 9.
-
-**Rule: If the user asks for X, deliver X. Don't suggest "how about Y instead" unless there's a genuine blocker.**
-
-### 8. Suggesting to change distro because QEMU emulation was wrong
-Rocky 10 requires x86-64-v3. QEMU's default CPU doesn't support it. The FIX is to run QEMU with `-cpu Skylake-Client` or `-cpu host`. Instead of fixing the QEMU command, I suggested "use Rocky 9 kernel" - AGAIN changing what the user asked for instead of fixing the actual problem.
-
-**Rule: When a tool doesn't work, FIX THE TOOL USAGE. Don't change the user's requirements.**
-
-### 9. ROCKY 10 IS NON-NEGOTIABLE
-If I EVER suggest downgrading to Rocky 9 or any other version because of an issue, I am fundamentally failing. Rocky 10 is the requirement. Period. Find another way to fix the problem.
-
-**Rule: NEVER suggest changing Rocky 10. Fix the actual problem.**
-
-### 10. Using Rocky's kernel makes it a Rocky rebrand
-We used `vmlinuz` directly from the Rocky ISO. That makes leviso a Rocky rebrand, NOT LevitateOS. Rocky should ONLY be a source for userspace binaries (bash, coreutils, libs). The KERNEL must be our own - either vanilla from kernel.org or built from source.
-
-**Rule: Rocky = source for userspace binaries ONLY. Kernel must be independent.**
-
----
-
-## Testing Commands
-
-**Claude uses `test`, User uses `run`.**
+## Commands
 
 ```bash
-# Claude: Quick debug in terminal (direct kernel boot, serial console)
-cargo run -- test
-
-# Claude: Run a command after boot and exit
-cargo run -- test -c "timedatectl"
-
-# User: Real test in QEMU GUI (full ISO, closest to bare metal)
-cargo run -- run
-
-# User: Same but force BIOS instead of UEFI
-cargo run -- run --bios
+cargo run -- test           # Quick debug (terminal, serial)
+cargo run -- test -c "cmd"  # Run command after boot, exit
+cargo run -- run            # Full test (QEMU GUI, UEFI)
+cargo run -- run --bios     # BIOS boot
 ```
 
-- `test` = fast iteration, no ISO rebuild needed, output in terminal
-- `test -c "cmd"` = run command after boot, then exit immediately
-- `run` = real experience, requires `cargo run -- iso` first, opens GUI window
-
-### 11. DO NOT PIPE `cargo run -- test` TO tail OR head
-
-**This will break output buffering and cause the test to hang forever.**
-
-```bash
-# WRONG - will hang:
-cargo run -- test -c "echo hello" | tail -20
-cargo run -- test 2>&1 | head -50
-
-# RIGHT - run directly:
-cargo run -- test -c "echo hello"
-```
-
-The QEMU serial console output is line-buffered and piping breaks the readline loop. Just run the command directly.
-
----
+**Never pipe `cargo run -- test` to tail/head** - breaks output buffering.
 
 ## Architecture
 
-### What we're building
-
-We build an **initramfs** - a compressed cpio archive that becomes the live environment. The ISO is just a wrapper containing:
-- Kernel (vmlinuz)
-- Initramfs (initramfs.cpio.gz)
-- Bootloader (isolinux for BIOS, GRUB EFI for UEFI)
-
-### Directory structure
-
 ```
 leviso/
-├── downloads/           # Downloaded dependencies (gitignored)
-│   ├── rocky.iso        # Rocky 10 Minimal ISO
-│   ├── iso-contents/    # Extracted ISO (kernel, EFI files)
-│   ├── rootfs/          # Extracted squashfs (userspace binaries)
-│   └── syslinux-6.03/   # Syslinux for BIOS boot
-├── output/              # Build outputs (gitignored)
-│   ├── initramfs-root/  # Unpacked initramfs contents
-│   ├── initramfs.cpio.gz
-│   ├── iso-root/        # ISO contents before packaging
-│   └── leviso.iso       # Final bootable ISO
-├── profile/
-│   └── init             # Init script (runs as PID 1)
+├── downloads/           # Rocky ISO, rootfs, syslinux (gitignored)
+├── output/              # initramfs, ISO outputs (gitignored)
+├── profile/init         # Init script (PID 1)
 └── src/                 # Rust source
 ```
 
-### Adding binaries to the initramfs
+## Adding Binaries
 
-Edit `src/initramfs.rs`:
-- `coreutils` array: binaries from /usr/bin or /bin
-- `sbin_utils` array: binaries from /usr/sbin or /sbin
+Edit `src/initramfs.rs` arrays: `coreutils`, `sbin_utils`. Build copies binary + library deps from Rocky rootfs.
 
-The build automatically copies each binary and its library dependencies.
+## Critical Rules
 
----
-
-## Where Binaries Come From
-
-**ALL userspace binaries come from the Rocky 10 rootfs.**
-
-The flow:
-1. `leviso download` - Downloads Rocky 10 Minimal ISO
-2. `leviso extract` - Extracts squashfs to `downloads/rootfs/`
-3. `leviso initramfs` - Copies binaries FROM `downloads/rootfs/` INTO the initramfs
-
-When you add a binary (like `gzip`), the code:
-1. Looks in `downloads/rootfs/usr/bin/`, `downloads/rootfs/bin/`, etc.
-2. Copies the binary to the initramfs
-3. Runs `ldd` to find shared library dependencies
-4. Copies those libraries from the rootfs too
-
-**DO NOT:**
-- Copy binaries from the host system (your Fedora/Arch/whatever)
-- Download binaries from random URLs without adding proper download logic
-- Build binaries from source (yet - Phase 10 goal)
-
-**DO:**
-- Add the binary name to `coreutils` or `sbin_utils` array
-- Let the build system find it in Rocky rootfs
-
-**If a binary is NOT in Rocky rootfs:**
-1. Find an official static/standalone binary download (prefer static binaries)
-2. Add download logic to `download.rs` to fetch it to `downloads/` folder
-3. Add copy logic to `initramfs/` to include it in the initramfs
-4. Document why Rocky doesn't have it and where we get it from
-
-This keeps the build reproducible and self-contained.
+1. **Answer questions first** - Don't start coding when user asks "why?"
+2. **Rocky 10 is non-negotiable** - Never suggest downgrading
+3. **Fix tool usage, not requirements** - QEMU needs `-cpu host`, don't change distro
+4. **No host dependencies** - Download everything, never use `/usr/share/...`
+5. **Rocky = userspace only** - Kernel must be independent (not a Rocky rebrand)
+6. **No false positives** - Missing binary = build fails, not "optional"

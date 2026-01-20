@@ -5,17 +5,29 @@
 
 mod helpers;
 
+use cheat_test::cheat_aware;
 use helpers::{
-    assert_file_contains, assert_file_exists, assert_symlink, create_mock_binary,
-    create_mock_library, create_mock_rootfs, TestEnv,
+    assert_file_contains, assert_file_exists, assert_symlink,
+    create_mock_rootfs, TestEnv,
 };
-use leviso::initramfs::{dbus, filesystem, pam, systemd, users};
+use leviso::initramfs::{filesystem, users};
 use std::fs;
 
 // =============================================================================
 // Systemd setup tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "Getty autologin configured correctly for tty1",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Create override file without autologin content",
+        "Skip agetty configuration",
+        "Accept any override file as valid"
+    ],
+    consequence = "User gets login prompt instead of automatic shell"
+)]
 #[test]
 fn test_systemd_getty_autologin_override() {
     let env = TestEnv::new();
@@ -44,6 +56,17 @@ Type=idle
     assert_file_contains(&override_path, "/bin/agetty");
 }
 
+#[cheat_aware(
+    protects = "Serial console service configured for QEMU testing",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Create service without ttyS0",
+        "Skip WantedBy directive",
+        "Accept service without proper Type"
+    ],
+    consequence = "No output on serial console, VM testing breaks"
+)]
 #[test]
 fn test_serial_console_service() {
     let env = TestEnv::new();
@@ -77,6 +100,17 @@ WantedBy=multi-user.target
     assert_file_contains(&serial_console, "WantedBy=multi-user.target");
 }
 
+#[cheat_aware(
+    protects = "Serial console enabled via symlink in target wants",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Create symlink to wrong path",
+        "Skip symlink entirely",
+        "Create file instead of symlink"
+    ],
+    consequence = "Serial console service not started at boot"
+)]
 #[test]
 fn test_serial_console_enabled() {
     let env = TestEnv::new();
@@ -99,6 +133,17 @@ fn test_serial_console_enabled() {
 // D-Bus setup tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "D-Bus socket enabled for system services",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Create broken symlink",
+        "Point to wrong socket file",
+        "Skip socket entirely"
+    ],
+    consequence = "D-Bus unavailable: timedatectl, systemctl fail"
+)]
 #[test]
 fn test_dbus_socket_enabled() {
     let env = TestEnv::new();
@@ -118,6 +163,17 @@ fn test_dbus_socket_enabled() {
     assert_symlink(&dbus_socket_link, "/usr/lib/systemd/system/dbus.socket");
 }
 
+#[cheat_aware(
+    protects = "D-Bus user created with correct UID/GID",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Use wrong UID for dbus",
+        "Skip dbus user creation",
+        "Create user without group"
+    ],
+    consequence = "D-Bus daemon fails: user 'dbus' not found"
+)]
 #[test]
 fn test_dbus_user_creation() {
     let env = TestEnv::new();
@@ -144,6 +200,17 @@ fn test_dbus_user_creation() {
     assert_file_contains(&env.initramfs.join("etc/group"), "dbus:x:81:");
 }
 
+#[cheat_aware(
+    protects = "D-Bus directories created for daemon operation",
+    severity = "MEDIUM",
+    ease = "EASY",
+    cheats = [
+        "Create subset of required directories",
+        "Skip run/dbus directory",
+        "Accept missing config directories"
+    ],
+    consequence = "D-Bus daemon cannot start: directories missing"
+)]
 #[test]
 fn test_dbus_directories_created() {
     let env = TestEnv::new();
@@ -165,6 +232,17 @@ fn test_dbus_directories_created() {
 // PAM setup tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "PAM login configuration allows authentication",
+    severity = "CRITICAL",
+    ease = "EASY",
+    cheats = [
+        "Create empty PAM config",
+        "Skip pam_permit.so which allows login",
+        "Use wrong PAM stack order"
+    ],
+    consequence = "login: Authentication failure"
+)]
 #[test]
 fn test_pam_config_files() {
     let env = TestEnv::new();
@@ -193,6 +271,17 @@ session    required     pam_permit.so
     assert_file_contains(&pam_d.join("login"), "pam_rootok.so");
 }
 
+#[cheat_aware(
+    protects = "Securetty allows root login on console TTYs",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Create empty securetty",
+        "Skip ttyS0 for serial console",
+        "List only tty1"
+    ],
+    consequence = "root login disabled on this terminal"
+)]
 #[test]
 fn test_securetty_allows_console() {
     let env = TestEnv::new();
@@ -210,6 +299,17 @@ fn test_securetty_allows_console() {
     assert_file_contains(&env.initramfs.join("etc/securetty"), "ttyS0");
 }
 
+#[cheat_aware(
+    protects = "Valid login shells listed in /etc/shells",
+    severity = "MEDIUM",
+    ease = "EASY",
+    cheats = [
+        "Create empty shells file",
+        "Skip /bin/bash entry",
+        "Use wrong shell paths"
+    ],
+    consequence = "chsh: /bin/bash is not a valid shell"
+)]
 #[test]
 fn test_shells_file() {
     let env = TestEnv::new();
@@ -223,6 +323,17 @@ fn test_shells_file() {
     assert_file_contains(&env.initramfs.join("etc/shells"), "/bin/sh");
 }
 
+#[cheat_aware(
+    protects = "Shadow file exists for password authentication",
+    severity = "CRITICAL",
+    ease = "EASY",
+    cheats = [
+        "Skip shadow file creation",
+        "Create shadow without root entry",
+        "Use wrong shadow format"
+    ],
+    consequence = "Authentication token manipulation error"
+)]
 #[test]
 fn test_shadow_file() {
     let env = TestEnv::new();
@@ -239,6 +350,17 @@ fn test_shadow_file() {
 // Systemd system files tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "Machine ID file exists for systemd",
+    severity = "MEDIUM",
+    ease = "EASY",
+    cheats = [
+        "Skip machine-id creation",
+        "Create with wrong permissions",
+        "Pre-populate with invalid ID"
+    ],
+    consequence = "Failed to create /etc/machine-id"
+)]
 #[test]
 fn test_machine_id_created() {
     let env = TestEnv::new();
@@ -251,6 +373,17 @@ fn test_machine_id_created() {
     assert_file_exists(&env.initramfs.join("etc/machine-id"));
 }
 
+#[cheat_aware(
+    protects = "OS identifies as LevitateOS, not Rocky",
+    severity = "MEDIUM",
+    ease = "EASY",
+    cheats = [
+        "Copy Rocky's os-release",
+        "Skip branding entirely",
+        "Use partial os-release"
+    ],
+    consequence = "System shows as Rocky Linux, not LevitateOS"
+)]
 #[test]
 fn test_os_release_created() {
     let env = TestEnv::new();
@@ -272,6 +405,17 @@ PRETTY_NAME="LevitateOS Live"
     assert_file_contains(&env.initramfs.join("etc/os-release"), "ID=levitateos");
 }
 
+#[cheat_aware(
+    protects = "/sbin/init symlink points to systemd",
+    severity = "CRITICAL",
+    ease = "EASY",
+    cheats = [
+        "Point to wrong path",
+        "Create file instead of symlink",
+        "Skip init symlink"
+    ],
+    consequence = "Kernel panic: No init found"
+)]
 #[test]
 fn test_init_symlink() {
     let env = TestEnv::new();
@@ -289,6 +433,17 @@ fn test_init_symlink() {
 // Getty target tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "Getty service enabled for tty1",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Create symlink to wrong service",
+        "Skip getty target wants",
+        "Create broken symlink"
+    ],
+    consequence = "No login prompt on tty1"
+)]
 #[test]
 fn test_getty_target_enabled() {
     let env = TestEnv::new();
@@ -308,6 +463,17 @@ fn test_getty_target_enabled() {
     assert_symlink(&getty_link, "/usr/lib/systemd/system/getty@.service");
 }
 
+#[cheat_aware(
+    protects = "Getty target pulled in by multi-user target",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Skip getty.target in multi-user wants",
+        "Create wrong symlink target",
+        "Omit multi-user.target.wants"
+    ],
+    consequence = "Getty services never started"
+)]
 #[test]
 fn test_getty_target_from_multi_user() {
     let env = TestEnv::new();
@@ -331,6 +497,17 @@ fn test_getty_target_from_multi_user() {
 // Journald socket tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "Journald sockets enabled for logging",
+    severity = "MEDIUM",
+    ease = "EASY",
+    cheats = [
+        "Skip journald sockets",
+        "Create partial socket setup",
+        "Point to wrong socket files"
+    ],
+    consequence = "No system logging, debugging impossible"
+)]
 #[test]
 fn test_journald_sockets_enabled() {
     let env = TestEnv::new();
@@ -372,6 +549,17 @@ fn test_journald_sockets_enabled() {
 // Full integration test with BuildContext
 // =============================================================================
 
+#[cheat_aware(
+    protects = "Full FHS setup works end-to-end with BuildContext",
+    severity = "HIGH",
+    ease = "MEDIUM",
+    cheats = [
+        "Test individual functions only",
+        "Skip BuildContext integration",
+        "Use mocked BuildContext"
+    ],
+    consequence = "Functions work alone but fail together"
+)]
 #[test]
 fn test_full_fhs_setup() {
     let env = TestEnv::new();

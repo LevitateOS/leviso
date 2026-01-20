@@ -9,6 +9,7 @@
 
 mod helpers;
 
+use cheat_test::cheat_aware;
 use helpers::{assert_file_contains, assert_file_exists, assert_symlink, initramfs_is_built, real_initramfs_root};
 use std::fs;
 use std::path::Path;
@@ -29,6 +30,17 @@ fn require_initramfs() -> std::path::PathBuf {
 // Essential binaries tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "User can run basic commands (ls, cat, mount, login)",
+    severity = "CRITICAL",
+    ease = "EASY",
+    cheats = [
+        "Reduce the binaries list to only those present",
+        "Move missing binaries to OPTIONAL list",
+        "Check for binary existence but not executability"
+    ],
+    consequence = "bash: ls: command not found"
+)]
 #[test]
 #[ignore]
 fn test_validation_essential_binaries_present() {
@@ -46,6 +58,17 @@ fn test_validation_essential_binaries_present() {
     }
 }
 
+#[cheat_aware(
+    protects = "System can boot and run init (PID 1)",
+    severity = "CRITICAL",
+    ease = "MEDIUM",
+    cheats = [
+        "Check for any file at that path, not systemd specifically",
+        "Accept a symlink to nonexistent binary",
+        "Skip test if systemd not found"
+    ],
+    consequence = "Kernel panic - not syncing: No working init found"
+)]
 #[test]
 #[ignore]
 fn test_validation_systemd_binary_present() {
@@ -59,6 +82,17 @@ fn test_validation_systemd_binary_present() {
     );
 }
 
+#[cheat_aware(
+    protects = "System uses systemd as init",
+    severity = "CRITICAL",
+    ease = "EASY",
+    cheats = [
+        "Check symlink exists but not target validity",
+        "Accept any symlink target",
+        "Create symlink during test instead of failing"
+    ],
+    consequence = "Kernel panic - unable to mount rootfs"
+)]
 #[test]
 #[ignore]
 fn test_validation_init_symlink_correct() {
@@ -68,6 +102,17 @@ fn test_validation_init_symlink_correct() {
     assert_symlink(&init_link, "/usr/lib/systemd/systemd");
 }
 
+#[cheat_aware(
+    protects = "Scripts using /bin/sh work correctly",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Check for any shell, not specifically bash",
+        "Accept broken symlink",
+        "Skip if sh exists in any form"
+    ],
+    consequence = "/bin/sh: No such file or directory"
+)]
 #[test]
 #[ignore]
 fn test_validation_sh_symlink_correct() {
@@ -81,6 +126,17 @@ fn test_validation_sh_symlink_correct() {
 // Library tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "Dynamically linked binaries can load libc",
+    severity = "CRITICAL",
+    ease = "MEDIUM",
+    cheats = [
+        "Check for any .so file in lib64",
+        "Accept broken symlinks",
+        "Skip library version validation"
+    ],
+    consequence = "error while loading shared libraries: libc.so.6"
+)]
 #[test]
 #[ignore]
 fn test_validation_lib64_has_libc() {
@@ -101,6 +157,17 @@ fn test_validation_lib64_has_libc() {
     assert!(has_libc, "libc.so not found in lib64");
 }
 
+#[cheat_aware(
+    protects = "Dynamic linker can load any binary",
+    severity = "CRITICAL",
+    ease = "MEDIUM",
+    cheats = [
+        "Accept any ld-linux variant",
+        "Check existence but not compatibility",
+        "Skip if file exists as symlink"
+    ],
+    consequence = "No such file or directory (cannot execute binary)"
+)]
 #[test]
 #[ignore]
 fn test_validation_ld_linux_present() {
@@ -118,6 +185,17 @@ fn test_validation_ld_linux_present() {
 // User/Group tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "System has root user and dbus user for authentication",
+    severity = "CRITICAL",
+    ease = "EASY",
+    cheats = [
+        "Check file exists but not content",
+        "Accept any user entries, not specific required ones",
+        "Use substring match instead of proper parsing"
+    ],
+    consequence = "su: user root does not exist or the user entry is missing"
+)]
 #[test]
 #[ignore]
 fn test_validation_passwd_group_valid() {
@@ -139,6 +217,17 @@ fn test_validation_passwd_group_valid() {
     assert_file_contains(&group, "root:x:0:");
 }
 
+#[cheat_aware(
+    protects = "Password authentication can work",
+    severity = "CRITICAL",
+    ease = "EASY",
+    cheats = [
+        "Check existence not content",
+        "Accept empty shadow file",
+        "Skip permission validation"
+    ],
+    consequence = "Authentication token manipulation error"
+)]
 #[test]
 #[ignore]
 fn test_validation_shadow_exists() {
@@ -153,6 +242,17 @@ fn test_validation_shadow_exists() {
 // Systemd unit tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "Systemd can reach multi-user target and start getty",
+    severity = "CRITICAL",
+    ease = "EASY",
+    cheats = [
+        "Check for units directory but not specific units",
+        "Accept empty unit files",
+        "Skip unit content validation"
+    ],
+    consequence = "Failed to start target multi-user.target"
+)]
 #[test]
 #[ignore]
 fn test_validation_systemd_units_present() {
@@ -179,6 +279,17 @@ fn test_validation_systemd_units_present() {
     }
 }
 
+#[cheat_aware(
+    protects = "User gets automatic login on tty1",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Check file exists but not autologin content",
+        "Accept any override file",
+        "Skip validation of agetty command"
+    ],
+    consequence = "login: prompt appears instead of automatic shell"
+)]
 #[test]
 #[ignore]
 fn test_validation_getty_autologin_configured() {
@@ -189,6 +300,17 @@ fn test_validation_getty_autologin_configured() {
     assert_file_contains(&autologin_conf, "--autologin root");
 }
 
+#[cheat_aware(
+    protects = "Serial console available for headless/VM testing",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Check service exists but not ttyS0 config",
+        "Accept service without proper WantedBy",
+        "Skip TTYPath validation"
+    ],
+    consequence = "No output on serial console, QEMU test hangs"
+)]
 #[test]
 #[ignore]
 fn test_validation_serial_console_service() {
@@ -203,6 +325,17 @@ fn test_validation_serial_console_service() {
 // PAM tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "Login authentication actually works",
+    severity = "CRITICAL",
+    ease = "EASY",
+    cheats = [
+        "Check directory exists but not specific modules",
+        "Accept any .so files as PAM modules",
+        "Skip module functionality validation"
+    ],
+    consequence = "login: PAM unable to dlopen(pam_unix.so)"
+)]
 #[test]
 #[ignore]
 fn test_validation_pam_modules_present() {
@@ -223,6 +356,17 @@ fn test_validation_pam_modules_present() {
     }
 }
 
+#[cheat_aware(
+    protects = "Login command has PAM configuration",
+    severity = "CRITICAL",
+    ease = "EASY",
+    cheats = [
+        "Check pam.d exists but not login config",
+        "Accept empty PAM config",
+        "Skip config content validation"
+    ],
+    consequence = "login: no PAM configuration for login"
+)]
 #[test]
 #[ignore]
 fn test_validation_pam_config_exists() {
@@ -239,6 +383,17 @@ fn test_validation_pam_config_exists() {
 // OS identification tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "System identifies as LevitateOS",
+    severity = "MEDIUM",
+    ease = "EASY",
+    cheats = [
+        "Check file exists but not branding",
+        "Accept any os-release content",
+        "Use partial match on NAME"
+    ],
+    consequence = "System shows wrong OS name (Rocky, etc.)"
+)]
 #[test]
 #[ignore]
 fn test_validation_os_release_correct() {
@@ -250,6 +405,17 @@ fn test_validation_os_release_correct() {
     assert_file_contains(&os_release, "ID=levitateos");
 }
 
+#[cheat_aware(
+    protects = "Systemd can generate machine ID on boot",
+    severity = "MEDIUM",
+    ease = "EASY",
+    cheats = [
+        "Skip validation entirely",
+        "Accept missing file as OK",
+        "Check path but not accessibility"
+    ],
+    consequence = "Failed to create /etc/machine-id: Permission denied"
+)]
 #[test]
 #[ignore]
 fn test_validation_machine_id_exists() {
@@ -263,6 +429,17 @@ fn test_validation_machine_id_exists() {
 // D-Bus tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "User can interact with D-Bus (timedatectl, hostnamectl)",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Check usr/bin exists but not specific binaries",
+        "Accept any dbus-related binary",
+        "Skip executable bit validation"
+    ],
+    consequence = "Failed to connect to bus: No such file or directory"
+)]
 #[test]
 #[ignore]
 fn test_validation_dbus_binaries_present() {
@@ -280,6 +457,17 @@ fn test_validation_dbus_binaries_present() {
     }
 }
 
+#[cheat_aware(
+    protects = "D-Bus socket activates on boot",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Accept broken symlink as enabled",
+        "Check symlink exists but not target",
+        "Skip validation of socket unit content"
+    ],
+    consequence = "D-Bus unavailable: timedatectl, hostnamectl fail"
+)]
 #[test]
 #[ignore]
 fn test_validation_dbus_socket_enabled() {
@@ -296,6 +484,17 @@ fn test_validation_dbus_socket_enabled() {
 // FHS structure tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "Standard directory layout for Unix binaries/configs",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Check subset of required directories",
+        "Accept files instead of directories",
+        "Skip permission validation on directories"
+    ],
+    consequence = "Binaries fail to find expected paths (/etc, /var, etc.)"
+)]
 #[test]
 #[ignore]
 fn test_validation_fhs_structure() {
@@ -316,6 +515,17 @@ fn test_validation_fhs_structure() {
     }
 }
 
+#[cheat_aware(
+    protects = "/var/run works as expected (points to /run)",
+    severity = "MEDIUM",
+    ease = "EASY",
+    cheats = [
+        "Accept /var/run as directory instead of symlink",
+        "Skip target validation",
+        "Accept broken symlink"
+    ],
+    consequence = "PID files in wrong location, services fail to start"
+)]
 #[test]
 #[ignore]
 fn test_validation_var_run_symlink() {
@@ -329,6 +539,17 @@ fn test_validation_var_run_symlink() {
 // Shell configuration tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "User shell has proper PATH and environment",
+    severity = "MEDIUM",
+    ease = "EASY",
+    cheats = [
+        "Check files exist but not PATH content",
+        "Accept empty profile",
+        "Skip bashrc validation"
+    ],
+    consequence = "Commands not found despite being installed"
+)]
 #[test]
 #[ignore]
 fn test_validation_shell_config() {
@@ -342,6 +563,17 @@ fn test_validation_shell_config() {
     assert_file_exists(&bashrc);
 }
 
+#[cheat_aware(
+    protects = "System knows which shells are valid login shells",
+    severity = "MEDIUM",
+    ease = "EASY",
+    cheats = [
+        "Check file exists but not bash entry",
+        "Accept empty shells file",
+        "Skip validation of shell paths"
+    ],
+    consequence = "chsh: /bin/bash is not a valid shell"
+)]
 #[test]
 #[ignore]
 fn test_validation_shells_file() {
@@ -352,6 +584,17 @@ fn test_validation_shells_file() {
     assert_file_contains(&shells, "/bin/bash");
 }
 
+#[cheat_aware(
+    protects = "Root can login on console TTYs",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Check file exists but not tty entries",
+        "Accept empty securetty",
+        "Skip ttyS0 for serial console"
+    ],
+    consequence = "root login disabled on this terminal"
+)]
 #[test]
 #[ignore]
 fn test_validation_securetty() {
@@ -367,6 +610,17 @@ fn test_validation_securetty() {
 // Symlink integrity tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "All symlinks in initramfs resolve correctly",
+    severity = "HIGH",
+    ease = "MEDIUM",
+    cheats = [
+        "Only check a subset of symlinks",
+        "Skip absolute symlinks entirely",
+        "Accept dangling symlinks as warnings"
+    ],
+    consequence = "Random 'No such file' errors for symlinked binaries"
+)]
 #[test]
 #[ignore]
 fn test_validation_no_broken_symlinks() {
@@ -413,6 +667,17 @@ fn test_validation_no_broken_symlinks() {
 // Systemd helper binaries tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "Systemd 255+ can execute services properly",
+    severity = "CRITICAL",
+    ease = "EASY",
+    cheats = [
+        "Check for old systemd helpers only",
+        "Accept missing executor as warning",
+        "Skip journald validation"
+    ],
+    consequence = "Failed to spawn service: No such file or directory"
+)]
 #[test]
 #[ignore]
 fn test_validation_systemd_helper_binaries() {
@@ -437,6 +702,17 @@ fn test_validation_systemd_helper_binaries() {
 // Systemd utility tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "User can manage system with systemctl, journalctl, etc.",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Check bin/ exists but not specific utilities",
+        "Accept some utilities missing",
+        "Move missing to OPTIONAL list"
+    ],
+    consequence = "bash: systemctl: command not found"
+)]
 #[test]
 #[ignore]
 fn test_validation_systemd_utilities_present() {

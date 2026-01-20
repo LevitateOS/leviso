@@ -10,7 +10,8 @@
 
 mod helpers;
 
-use helpers::{initramfs_is_built, real_initramfs_root};
+use cheat_test::cheat_aware;
+use helpers::initramfs_is_built;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -188,6 +189,17 @@ fn run_qemu_command(command: &str, timeout_secs: u64) -> QemuCommandResult {
 // Boot tests
 // =============================================================================
 
+#[cheat_aware(
+    protects = "System boots to interactive shell",
+    severity = "CRITICAL",
+    ease = "HARD",
+    cheats = [
+        "Increase timeout to mask slow boot",
+        "Accept partial boot as success",
+        "Skip shell interaction verification"
+    ],
+    consequence = "System hangs at boot, user sees black screen"
+)]
 #[test]
 #[ignore]
 fn test_boot_reaches_shell() {
@@ -212,6 +224,17 @@ fn test_boot_reaches_shell() {
     );
 }
 
+#[cheat_aware(
+    protects = "Systemd is running and managing services",
+    severity = "CRITICAL",
+    ease = "MEDIUM",
+    cheats = [
+        "Accept degraded as success without checking failed units",
+        "Accept any systemctl output as success",
+        "Increase timeout to hide slow systemd"
+    ],
+    consequence = "Services don't start, system is non-functional"
+)]
 #[test]
 #[ignore]
 fn test_boot_systemctl_works() {
@@ -232,6 +255,17 @@ fn test_boot_systemctl_works() {
     );
 }
 
+#[cheat_aware(
+    protects = "Time/date management works (requires D-Bus)",
+    severity = "HIGH",
+    ease = "MEDIUM",
+    cheats = [
+        "Accept any timedatectl output",
+        "Skip D-Bus connection validation",
+        "Accept error output as success"
+    ],
+    consequence = "timedatectl: Failed to query server: Connection refused"
+)]
 #[test]
 #[ignore]
 fn test_boot_timedatectl_works() {
@@ -249,6 +283,17 @@ fn test_boot_timedatectl_works() {
     );
 }
 
+#[cheat_aware(
+    protects = "System logs are accessible",
+    severity = "MEDIUM",
+    ease = "EASY",
+    cheats = [
+        "Accept 'No journal files' as success",
+        "Skip journal content validation",
+        "Accept any journalctl invocation"
+    ],
+    consequence = "Cannot debug boot issues: No journal files were found"
+)]
 #[test]
 #[ignore]
 fn test_boot_journalctl_works() {
@@ -268,6 +313,17 @@ fn test_boot_journalctl_works() {
     );
 }
 
+#[cheat_aware(
+    protects = "User can see and interact with disks",
+    severity = "HIGH",
+    ease = "MEDIUM",
+    cheats = [
+        "Accept any lsblk output",
+        "Skip disk device validation",
+        "Provide fake disk in test"
+    ],
+    consequence = "lsblk shows no devices, disk operations impossible"
+)]
 #[test]
 #[ignore]
 fn test_boot_disk_visible() {
@@ -285,6 +341,17 @@ fn test_boot_disk_visible() {
     );
 }
 
+#[cheat_aware(
+    protects = "D-Bus is running for service communication",
+    severity = "HIGH",
+    ease = "MEDIUM",
+    cheats = [
+        "Accept partial busctl output",
+        "Skip actual D-Bus connectivity test",
+        "Accept dbus process existing as success"
+    ],
+    consequence = "D-Bus unavailable: systemctl, timedatectl broken"
+)]
 #[test]
 #[ignore]
 fn test_boot_dbus_running() {
@@ -303,6 +370,17 @@ fn test_boot_dbus_running() {
     );
 }
 
+#[cheat_aware(
+    protects = "System has a hostname set",
+    severity = "LOW",
+    ease = "EASY",
+    cheats = [
+        "Accept empty output",
+        "Accept localhost as valid",
+        "Skip hostname content validation"
+    ],
+    consequence = "Hostname shows as (none) or localhost"
+)]
 #[test]
 #[ignore]
 fn test_boot_hostname() {
@@ -319,6 +397,17 @@ fn test_boot_hostname() {
     );
 }
 
+#[cheat_aware(
+    protects = "Linux kernel is running",
+    severity = "CRITICAL",
+    ease = "HARD",
+    cheats = [
+        "This test is hard to cheat - if kernel isn't running, nothing works",
+        "Accept any output containing Linux",
+        "Skip kernel version validation"
+    ],
+    consequence = "Not a Linux system (impossible state)"
+)]
 #[test]
 #[ignore]
 fn test_boot_uname() {
@@ -336,6 +425,17 @@ fn test_boot_uname() {
     );
 }
 
+#[cheat_aware(
+    protects = "Shell environment variables are configured",
+    severity = "MEDIUM",
+    ease = "EASY",
+    cheats = [
+        "Accept env running without checking PATH",
+        "Skip critical variable validation",
+        "Accept minimal environment"
+    ],
+    consequence = "Commands not found: PATH not set correctly"
+)]
 #[test]
 #[ignore]
 fn test_boot_env_vars() {
@@ -353,6 +453,17 @@ fn test_boot_env_vars() {
     );
 }
 
+#[cheat_aware(
+    protects = "Root filesystem is writable",
+    severity = "CRITICAL",
+    ease = "MEDIUM",
+    cheats = [
+        "Test write to tmpfs only",
+        "Skip persistent storage test",
+        "Accept /tmp write as full fs write"
+    ],
+    consequence = "Read-only file system errors for any modification"
+)]
 #[test]
 #[ignore]
 fn test_boot_filesystem_writable() {
@@ -369,6 +480,17 @@ fn test_boot_filesystem_writable() {
     );
 }
 
+#[cheat_aware(
+    protects = "/proc filesystem provides process info",
+    severity = "CRITICAL",
+    ease = "HARD",
+    cheats = [
+        "This is critical - without /proc most things break",
+        "Accept any /proc access",
+        "Skip content validation"
+    ],
+    consequence = "ps, top, etc. fail: /proc not mounted"
+)]
 #[test]
 #[ignore]
 fn test_boot_proc_mounted() {
@@ -385,6 +507,17 @@ fn test_boot_proc_mounted() {
     );
 }
 
+#[cheat_aware(
+    protects = "/sys filesystem provides kernel/device info",
+    severity = "HIGH",
+    ease = "MEDIUM",
+    cheats = [
+        "Accept /sys existing without content",
+        "Skip device class validation",
+        "Accept partial sysfs"
+    ],
+    consequence = "Device management broken: /sys not mounted"
+)]
 #[test]
 #[ignore]
 fn test_boot_sys_mounted() {
@@ -402,6 +535,17 @@ fn test_boot_sys_mounted() {
     );
 }
 
+#[cheat_aware(
+    protects = "/dev has basic device nodes",
+    severity = "CRITICAL",
+    ease = "HARD",
+    cheats = [
+        "Accept /dev existing without checking nodes",
+        "Skip null/zero/tty validation",
+        "Accept udev not running"
+    ],
+    consequence = "No device nodes: cannot access disks, terminals"
+)]
 #[test]
 #[ignore]
 fn test_boot_dev_populated() {
@@ -419,6 +563,17 @@ fn test_boot_dev_populated() {
     );
 }
 
+#[cheat_aware(
+    protects = "User is logged in as root",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Accept any user as valid",
+        "Skip uid=0 verification",
+        "Accept root in output without id check"
+    ],
+    consequence = "Permission denied for privileged operations"
+)]
 #[test]
 #[ignore]
 fn test_boot_root_user() {

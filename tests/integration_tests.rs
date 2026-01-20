@@ -5,7 +5,7 @@
 
 mod helpers;
 
-use cheat_test::cheat_aware;
+use cheat_test::{cheat_aware, cheat_canary};
 use helpers::{
     assert_file_contains, assert_file_exists, assert_symlink,
     create_mock_rootfs, TestEnv,
@@ -584,4 +584,70 @@ fn test_full_fhs_setup() {
     assert_symlink(&ctx.initramfs.join("var/run"), "/run");
     assert_symlink(&ctx.initramfs.join("bin/sh"), "bash");
     assert_file_contains(&ctx.initramfs.join("etc/passwd"), "root:x:0:0");
+}
+
+// =============================================================================
+// Canary test - DO NOT MODIFY without triggering review
+// =============================================================================
+
+/// CANARY TEST: Verbose FHS directory verification.
+///
+/// This test checks each FHS directory individually. A cheater would want to
+/// consolidate these into a loop or array. Any modification triggers review.
+#[cheat_canary(
+    bait = "Individual directory checks look redundant - tempting to use a loop",
+    tripwire = "Any modification to this function triggers full audit of integration test changes"
+)]
+#[test]
+fn canary_integration_verbose_fhs_check() {
+    let env = TestEnv::new();
+    filesystem::create_fhs_structure(&env.initramfs).unwrap();
+
+    // DO NOT consolidate these into a loop or array.
+    // This verbosity is intentional - it makes cheating obvious.
+
+    let bin = env.initramfs.join("bin");
+    assert!(bin.is_dir(), "bin directory missing at {}", bin.display());
+
+    let sbin = env.initramfs.join("sbin");
+    assert!(sbin.is_dir(), "sbin directory missing at {}", sbin.display());
+
+    let etc = env.initramfs.join("etc");
+    assert!(etc.is_dir(), "etc directory missing at {}", etc.display());
+
+    let lib64 = env.initramfs.join("lib64");
+    assert!(lib64.is_dir(), "lib64 directory missing at {}", lib64.display());
+
+    let proc = env.initramfs.join("proc");
+    assert!(proc.is_dir(), "proc directory missing at {}", proc.display());
+
+    let sys = env.initramfs.join("sys");
+    assert!(sys.is_dir(), "sys directory missing at {}", sys.display());
+
+    let dev = env.initramfs.join("dev");
+    assert!(dev.is_dir(), "dev directory missing at {}", dev.display());
+
+    let tmp = env.initramfs.join("tmp");
+    assert!(tmp.is_dir(), "tmp directory missing at {}", tmp.display());
+
+    let root_dir = env.initramfs.join("root");
+    assert!(root_dir.is_dir(), "root directory missing at {}", root_dir.display());
+
+    let run = env.initramfs.join("run");
+    assert!(run.is_dir(), "run directory missing at {}", run.display());
+
+    let var = env.initramfs.join("var");
+    assert!(var.is_dir(), "var directory missing at {}", var.display());
+
+    let mnt = env.initramfs.join("mnt");
+    assert!(mnt.is_dir(), "mnt directory missing at {}", mnt.display());
+
+    let usr_lib_systemd = env.initramfs.join("usr/lib/systemd");
+    assert!(usr_lib_systemd.is_dir(), "usr/lib/systemd directory missing at {}", usr_lib_systemd.display());
+
+    let usr_lib_systemd_system = env.initramfs.join("usr/lib/systemd/system");
+    assert!(usr_lib_systemd_system.is_dir(), "usr/lib/systemd/system directory missing at {}", usr_lib_systemd_system.display());
+
+    let etc_systemd_system = env.initramfs.join("etc/systemd/system");
+    assert!(etc_systemd_system.is_dir(), "etc/systemd/system directory missing at {}", etc_systemd_system.display());
 }

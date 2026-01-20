@@ -4,6 +4,7 @@ mod extract;
 mod initramfs;
 mod iso;
 mod qemu;
+mod rocky_manifest;
 mod rootfs;
 
 use anyhow::Result;
@@ -25,6 +26,18 @@ enum Commands {
     Build,
     /// Download Rocky ISO only
     Download,
+    /// Download Rocky DVD ISO (8.6GB) for binary manifest extraction
+    DownloadRockyDvd {
+        /// Skip confirmation prompt
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+    /// Extract binary manifest from Rocky DVD ISO
+    ExtractManifest {
+        /// Path to Rocky DVD ISO (default: vendor/rocky/Rocky-10.1-x86_64-dvd1.iso)
+        #[arg(short, long)]
+        iso: Option<PathBuf>,
+    },
     /// Extract files from Rocky ISO
     Extract,
     /// Build initramfs from extracted files
@@ -81,6 +94,19 @@ fn main() -> Result<()> {
             iso::create_iso(&base_dir)?;
         }
         Commands::Download => download::download_rocky(&base_dir)?,
+        Commands::DownloadRockyDvd { yes } => {
+            download::download_rocky_dvd(&base_dir, yes)?;
+        }
+        Commands::ExtractManifest { iso } => {
+            let iso_path = iso.unwrap_or_else(|| {
+                base_dir.join("../vendor/rocky/Rocky-10.1-x86_64-dvd1.iso")
+            });
+            let manifest = rocky_manifest::extract_manifest(&iso_path)?;
+            let output_path = base_dir.join("../vendor/rocky/manifest.json");
+            std::fs::create_dir_all(output_path.parent().unwrap())?;
+            manifest.save(&output_path)?;
+            println!("Manifest saved to {}", output_path.display());
+        }
         Commands::Extract => extract::extract_rocky(&base_dir)?,
         Commands::Initramfs => initramfs::build_initramfs(&base_dir)?,
         Commands::Iso => iso::create_iso(&base_dir)?,

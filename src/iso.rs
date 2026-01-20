@@ -46,6 +46,18 @@ pub fn create_iso(base_dir: &Path) -> Result<()> {
     fs::copy(kernel_path, iso_root.join("boot/vmlinuz"))?;
     fs::copy(&initramfs, iso_root.join("boot/initramfs.img"))?;
 
+    // Copy base tarball if it exists
+    let base_tarball = output_dir.join("levitateos-base.tar.xz");
+
+    if base_tarball.exists() {
+        println!("Copying base tarball from: {}", base_tarball.display());
+        fs::copy(&base_tarball, iso_root.join("levitateos-base.tar.xz"))?;
+        println!("  Copied to ISO root as levitateos-base.tar.xz");
+    } else {
+        println!("Warning: base tarball not found. Installation will not work.");
+        println!("  Build it with: cargo run -- rootfs");
+    }
+
     // === BIOS Boot Setup (isolinux) ===
     fs::copy(
         syslinux_dir.join("bios/core/isolinux.bin"),

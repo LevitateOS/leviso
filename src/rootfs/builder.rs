@@ -1,0 +1,362 @@
+//! Rootfs builder implementation.
+//!
+//! Builds a complete rootfs tarball for LevitateOS installation.
+//!
+//! # WARNING: FALSE POSITIVES KILL PROJECTS
+//!
+//! The verification in this module MUST check what users actually need.
+//! DO NOT:
+//! - Mark missing binaries as "optional" just because they're missing
+//! - Create tests that only check what exists
+//! - Let builds succeed when critical components are absent
+//! - Use warnings instead of errors for missing requirements
+//!
+//! A passing test means NOTHING if it doesn't test what matters.
+//! See: .teams/KNOWLEDGE_false-positives-testing.md
+//!
+//! Remember: Developer sees "✓ 83/83 passed", user sees "bash: sudo: command not found"
+
+use anyhow::{Context, Result};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use super::context::BuildContext;
+use super::parts::{binaries, etc, filesystem, pam, recipe, systemd};
+
+/// Builder for base system tarballs.
+pub struct RootfsBuilder {
+    /// Source directory containing Rocky rootfs
+    source_dir: PathBuf,
+    /// Output directory for the tarball
+    output_dir: PathBuf,
+    /// Optional path to recipe binary
+    recipe_binary: Option<PathBuf>,
+}
+
+impl RootfsBuilder {
+    pub fn new(source_dir: impl AsRef<Path>, output_dir: impl AsRef<Path>) -> Self {
+        Self {
+            source_dir: source_dir.as_ref().to_path_buf(),
+            output_dir: output_dir.as_ref().to_path_buf(),
+            recipe_binary: None,
+        }
+    }
+
+    /// Set the path to the recipe binary.
+    pub fn with_recipe(mut self, recipe_binary: impl AsRef<Path>) -> Self {
+        self.recipe_binary = Some(recipe_binary.as_ref().to_path_buf());
+        self
+    }
+
+    /// Build the base system tarball.
+    pub fn build(&self) -> Result<PathBuf> {
+        println!("Building base system tarball...");
+        println!("  Source: {}", self.source_dir.display());
+        println!("  Output: {}", self.output_dir.display());
+
+        // Validate source directory
+        if !self.source_dir.exists() {
+            anyhow::bail!(
+                "Source directory does not exist: {}",
+                self.source_dir.display()
+            );
+        }
+
+        // Create output directory
+        fs::create_dir_all(&self.output_dir)?;
+
+        // Create staging directory
+        let staging_dir = self.output_dir.join("staging");
+        if staging_dir.exists() {
+            fs::remove_dir_all(&staging_dir)?;
+        }
+        fs::create_dir_all(&staging_dir)?;
+
+        // Create build context
+        let mut ctx = BuildContext::new(
+            self.source_dir.clone(),
+            staging_dir.clone(),
+            self.output_dir.clone(),
+        );
+
+        if let Some(ref recipe_path) = self.recipe_binary {
+            ctx = ctx.with_recipe(recipe_path.clone());
+        }
+
+        // Build the rootfs
+        self.build_rootfs(&ctx)?;
+
+        // Create the tarball
+        let tarball_path = self.create_tarball(&staging_dir)?;
+
+        // Clean up staging directory
+        println!("Cleaning up staging directory...");
+        fs::remove_dir_all(&staging_dir)?;
+
+        println!("Base tarball created: {}", tarball_path.display());
+        Ok(tarball_path)
+    }
+
+    /// Build the complete rootfs in staging directory.
+    fn build_rootfs(&self, ctx: &BuildContext) -> Result<()> {
+        println!("\n=== Building rootfs ===\n");
+
+        // 1. Create FHS directory structure
+        filesystem::create_fhs_structure(&ctx.staging)?;
+
+        // 2. Create symlinks (must be after dirs but before binaries)
+        filesystem::create_symlinks(&ctx.staging)?;
+
+        // 3. Copy shell (bash) first
+        binaries::copy_shell(ctx)?;
+
+        // 4. Copy coreutils binaries
+        binaries::copy_coreutils(ctx)?;
+
+        // 5. Copy sbin utilities
+        binaries::copy_sbin_utils(ctx)?;
+
+        // 6. Copy systemd binaries and setup
+        binaries::copy_systemd_binaries(ctx)?;
+        binaries::copy_login_binaries(ctx)?;
+
+        // 7. Copy systemd units
+        systemd::copy_systemd_units(ctx)?;
+        systemd::copy_dbus_symlinks(ctx)?;
+
+        // 8. Set up systemd services
+        systemd::setup_getty(ctx)?;
+        systemd::setup_serial_console(ctx)?;
+        systemd::setup_networkd(ctx)?;
+        systemd::set_default_target(ctx)?;
+        systemd::setup_dbus(ctx)?;
+
+        // 9. Copy udev rules and tmpfiles
+        systemd::copy_udev_rules(ctx)?;
+        systemd::copy_tmpfiles(ctx)?;
+        systemd::copy_sysctl(ctx)?;
+
+        // 10. Create /etc configuration files
+        etc::create_etc_files(ctx)?;
+        etc::copy_timezone_data(ctx)?;
+        etc::copy_locales(ctx)?;
+
+        // 11. Set up PAM
+        pam::setup_pam(ctx)?;
+        pam::copy_pam_modules(ctx)?;
+        pam::create_security_config(ctx)?;
+
+        // 12. Copy recipe package manager
+        recipe::copy_recipe(ctx)?;
+        recipe::setup_recipe_config(ctx)?;
+
+        println!("\n=== Rootfs build complete ===\n");
+        Ok(())
+    }
+
+    /// Create the tarball from the staging directory.
+    fn create_tarball(&self, staging: &Path) -> Result<PathBuf> {
+        println!("Creating tarball...");
+
+        let tarball_path = self.output_dir.join("levitateos-base.tar.xz");
+
+        // Use tar command for better compatibility and performance
+        let status = Command::new("tar")
+            .args([
+                "-cJf",
+                tarball_path.to_str().unwrap(),
+                "-C",
+                staging.to_str().unwrap(),
+                ".",
+            ])
+            .status()
+            .context("Failed to run tar command")?;
+
+        if !status.success() {
+            anyhow::bail!("tar command failed with status: {}", status);
+        }
+
+        // Print tarball size
+        let metadata = fs::metadata(&tarball_path)?;
+        let size_mb = metadata.len() as f64 / 1024.0 / 1024.0;
+        println!("  Tarball size: {:.2} MB", size_mb);
+
+        Ok(tarball_path)
+    }
+}
+
+/// List contents of an existing tarball.
+pub fn list_tarball(path: &Path) -> Result<()> {
+    println!("Contents of {}:", path.display());
+
+    let status = Command::new("tar")
+        .args(["-tJf", path.to_str().unwrap()])
+        .status()
+        .context("Failed to run tar command")?;
+
+    if !status.success() {
+        anyhow::bail!("tar command failed with status: {}", status);
+    }
+
+    Ok(())
+}
+
+/// Verify tarball contents - checks ALL critical components.
+///
+/// # ⚠️ WARNING: DO NOT WEAKEN THIS VERIFICATION ⚠️
+///
+/// This function exists to catch broken builds BEFORE they ship.
+///
+/// If this verification fails, the CORRECT response is:
+/// 1. Fix the build to include the missing files
+/// 2. NOT: Remove the check for the missing file
+/// 3. NOT: Move the file to an "optional" category
+/// 4. NOT: Add an exception "just for now"
+///
+/// A verification that passes on broken builds is WORSE than no verification.
+/// It gives false confidence and lets broken products ship.
+///
+/// Remember: "✓ 83/83 passed" means NOTHING if those 83 don't include
+/// what users actually need.
+///
+/// Read: .teams/KNOWLEDGE_false-positives-testing.md
+pub fn verify_tarball(path: &Path) -> Result<()> {
+    println!("Verifying {}...\n", path.display());
+
+    let output = Command::new("tar")
+        .args(["-tJf", path.to_str().unwrap()])
+        .output()
+        .context("Failed to run tar command")?;
+
+    if !output.status.success() {
+        anyhow::bail!("tar command failed");
+    }
+
+    let contents = String::from_utf8_lossy(&output.stdout);
+    let mut missing = Vec::new();
+    let mut checked = 0;
+
+    // Critical binaries - SAME list as in binaries.rs
+    // ⚠️ DO NOT REMOVE ITEMS FROM THIS LIST JUST BECAUSE THEY'RE MISSING ⚠️
+    // If something is missing, FIX THE BUILD, don't weaken the test
+    let critical_coreutils = [
+        "ls", "cat", "cp", "mv", "rm", "mkdir", "rmdir", "touch",
+        "chmod", "chown", "ln", "readlink",
+        "echo", "head", "tail", "wc", "sort", "cut", "tr", "tee",
+        "grep", "find", "xargs",
+        "pwd", "uname", "date", "env", "id", "hostname",
+        "sleep", "kill", "ps",
+        "gzip", "gunzip", "xz", "unxz", "tar",
+        "true", "false", "expr",
+        "sed",
+        "df", "du", "sync",
+        "systemctl", "journalctl",
+    ];
+
+    let critical_sbin = [
+        "mount", "umount", "fsck", "blkid", "lsblk",
+        "reboot", "shutdown", "poweroff",
+        "insmod", "rmmod", "modprobe", "lsmod",
+        "chroot", "ldconfig",
+        "useradd", "groupadd", "chpasswd",
+        "ip", "sysctl", "losetup",
+    ];
+
+    // Check critical coreutils
+    println!("Checking critical coreutils...");
+    for bin in critical_coreutils {
+        let path = format!("./usr/bin/{}", bin);
+        checked += 1;
+        if !contents.contains(&path) {
+            missing.push(path);
+        }
+    }
+
+    // Check critical sbin
+    println!("Checking critical sbin utilities...");
+    for bin in critical_sbin {
+        let path = format!("./usr/sbin/{}", bin);
+        checked += 1;
+        if !contents.contains(&path) {
+            missing.push(path);
+        }
+    }
+
+    // Check shell
+    println!("Checking shell...");
+    for path in ["./usr/bin/bash", "./usr/bin/sh"] {
+        checked += 1;
+        if !contents.contains(path) {
+            missing.push(path.to_string());
+        }
+    }
+
+    // Check systemd
+    println!("Checking systemd...");
+    let systemd_critical = [
+        "./usr/lib/systemd/systemd",
+        "./usr/sbin/init",
+        "./etc/systemd/system/default.target",
+    ];
+    for path in systemd_critical {
+        checked += 1;
+        if !contents.contains(path) {
+            missing.push(path.to_string());
+        }
+    }
+
+    // Check /etc essentials
+    println!("Checking /etc configuration...");
+    let etc_critical = [
+        "./etc/passwd",
+        "./etc/shadow",
+        "./etc/group",
+        "./etc/os-release",
+        "./etc/fstab",
+        "./etc/hosts",
+    ];
+    for path in etc_critical {
+        checked += 1;
+        if !contents.contains(path) {
+            missing.push(path.to_string());
+        }
+    }
+
+    // Check PAM
+    println!("Checking PAM...");
+    let pam_critical = [
+        "./etc/pam.d/system-auth",
+        "./etc/pam.d/login",
+        "./usr/lib64/security/pam_unix.so",
+    ];
+    for path in pam_critical {
+        checked += 1;
+        if !contents.contains(path) {
+            missing.push(path.to_string());
+        }
+    }
+
+    // Check login binaries
+    println!("Checking login binaries...");
+    for bin in ["agetty", "login", "nologin"] {
+        let path = format!("./usr/sbin/{}", bin);
+        checked += 1;
+        if !contents.contains(&path) {
+            missing.push(path);
+        }
+    }
+
+    println!();
+    if missing.is_empty() {
+        println!("✓ Verified {}/{} critical files present", checked, checked);
+        Ok(())
+    } else {
+        println!("✗ VERIFICATION FAILED");
+        println!("  Missing {}/{} critical files:", missing.len(), checked);
+        for file in &missing {
+            println!("    - {}", file);
+        }
+        anyhow::bail!("Tarball is INCOMPLETE - {} critical files missing", missing.len());
+    }
+}

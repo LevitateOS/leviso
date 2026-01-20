@@ -6,16 +6,16 @@
 //! 3. Configuring D-Bus, PAM, and Chrony
 //! 4. Building a cpio archive
 
-mod binary;
-mod chrony;
-mod context;
-mod dbus;
-mod filesystem;
-mod modules;
-mod pam;
-mod rootfs;
-mod systemd;
-mod users;
+pub mod binary;
+pub mod chrony;
+pub mod context;
+pub mod dbus;
+pub mod filesystem;
+pub mod modules;
+pub mod pam;
+pub mod rootfs;
+pub mod systemd;
+pub mod users;
 
 use anyhow::{bail, Context, Result};
 use std::fs;

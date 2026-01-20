@@ -1,0 +1,455 @@
+//! Validation tests for built initramfs.
+//!
+//! These tests verify the contents of a built initramfs. They require running:
+//!   cargo run -- initramfs
+//! before execution.
+//!
+//! Run these tests with:
+//!   cargo test -- --ignored validation
+
+mod helpers;
+
+use helpers::{assert_file_contains, assert_file_exists, assert_symlink, initramfs_is_built, real_initramfs_root};
+use std::fs;
+use std::path::Path;
+
+/// Skip test if initramfs is not built.
+fn require_initramfs() -> std::path::PathBuf {
+    let root = real_initramfs_root();
+    if !initramfs_is_built() {
+        panic!(
+            "Initramfs not built. Run 'cargo run -- initramfs' first.\nExpected at: {}",
+            root.display()
+        );
+    }
+    root
+}
+
+// =============================================================================
+// Essential binaries tests
+// =============================================================================
+
+#[test]
+#[ignore]
+fn test_validation_essential_binaries_present() {
+    let root = require_initramfs();
+
+    let binaries = ["bash", "ls", "cat", "mount", "agetty", "login"];
+
+    for binary in binaries {
+        let bin_path = root.join("bin").join(binary);
+        assert!(
+            bin_path.exists(),
+            "Essential binary missing: {}",
+            bin_path.display()
+        );
+    }
+}
+
+#[test]
+#[ignore]
+fn test_validation_systemd_binary_present() {
+    let root = require_initramfs();
+
+    let systemd_path = root.join("usr/lib/systemd/systemd");
+    assert!(
+        systemd_path.exists(),
+        "Systemd binary missing: {}",
+        systemd_path.display()
+    );
+}
+
+#[test]
+#[ignore]
+fn test_validation_init_symlink_correct() {
+    let root = require_initramfs();
+
+    let init_link = root.join("sbin/init");
+    assert_symlink(&init_link, "/usr/lib/systemd/systemd");
+}
+
+#[test]
+#[ignore]
+fn test_validation_sh_symlink_correct() {
+    let root = require_initramfs();
+
+    let sh_link = root.join("bin/sh");
+    assert_symlink(&sh_link, "bash");
+}
+
+// =============================================================================
+// Library tests
+// =============================================================================
+
+#[test]
+#[ignore]
+fn test_validation_lib64_has_libc() {
+    let root = require_initramfs();
+
+    let lib64 = root.join("lib64");
+    assert!(lib64.is_dir(), "lib64 directory missing");
+
+    // Check for libc (may have version suffix)
+    let has_libc = fs::read_dir(&lib64)
+        .expect("Failed to read lib64")
+        .filter_map(|e| e.ok())
+        .any(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            name.starts_with("libc.so")
+        });
+
+    assert!(has_libc, "libc.so not found in lib64");
+}
+
+#[test]
+#[ignore]
+fn test_validation_ld_linux_present() {
+    let root = require_initramfs();
+
+    let ld_linux = root.join("lib64/ld-linux-x86-64.so.2");
+    assert!(
+        ld_linux.exists(),
+        "Dynamic linker missing: {}",
+        ld_linux.display()
+    );
+}
+
+// =============================================================================
+// User/Group tests
+// =============================================================================
+
+#[test]
+#[ignore]
+fn test_validation_passwd_group_valid() {
+    let root = require_initramfs();
+
+    let passwd = root.join("etc/passwd");
+    let group = root.join("etc/group");
+
+    assert_file_exists(&passwd);
+    assert_file_exists(&group);
+
+    // Check for root user
+    assert_file_contains(&passwd, "root:x:0:0");
+
+    // Check for dbus user (required for systemctl, timedatectl)
+    assert_file_contains(&passwd, "dbus:");
+
+    // Check for root group
+    assert_file_contains(&group, "root:x:0:");
+}
+
+#[test]
+#[ignore]
+fn test_validation_shadow_exists() {
+    let root = require_initramfs();
+
+    let shadow = root.join("etc/shadow");
+    assert_file_exists(&shadow);
+    assert_file_contains(&shadow, "root:");
+}
+
+// =============================================================================
+// Systemd unit tests
+// =============================================================================
+
+#[test]
+#[ignore]
+fn test_validation_systemd_units_present() {
+    let root = require_initramfs();
+
+    let units_dir = root.join("usr/lib/systemd/system");
+    assert!(units_dir.is_dir(), "Systemd units directory missing");
+
+    let required_units = [
+        "basic.target",
+        "multi-user.target",
+        "getty.target",
+        "getty@.service",
+        "dbus.socket",
+    ];
+
+    for unit in required_units {
+        let unit_path = units_dir.join(unit);
+        assert!(
+            unit_path.exists(),
+            "Required systemd unit missing: {}",
+            unit_path.display()
+        );
+    }
+}
+
+#[test]
+#[ignore]
+fn test_validation_getty_autologin_configured() {
+    let root = require_initramfs();
+
+    let autologin_conf = root.join("etc/systemd/system/getty@tty1.service.d/autologin.conf");
+    assert_file_exists(&autologin_conf);
+    assert_file_contains(&autologin_conf, "--autologin root");
+}
+
+#[test]
+#[ignore]
+fn test_validation_serial_console_service() {
+    let root = require_initramfs();
+
+    let serial_console = root.join("etc/systemd/system/serial-console.service");
+    assert_file_exists(&serial_console);
+    assert_file_contains(&serial_console, "ttyS0");
+}
+
+// =============================================================================
+// PAM tests
+// =============================================================================
+
+#[test]
+#[ignore]
+fn test_validation_pam_modules_present() {
+    let root = require_initramfs();
+
+    let security_dir = root.join("lib64/security");
+    assert!(security_dir.is_dir(), "PAM security directory missing");
+
+    let required_modules = ["pam_permit.so", "pam_unix.so"];
+
+    for module in required_modules {
+        let module_path = security_dir.join(module);
+        assert!(
+            module_path.exists(),
+            "Required PAM module missing: {}",
+            module_path.display()
+        );
+    }
+}
+
+#[test]
+#[ignore]
+fn test_validation_pam_config_exists() {
+    let root = require_initramfs();
+
+    let pam_d = root.join("etc/pam.d");
+    assert!(pam_d.is_dir(), "PAM config directory missing");
+
+    let login_conf = pam_d.join("login");
+    assert_file_exists(&login_conf);
+}
+
+// =============================================================================
+// OS identification tests
+// =============================================================================
+
+#[test]
+#[ignore]
+fn test_validation_os_release_correct() {
+    let root = require_initramfs();
+
+    let os_release = root.join("etc/os-release");
+    assert_file_exists(&os_release);
+    assert_file_contains(&os_release, "NAME=\"LevitateOS\"");
+    assert_file_contains(&os_release, "ID=levitateos");
+}
+
+#[test]
+#[ignore]
+fn test_validation_machine_id_exists() {
+    let root = require_initramfs();
+
+    let machine_id = root.join("etc/machine-id");
+    assert_file_exists(&machine_id);
+}
+
+// =============================================================================
+// D-Bus tests
+// =============================================================================
+
+#[test]
+#[ignore]
+fn test_validation_dbus_binaries_present() {
+    let root = require_initramfs();
+
+    let dbus_binaries = ["busctl", "dbus-send"];
+
+    for binary in dbus_binaries {
+        let bin_path = root.join("usr/bin").join(binary);
+        assert!(
+            bin_path.exists(),
+            "D-Bus binary missing: {}",
+            bin_path.display()
+        );
+    }
+}
+
+#[test]
+#[ignore]
+fn test_validation_dbus_socket_enabled() {
+    let root = require_initramfs();
+
+    let dbus_socket_link = root.join("etc/systemd/system/sockets.target.wants/dbus.socket");
+    assert!(
+        dbus_socket_link.exists() || dbus_socket_link.is_symlink(),
+        "D-Bus socket not enabled"
+    );
+}
+
+// =============================================================================
+// FHS structure tests
+// =============================================================================
+
+#[test]
+#[ignore]
+fn test_validation_fhs_structure() {
+    let root = require_initramfs();
+
+    let required_dirs = [
+        "bin", "sbin", "lib64", "etc", "proc", "sys", "dev", "tmp", "root", "run",
+        "var", "mnt", "usr/bin", "usr/lib/systemd",
+    ];
+
+    for dir in required_dirs {
+        let dir_path = root.join(dir);
+        assert!(
+            dir_path.is_dir(),
+            "FHS directory missing: {}",
+            dir_path.display()
+        );
+    }
+}
+
+#[test]
+#[ignore]
+fn test_validation_var_run_symlink() {
+    let root = require_initramfs();
+
+    let var_run = root.join("var/run");
+    assert_symlink(&var_run, "/run");
+}
+
+// =============================================================================
+// Shell configuration tests
+// =============================================================================
+
+#[test]
+#[ignore]
+fn test_validation_shell_config() {
+    let root = require_initramfs();
+
+    let profile = root.join("etc/profile");
+    assert_file_exists(&profile);
+    assert_file_contains(&profile, "PATH");
+
+    let bashrc = root.join("root/.bashrc");
+    assert_file_exists(&bashrc);
+}
+
+#[test]
+#[ignore]
+fn test_validation_shells_file() {
+    let root = require_initramfs();
+
+    let shells = root.join("etc/shells");
+    assert_file_exists(&shells);
+    assert_file_contains(&shells, "/bin/bash");
+}
+
+#[test]
+#[ignore]
+fn test_validation_securetty() {
+    let root = require_initramfs();
+
+    let securetty = root.join("etc/securetty");
+    assert_file_exists(&securetty);
+    assert_file_contains(&securetty, "tty1");
+    assert_file_contains(&securetty, "ttyS0");
+}
+
+// =============================================================================
+// Symlink integrity tests
+// =============================================================================
+
+#[test]
+#[ignore]
+fn test_validation_no_broken_symlinks() {
+    let root = require_initramfs();
+
+    fn check_symlinks(dir: &Path, errors: &mut Vec<String>) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if path.is_symlink() {
+                    // For absolute symlinks, we need to resolve within the initramfs root
+                    if let Ok(target) = fs::read_link(&path) {
+                        if target.is_absolute() {
+                            // Skip checking absolute symlinks that point outside
+                            // They're designed to work at runtime, not build time
+                            continue;
+                        }
+                        // For relative symlinks, check if target exists
+                        let resolved = path.parent().unwrap().join(&target);
+                        if !resolved.exists() {
+                            errors.push(format!(
+                                "{} -> {} (broken)",
+                                path.display(),
+                                target.display()
+                            ));
+                        }
+                    }
+                } else if path.is_dir() {
+                    check_symlinks(&path, errors);
+                }
+            }
+        }
+    }
+
+    let mut errors = Vec::new();
+    check_symlinks(&root, &mut errors);
+
+    if !errors.is_empty() {
+        panic!("Found broken relative symlinks:\n{}", errors.join("\n"));
+    }
+}
+
+// =============================================================================
+// Systemd helper binaries tests
+// =============================================================================
+
+#[test]
+#[ignore]
+fn test_validation_systemd_helper_binaries() {
+    let root = require_initramfs();
+
+    let systemd_dir = root.join("usr/lib/systemd");
+
+    // These are required for systemd 255+
+    let required_helpers = ["systemd-executor", "systemd-journald"];
+
+    for helper in required_helpers {
+        let helper_path = systemd_dir.join(helper);
+        assert!(
+            helper_path.exists(),
+            "Required systemd helper missing: {}",
+            helper_path.display()
+        );
+    }
+}
+
+// =============================================================================
+// Systemd utility tests
+// =============================================================================
+
+#[test]
+#[ignore]
+fn test_validation_systemd_utilities_present() {
+    let root = require_initramfs();
+
+    let utilities = ["systemctl", "journalctl", "timedatectl", "hostnamectl"];
+
+    for util in utilities {
+        let util_path = root.join("bin").join(util);
+        assert!(
+            util_path.exists(),
+            "Systemd utility missing: {}",
+            util_path.display()
+        );
+    }
+}

@@ -7,3 +7,6 @@ description = "Minimal bootable Linux ISO builder"
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"

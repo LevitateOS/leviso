@@ -35,13 +35,31 @@ if [ -d /sys/firmware/efi/efivars ]; then
     /bin/mount -t efivarfs efivarfs /sys/firmware/efi/efivars
 fi
 
-# Load essential kernel modules (for disk drivers)
+# Load essential kernel modules
 echo "[init] Loading kernel modules..."
 KVER=$(ls /lib/modules/ 2>/dev/null | head -1)
-if [ -n "$KVER" ] && [ -f "/lib/modules/$KVER/virtio_blk.ko.xz" ]; then
-    /bin/xz -dk "/lib/modules/$KVER/virtio_blk.ko.xz" 2>/dev/null
-    /bin/insmod "/lib/modules/$KVER/virtio_blk.ko" 2>/dev/null && \
-        echo "[init] Loaded virtio_blk" || echo "[init] virtio_blk load failed (may be built-in)"
+if [ -n "$KVER" ]; then
+    # Function to load a module if it exists
+    load_module() {
+        local mod="$1"
+        if [ -f "/lib/modules/$KVER/${mod}.ko.xz" ]; then
+            /bin/xz -dk "/lib/modules/$KVER/${mod}.ko.xz" 2>/dev/null
+            /bin/insmod "/lib/modules/$KVER/${mod}.ko" 2>/dev/null && \
+                echo "[init] Loaded $mod" || echo "[init] $mod load failed (may be built-in)"
+        fi
+    }
+
+    # Block device drivers
+    load_module virtio_blk
+
+    # ext4 filesystem and dependencies (order matters)
+    load_module mbcache
+    load_module jbd2
+    load_module ext4
+
+    # FAT/vfat filesystem for EFI partition
+    load_module fat
+    load_module vfat
 fi
 
 # Create required directories for systemd

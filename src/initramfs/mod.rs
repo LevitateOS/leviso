@@ -35,8 +35,16 @@ const COREUTILS: &[&str] = &[
     "date", "loadkeys",
     // Compression utilities
     "gzip", "gunzip", "xz",
+    // Archive utilities (for installation)
+    "tar",
+    // Text processing (for installation config editing)
+    "sed",
     // Systemd utilities
     "timedatectl", "systemctl", "journalctl", "hostnamectl", "localectl",
+    // Bootloader installation
+    "bootctl",
+    // Locale generation
+    "localedef",
     // Console
     "agetty", "login",
 ];
@@ -46,8 +54,12 @@ const SBIN_UTILS: &[&str] = &[
     "mount", "umount", "hostname", "insmod",
     // Phase 2: disk utilities
     "blkid", "fdisk", "parted", "wipefs", "mkfs.ext4", "mkfs.fat",
+    // Non-interactive disk partitioning (for installation)
+    "sfdisk",
     // Phase 3: system config
     "chroot", "hwclock",
+    // User management (for installation)
+    "useradd", "groupadd", "chpasswd",
     // NTP
     "chronyd",
 ];

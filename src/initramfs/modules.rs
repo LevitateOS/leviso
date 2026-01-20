@@ -6,9 +6,18 @@ use std::path::Path;
 
 use super::context::BuildContext;
 
-/// Essential kernel modules for disk access.
+/// Essential kernel modules for disk access and filesystems.
+/// Order matters: dependencies must come before modules that need them.
 const ESSENTIAL_MODULES: &[&str] = &[
+    // Block device driver
     "kernel/drivers/block/virtio_blk.ko.xz",
+    // ext4 filesystem and dependencies
+    "kernel/fs/mbcache.ko.xz",
+    "kernel/fs/jbd2/jbd2.ko.xz",
+    "kernel/fs/ext4/ext4.ko.xz",
+    // FAT/vfat filesystem for EFI partition
+    "kernel/fs/fat/fat.ko.xz",
+    "kernel/fs/fat/vfat.ko.xz",
 ];
 
 /// Set up kernel modules in initramfs.

@@ -65,6 +65,8 @@ pub fn setup_recipe_config(ctx: &BuildContext) -> Result<()> {
     // Create recipe directories
     let recipe_dirs = [
         "etc/recipe",
+        "etc/recipe/repos",
+        "etc/recipe/repos/rocky10",
         "var/lib/recipe",
         "var/cache/recipe",
     ];
@@ -81,11 +83,22 @@ pub fn setup_recipe_config(ctx: &BuildContext) -> Result<()> {
 # Repository URL (set during installation)
 # repository = "https://packages.levitateos.org"
 
+# Recipe path (system recipes)
+recipe_path = "/etc/recipe/repos/rocky10"
+
 # Cache directory
 cache_dir = "/var/cache/recipe"
 
 # Database directory
 db_dir = "/var/lib/recipe"
+"#,
+    )?;
+
+    // Create profile.d script for RECIPE_PATH
+    fs::write(
+        ctx.staging.join("etc/profile.d/recipe.sh"),
+        r#"# Recipe package manager environment
+export RECIPE_PATH=/etc/recipe/repos/rocky10
 "#,
     )?;
 

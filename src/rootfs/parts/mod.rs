@@ -8,4 +8,5 @@ pub mod etc;
 pub mod filesystem;
 pub mod pam;
 pub mod recipe;
+pub mod recipe_gen;
 pub mod systemd;

@@ -1,6 +1,6 @@
 //! Rootfs builder implementation.
 //!
-//! Builds a complete rootfs tarball for LevitateOS installation.
+//! Builds a complete rootfs for LevitateOS.
 //!
 //! # WARNING: FALSE POSITIVES KILL PROJECTS
 //!
@@ -22,16 +22,16 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use super::context::BuildContext;
-use super::parts::{binaries, etc, filesystem, pam, recipe, systemd};
-use super::rpm::{find_packages_dirs, RpmExtractor};
+use super::parts::{binaries, etc, filesystem, pam, recipe, recipe_gen, systemd};
+use super::rpm::{find_packages_dirs, RpmExtractor, REQUIRED_PACKAGES};
 
-/// Builder for base system tarballs.
+/// Builder for base system rootfs.
 pub struct RootfsBuilder {
     /// ISO contents directory (for RPM extraction)
     iso_contents: Option<PathBuf>,
     /// Source directory containing Rocky rootfs (fallback if no RPMs)
     source_dir: PathBuf,
-    /// Output directory for the tarball
+    /// Output directory
     output_dir: PathBuf,
     /// Optional path to recipe binary
     recipe_binary: Option<PathBuf>,
@@ -62,9 +62,9 @@ impl RootfsBuilder {
         self
     }
 
-    /// Build the base system tarball.
+    /// Build the base system rootfs.
     pub fn build(&self) -> Result<PathBuf> {
-        println!("Building base system tarball...");
+        println!("Building base system rootfs...");
         println!("  Output: {}", self.output_dir.display());
 
         // Create output directory
@@ -108,6 +108,11 @@ impl RootfsBuilder {
         // Build the rootfs
         self.build_rootfs(&ctx)?;
 
+        // Generate recipes for installed packages (if building from RPMs)
+        if let Some(ref iso_contents) = self.iso_contents {
+            self.generate_recipes(iso_contents, &staging_dir)?;
+        }
+
         // Create the tarball
         let tarball_path = self.create_tarball(&staging_dir)?;
 
@@ -124,7 +129,7 @@ impl RootfsBuilder {
             }
         }
 
-        println!("Base tarball created: {}", tarball_path.display());
+        println!("Rootfs tarball created: {}", tarball_path.display());
         Ok(tarball_path)
     }
 
@@ -153,6 +158,34 @@ impl RootfsBuilder {
 
         println!("\n=== RPM extraction complete ===\n");
         Ok(rpm_staging)
+    }
+
+    /// Generate .rhai recipes for all installed packages.
+    ///
+    /// Creates recipe files in /etc/recipe/repos/rocky10/ that track
+    /// which packages are installed and enable updates from Rocky mirrors.
+    fn generate_recipes(&self, iso_contents: &Path, staging: &Path) -> Result<()> {
+        println!("\n=== Generating package recipes ===\n");
+
+        let (baseos, appstream) = find_packages_dirs(iso_contents)?;
+
+        // Create output directory for recipes
+        let recipes_dir = staging.join("etc/recipe/repos/rocky10");
+        fs::create_dir_all(&recipes_dir)?;
+
+        // Create recipe generator
+        let mut generator = recipe_gen::RecipeGenerator::new(&recipes_dir)
+            .with_packages_dir(&baseos);
+
+        if let Some(appstream_dir) = appstream {
+            generator = generator.with_packages_dir(appstream_dir);
+        }
+
+        // Generate recipes for all required packages
+        generator.generate_packages(REQUIRED_PACKAGES)?;
+
+        println!("\n=== Recipe generation complete ===\n");
+        Ok(())
     }
 
     /// Build the complete rootfs in staging directory.

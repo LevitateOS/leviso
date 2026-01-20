@@ -4,29 +4,31 @@ This document tracks the step-by-step development of Leviso from a minimal bash 
 
 ## Architecture
 
-The ISO contains two separate components:
+The ISO contains a squashfs image that is mounted as an overlay at boot:
 
 ```
 ISO
 ├── boot/
-│   ├── vmlinuz           # Kernel (live environment)
-│   └── initramfs.img     # Live installer environment
-├── levitateos-stage3.tar.xz  # Base system to install
+│   ├── vmlinuz           # Kernel
+│   └── initramfs.img     # Initial ramdisk (mounts squashfs)
+├── leviso/
+│   └── rootfs.sfs        # Squashfs: complete base system
 └── EFI/...               # Bootloader
 ```
 
-**Initramfs** = Live installer environment. Small, contains tools for partitioning, formatting, and extracting the stage3.
-
-**Stage3 tarball** = Complete base system. Extracted to target disk during installation. Contains kernel, systemd, coreutils, networking, `recipe` package manager.
+**Boot flow:**
+1. Kernel + initramfs boot
+2. initramfs mounts squashfs as overlay
+3. Switch root to overlay filesystem
+4. Systemd starts, user gets shell
 
 **Installation flow:**
-1. Boot ISO → live environment (initramfs)
+1. Boot ISO → live environment (squashfs overlay)
 2. Partition and format target disk
 3. Mount target to `/mnt`
-4. Extract stage3: `tar xpf /run/media/stage3.tar.xz -C /mnt`
+4. `recipe install base` → installs base system to /mnt
 5. Configure (fstab, bootloader, users)
 6. Reboot into installed system
-7. Use `recipe` to install additional packages
 
 ---
 
@@ -34,12 +36,12 @@ ISO
 
 - [x] Downloads Rocky 10 ISO for userspace binaries
 - [x] Extracts squashfs rootfs
-- [x] Builds minimal initramfs with bash + coreutils
+- [x] Builds initramfs with bash + coreutils
 - [x] Creates bootable hybrid BIOS/UEFI ISO
 - [x] QEMU test command (`cargo run -- test` / `--gui`)
 - [x] efivarfs mounted for UEFI verification
-- [ ] Systemd as init (in progress)
-- [ ] Stage3 tarball generation
+- [ ] Squashfs overlay mount (in progress)
+- [ ] Systemd as init
 
 ---
 
@@ -54,7 +56,19 @@ ISO
 
 ---
 
-## Phase 2: Disk Utilities ✓
+## Phase 2: Squashfs Overlay (Current)
+
+**Goal:** Mount squashfs as overlay filesystem for full base system
+
+- [ ] Create squashfs image from extracted rootfs
+- [ ] initramfs mounts squashfs from ISO
+- [ ] OverlayFS with tmpfs upper layer (for writes)
+- [ ] Switch root to overlay
+- [ ] Systemd as PID 1
+
+---
+
+## Phase 3: Disk Utilities ✓
 
 **Goal:** Partition and format disks for installation
 
@@ -69,45 +83,20 @@ ISO
 
 ---
 
-## Phase 3: Systemd Integration (In Progress)
+## Phase 4: Recipe Installation
 
-**Goal:** Systemd as init for the live environment
+**Goal:** Install base system to target disk using recipe
 
-### 3.1 Live Environment
-- [ ] Systemd as PID 1 (replacing bash)
-- [ ] `systemctl` - service management
-- [ ] `journalctl` - view logs
-- [ ] `timedatectl` - time/date management
-- [ ] Autologin to root shell on tty1
-
-### 3.2 Tools for Target System
-- [ ] `chroot` - enter installed system
-- [ ] `systemd-machine-id-setup` - initialize machine ID
-
----
-
-## Phase 4: Stage3 Tarball
-
-**Goal:** Build a complete base system tarball
-
-### 4.1 Stage3 Contents
-- [ ] Kernel + initramfs (for installed system)
-- [ ] Systemd + essential services
-- [ ] Coreutils, bash, essential CLI tools
-- [ ] NetworkManager for networking
-- [ ] `recipe` package manager
-- [ ] Proper `/etc` configuration
-
-### 4.2 Build Process
-- [ ] `leviso stage3` command to generate tarball
-- [ ] Include stage3 in ISO
-- [ ] Verify extraction works
+- [ ] `recipe install base` installs to /mnt
+- [ ] Recipe reads system recipes from squashfs
+- [ ] Copies files to target disk
+- [ ] Generates fstab
 
 ---
 
 ## Phase 5: System Configuration Tools
 
-**Goal:** Tools in live environment to configure the installed system
+**Goal:** Tools to configure the installed system
 
 ### 5.1 User Management
 - [ ] `passwd` - set passwords
@@ -139,7 +128,7 @@ ISO
 
 ## Phase 7: Networking (Live Environment)
 
-**Goal:** Network access in live environment (for troubleshooting, not required for install)
+**Goal:** Network access in live environment
 
 - [ ] `ip` - network interface configuration
 - [ ] `ping` - test connectivity
@@ -183,22 +172,8 @@ ISO
 **Goal:** Don't depend on Rocky Linux
 
 - [ ] Vanilla kernel from kernel.org
-- [ ] GNU coreutils from source (or from trusted binary packages)
 - [ ] Build binaries from source
 - [ ] Remove Rocky dependency entirely
-
----
-
-## Implementation Order
-
-1. **Phase 3** - Systemd in live environment (current)
-2. **Phase 4** - Stage3 tarball generation
-3. **Phase 5** - User management & config tools
-4. **Phase 6** - Bootloader support
-5. **Phase 7** - Networking (optional for offline install)
-6. **Phase 8** - Hardware support
-7. **Phase 9** - Quality of life
-8. **Phase 10** - Build independence
 
 ---
 
@@ -207,15 +182,14 @@ ISO
 ```bash
 # Build and test
 cargo run -- build
-cargo run -- test --gui
+cargo run -- test
 
 # Or step by step
 cargo run -- download
 cargo run -- extract
 cargo run -- initramfs
-cargo run -- stage3      # (future)
 cargo run -- iso
-cargo run -- test --gui
+cargo run -- test
 ```
 
 ### Installation Test (in QEMU)
@@ -234,7 +208,7 @@ mount /dev/vda2 /mnt
 mkdir -p /mnt/boot
 mount /dev/vda1 /mnt/boot
 
-tar xpf /run/media/*/levitateos-stage3.tar.xz -C /mnt
+recipe install base --root /mnt
 
 # Configure and reboot...
 ```
@@ -245,5 +219,5 @@ tar xpf /run/media/*/levitateos-stage3.tar.xz -C /mnt
 
 - Rocky Linux is ONLY for sourcing userspace binaries (temporary)
 - Kernel should eventually be vanilla from kernel.org
-- Stage3 = offline install, no network required
-- `recipe` is for post-install package management
+- Squashfs overlay = live environment with full base system
+- `recipe` handles both live queries AND installation to target disk

@@ -1,42 +1,44 @@
 # leviso
 
-Minimal bootable Linux ISO builder for LevitateOS.
+Minimal, self-contained bootable Linux ISO builder for LevitateOS.
 
-## Overview
-
-Leviso builds bootable ISO images containing:
-- Linux kernel
-- Initramfs with userspace binaries (sourced from Rocky 10)
-- BIOS bootloader (syslinux/isolinux)
-- UEFI bootloader (GRUB EFI)
-
-## Building
+## Quick Start
 
 ```bash
-# Full build from scratch
-cargo run -- build
-
-# Rebuild initramfs only
-cargo run -- initramfs
-
-# Rebuild ISO only
-cargo run -- iso
+cargo run -- build    # Full build
+cargo run -- run      # Test in QEMU
 ```
 
-## Testing
+## What It Builds
 
-```bash
-# Quick debug (terminal, direct kernel boot)
-cargo run -- test
+- Kernel + initramfs with systemd, PAM, D-Bus
+- ~45 coreutils + ~12 sbin utilities
+- UEFI (GRUB) and BIOS (isolinux) boot support
 
-# Run command after boot and exit
-cargo run -- test -c "timedatectl"
+## Commands
 
-# Full ISO test (QEMU GUI, UEFI)
-cargo run -- run
+| Command | Purpose |
+|---------|---------|
+| `build` | Full build from scratch |
+| `download` | Fetch Rocky 10 ISO |
+| `extract` | Extract rootfs |
+| `initramfs` | Build initramfs |
+| `iso` | Package final ISO |
+| `test` | Quick debug (serial console) |
+| `run` | Full test (QEMU GUI, UEFI) |
 
-# Full ISO test (BIOS mode)
-cargo run -- run --bios
+## Architecture
+
+```
+Downloads Rocky 10 Minimal
+        ↓
+Extracts rootfs (squashfs)
+        ↓
+Copies binaries + libraries
+        ↓
+Creates initramfs (cpio.gz)
+        ↓
+Packages final ISO
 ```
 
 ## Directory Structure

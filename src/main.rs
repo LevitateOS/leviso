@@ -160,7 +160,7 @@ fn main() -> Result<()> {
                     // 1. Download Rocky if needed
                     if !base_dir.join("downloads/iso-contents/BaseOS").exists() {
                         println!("Downloading Rocky Linux...");
-                        download::download_rocky(&base_dir)?;
+                        download::download_rocky(&base_dir, &config.rocky)?;
                         extract::extract_rocky(&base_dir)?;
                     }
 
@@ -268,7 +268,7 @@ fn main() -> Result<()> {
                 None => {
                     // Download everything
                     println!("Downloading all dependencies...\n");
-                    download::download_rocky(&base_dir)?;
+                    download::download_rocky(&base_dir, &config.rocky)?;
                     if !config.has_linux_source() {
                         download_linux(&config, true)?;
                     } else {
@@ -284,7 +284,7 @@ fn main() -> Result<()> {
                     download_linux(&config, !full)?;
                 }
                 Some(DownloadTarget::Rocky) => {
-                    download::download_rocky(&base_dir)?;
+                    download::download_rocky(&base_dir, &config.rocky)?;
                 }
             }
         }

@@ -1,18 +1,19 @@
+//! Download management for leviso.
+//!
+//! Downloads Rocky Linux ISO and verifies checksums.
+//! Configuration is loaded from .env file or environment variables.
+
 use anyhow::{bail, Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const ROCKY_DVD_URL: &str =
-    "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/Rocky-10.1-x86_64-dvd1.iso";
-const ROCKY_DVD_SIZE: &str = "8.6GB";
+use crate::config::RockyConfig;
 
-// SHA256 checksum for Rocky 10.1 DVD ISO (from Rocky's CHECKSUM file)
-const ROCKY_DVD_SHA256: &str = "bd29df7f8a99b6fc4686f52cbe9b46cf90e07f90be2c0c5f1f18c2ecdd432d34";
-
-pub fn download_rocky(base_dir: &Path) -> Result<()> {
+/// Download Rocky Linux ISO using configuration.
+pub fn download_rocky(base_dir: &Path, rocky: &RockyConfig) -> Result<()> {
     let downloads_dir = base_dir.join("downloads");
-    let iso_path = downloads_dir.join("Rocky-10.1-x86_64-dvd1.iso");
+    let iso_path = rocky.iso_path(&downloads_dir);
 
     if iso_path.exists() {
         println!("Rocky DVD ISO already exists at {}", iso_path.display());
@@ -20,8 +21,11 @@ pub fn download_rocky(base_dir: &Path) -> Result<()> {
     }
 
     fs::create_dir_all(&downloads_dir)?;
-    println!("Downloading Rocky Linux 10 DVD ISO ({})...", ROCKY_DVD_SIZE);
-    println!("URL: {}", ROCKY_DVD_URL);
+    println!(
+        "Downloading Rocky Linux {} DVD ISO ({})...",
+        rocky.version, rocky.size
+    );
+    println!("URL: {}", rocky.url);
 
     let status = Command::new("curl")
         .args([
@@ -29,7 +33,7 @@ pub fn download_rocky(base_dir: &Path) -> Result<()> {
             "-o",
             iso_path.to_str().unwrap(),
             "--progress-bar",
-            ROCKY_DVD_URL,
+            &rocky.url,
         ])
         .status()
         .context("Failed to run curl")?;
@@ -39,14 +43,14 @@ pub fn download_rocky(base_dir: &Path) -> Result<()> {
     }
 
     // Verify download integrity
-    verify_checksum(&iso_path, ROCKY_DVD_SHA256)?;
+    verify_checksum(&iso_path, &rocky.sha256)?;
 
     println!("Downloaded to {}", iso_path.display());
     Ok(())
 }
 
 /// Verify SHA256 checksum of a downloaded file.
-fn verify_checksum(file_path: &Path, expected_sha256: &str) -> Result<()> {
+pub fn verify_checksum(file_path: &Path, expected_sha256: &str) -> Result<()> {
     println!("Verifying SHA256 checksum...");
 
     let output = Command::new("sha256sum")
@@ -85,9 +89,13 @@ fn verify_checksum(file_path: &Path, expected_sha256: &str) -> Result<()> {
 ///
 /// The DVD contains the full set of packages that Rocky ships, allowing us to
 /// extract a manifest of all binaries that a real distribution includes.
-pub fn download_rocky_dvd(base_dir: &Path, skip_confirm: bool) -> Result<PathBuf> {
+pub fn download_rocky_dvd(
+    base_dir: &Path,
+    rocky: &RockyConfig,
+    skip_confirm: bool,
+) -> Result<PathBuf> {
     let downloads_dir = base_dir.join("downloads");
-    let dvd_path = downloads_dir.join("Rocky-10.1-x86_64-dvd1.iso");
+    let dvd_path = rocky.iso_path(&downloads_dir);
 
     if dvd_path.exists() {
         println!("Rocky DVD ISO already exists at {}", dvd_path.display());
@@ -98,10 +106,13 @@ pub fn download_rocky_dvd(base_dir: &Path, skip_confirm: bool) -> Result<PathBuf
     if !skip_confirm {
         eprintln!();
         eprintln!("{}", "=".repeat(70));
-        eprintln!("WARNING: About to download Rocky Linux DVD ISO ({})", ROCKY_DVD_SIZE);
+        eprintln!(
+            "WARNING: About to download Rocky Linux {} DVD ISO ({})",
+            rocky.version, rocky.size
+        );
         eprintln!("{}", "=".repeat(70));
         eprintln!();
-        eprintln!("URL: {}", ROCKY_DVD_URL);
+        eprintln!("URL: {}", rocky.url);
         eprintln!("Destination: {}", dvd_path.display());
         eprintln!();
         eprintln!("This ISO is used as the source of truth for binary manifest extraction.");
@@ -122,8 +133,11 @@ pub fn download_rocky_dvd(base_dir: &Path, skip_confirm: bool) -> Result<PathBuf
     }
 
     fs::create_dir_all(&downloads_dir)?;
-    println!("Downloading Rocky Linux 10 DVD ISO ({})...", ROCKY_DVD_SIZE);
-    println!("URL: {}", ROCKY_DVD_URL);
+    println!(
+        "Downloading Rocky Linux {} DVD ISO ({})...",
+        rocky.version, rocky.size
+    );
+    println!("URL: {}", rocky.url);
     println!("This may take a while depending on your connection speed.");
 
     let status = Command::new("curl")
@@ -132,7 +146,7 @@ pub fn download_rocky_dvd(base_dir: &Path, skip_confirm: bool) -> Result<PathBuf
             "-o",
             dvd_path.to_str().unwrap(),
             "--progress-bar",
-            ROCKY_DVD_URL,
+            &rocky.url,
         ])
         .status()
         .context("Failed to run curl")?;
@@ -144,7 +158,7 @@ pub fn download_rocky_dvd(base_dir: &Path, skip_confirm: bool) -> Result<PathBuf
     }
 
     // Verify download integrity
-    verify_checksum(&dvd_path, ROCKY_DVD_SHA256)?;
+    verify_checksum(&dvd_path, &rocky.sha256)?;
 
     println!("Downloaded to {}", dvd_path.display());
     Ok(dvd_path)

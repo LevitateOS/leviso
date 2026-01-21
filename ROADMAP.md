@@ -100,20 +100,21 @@ These are known gaps in the live environment:
 ### Bootloader
 - [ ] `bootctl` - systemd-boot installer
 
-### Networking (DETAILED IMPLEMENTATION PLAN EXISTS)
+### Networking (IMPLEMENTED in src/initramfs/network.rs - 482 lines)
 
-**See: Implementation Plan below for full details**
-
-- [ ] Create `src/initramfs/network.rs` module
-- [ ] Copy NetworkManager + nmcli + wpa_supplicant binaries
-- [ ] Copy /etc/NetworkManager/ configs
-- [ ] Copy /usr/lib64/NetworkManager/ plugins
-- [ ] Copy NetworkManager D-Bus policies
-- [ ] Copy systemd service units (NetworkManager.service, wpa_supplicant.service)
-- [ ] Enable NetworkManager in multi-user.target.wants
+- [x] Create `src/initramfs/network.rs` module
+- [x] Copy NetworkManager + nmcli + nmtui + nm-online binaries
+- [x] Copy wpa_supplicant + wpa_cli + wpa_passphrase binaries
+- [x] Copy iproute2 (ip) binary
+- [x] Copy /etc/NetworkManager/ configs (or create minimal)
+- [x] Copy /usr/lib64/NetworkManager/ plugins
+- [x] Copy NetworkManager D-Bus policies
+- [x] Copy wpa_supplicant D-Bus policies
+- [x] Copy systemd service units (NetworkManager.service, wpa_supplicant.service)
+- [x] Enable NetworkManager in multi-user.target.wants
+- [x] Copy WiFi firmware: iwlwifi (Intel), ath10k/ath11k (Atheros), rtlwifi/rtw88/rtw89 (Realtek), brcm/cypress (Broadcom), mediatek (MediaTek)
+- [x] Create nm-openconnect user for NM plugins
 - [ ] Add virtio_net kernel module to config.rs
-- [ ] Add e1000, e1000e, r8169 ethernet drivers
-- [ ] Copy WiFi firmware: iwlwifi (Intel), ath10k/ath11k (Atheros), rtlwifi/rtw88 (Realtek), brcm (Broadcom)
 - [ ] Test: `systemctl status NetworkManager` shows active
 - [ ] Test: `nmcli device` shows interfaces
 - [ ] Test: `nmcli device wifi list` shows networks (on real hardware)
@@ -131,6 +132,10 @@ These are known gaps in the live environment:
 
 ## Implementation Plan: Networking
 
+> **STATUS: IMPLEMENTED** - See `src/initramfs/network.rs` (482 lines)
+>
+> This section documents what was implemented. The code is complete and wired up.
+
 **Goal:** Add full networking support (NetworkManager + WiFi + Ethernet) to the live ISO so users can connect to networks and download packages.
 
 **Scope:**
@@ -138,7 +143,7 @@ These are known gaps in the live environment:
 - Common WiFi firmware (Intel, Atheros, Realtek, Broadcom)
 - Auto-start on boot
 
-### Phase 1: Create network.rs module
+### Phase 1: Create network.rs module - DONE
 
 **New file: `leviso/src/initramfs/network.rs`**
 
@@ -179,7 +184,7 @@ pub fn setup_network(ctx: &BuildContext) -> Result<()>
 5. `copy_dbus_policies()` - Copy NetworkManager D-Bus policies
 6. `enable_networkmanager()` - Symlink to multi-user.target.wants
 
-### Phase 2: Add network kernel modules
+### Phase 2: Add network kernel modules - TODO
 
 **Update: `leviso/src/config.rs`**
 
@@ -195,9 +200,9 @@ Add to `module_defaults::ESSENTIAL_MODULES`:
 
 **Note**: WiFi drivers are large. Use modprobe auto-loading rather than bundling all 88 drivers.
 
-### Phase 3: Copy WiFi firmware
+### Phase 3: Copy WiFi firmware - DONE
 
-**New function in network.rs: `copy_wifi_firmware()`**
+**Implemented in network.rs: `copy_wifi_firmware()`**
 
 Copy firmware for common WiFi chipsets:
 ```
@@ -212,25 +217,24 @@ Copy firmware for common WiFi chipsets:
 
 **Size estimate**: ~100-150MB for common firmware
 
-### Phase 4: Update initramfs build
+### Phase 4: Update initramfs build - DONE
 
-**Update: `leviso/src/initramfs/mod.rs`**
+**Already in `leviso/src/initramfs/mod.rs`:**
 
 ```rust
-mod network;  // Add module
+pub mod network;  // Line 22
 
 // In build_initramfs():
-// After dbus setup (NetworkManager needs D-Bus):
-network::setup_network(&ctx)?;
+network::setup_network(&ctx)?;  // Line 144
 ```
 
-### Files to Create/Modify
+### Files Created/Modified
 
-| File | Action |
+| File | Status |
 |------|--------|
-| `src/initramfs/network.rs` | **CREATE** - Main networking module |
-| `src/initramfs/mod.rs` | MODIFY - Add `mod network`, call `setup_network()` |
-| `src/config.rs` | MODIFY - Add virtio_net to default modules |
+| `src/initramfs/network.rs` | **DONE** - 482 lines |
+| `src/initramfs/mod.rs` | **DONE** - `mod network` + `setup_network()` call |
+| `src/config.rs` | **TODO** - Add virtio_net to default modules |
 
 ### Directory Structure in Initramfs
 

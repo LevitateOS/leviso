@@ -16,7 +16,7 @@
 
 use anyhow::{bail, Context, Result};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 use super::super::context::BuildContext;
@@ -305,7 +305,7 @@ pub fn build_kernel(kernel_source: &Path, output_dir: &Path) -> Result<String> {
 }
 
 /// Apply our kernel configuration options.
-fn apply_kernel_config(config_path: &Path, kernel_source: &Path) -> Result<()> {
+fn apply_kernel_config(config_path: &Path, _kernel_source: &Path) -> Result<()> {
     // Read current config
     let mut config = fs::read_to_string(config_path).unwrap_or_default();
 

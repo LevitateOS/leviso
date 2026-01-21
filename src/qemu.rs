@@ -25,18 +25,6 @@ impl QemuBuilder {
         Self::default()
     }
 
-    /// Set CPU type (default: Skylake-Client for x86-64-v3 support)
-    fn cpu(mut self, cpu: &str) -> Self {
-        self.cpu = Some(cpu.to_string());
-        self
-    }
-
-    /// Set memory size (e.g., "512M", "1G")
-    fn memory(mut self, mem: &str) -> Self {
-        self.memory = Some(mem.to_string());
-        self
-    }
-
     /// Set kernel for direct boot
     fn kernel(mut self, path: PathBuf) -> Self {
         self.kernel = Some(path);

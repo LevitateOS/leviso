@@ -5,7 +5,6 @@ mod extract;
 mod initramfs;
 mod iso;
 mod qemu;
-mod rocky_manifest;
 mod rootfs;
 
 use anyhow::Result;

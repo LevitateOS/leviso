@@ -391,11 +391,6 @@ impl RpmExtractor {
 
         Ok(())
     }
-
-    /// Get the staging directory path.
-    pub fn staging_dir(&self) -> &Path {
-        &self.staging_dir
-    }
 }
 
 /// Find RPM packages directories from iso-contents.
@@ -420,13 +415,6 @@ pub fn find_packages_dirs(iso_contents: impl AsRef<Path>) -> Result<(PathBuf, Op
     };
 
     Ok((baseos, appstream))
-}
-
-/// Find RPM packages directory from iso-contents (BaseOS only).
-/// For backward compatibility.
-pub fn find_packages_dir(iso_contents: impl AsRef<Path>) -> Result<PathBuf> {
-    let (baseos, _) = find_packages_dirs(iso_contents)?;
-    Ok(baseos)
 }
 
 #[cfg(test)]

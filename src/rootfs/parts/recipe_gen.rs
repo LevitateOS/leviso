@@ -30,12 +30,6 @@ pub struct RpmInfo {
     pub requires: Vec<String>,
 }
 
-impl RpmInfo {
-    /// Full version string (e.g., "661-3.el10").
-    pub fn full_version(&self) -> String {
-        format!("{}-{}", self.version, self.release)
-    }
-}
 
 /// Extract metadata from an RPM file.
 ///
@@ -410,18 +404,4 @@ ncurses-libs
         assert!(result.contains(&"glibc".to_string()));
     }
 
-    #[test]
-    fn test_rpm_info_full_version() {
-        let info = RpmInfo {
-            name: "less".to_string(),
-            version: "661".to_string(),
-            release: "3.el10".to_string(),
-            arch: "x86_64".to_string(),
-            summary: "A text file browser".to_string(),
-            files: vec![],
-            requires: vec![],
-        };
-
-        assert_eq!(info.full_version(), "661-3.el10");
-    }
 }

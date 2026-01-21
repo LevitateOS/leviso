@@ -19,18 +19,31 @@ pub fn create_iso(base_dir: &Path) -> Result<()> {
     // Download syslinux for BIOS boot
     let syslinux_dir = download_syslinux(base_dir)?;
 
-    // Find kernel from Rocky
-    let kernel_candidates = [
-        iso_contents.join("images/pxeboot/vmlinuz"),
-        iso_contents.join("isolinux/vmlinuz"),
-    ];
+    // Find kernel - prefer built LevitateOS kernel, fall back to Rocky
+    let levitate_kernel = output_dir.join("staging/boot/vmlinuz");
+    let kernel_path = if levitate_kernel.exists() {
+        println!("Using LevitateOS kernel: {}", levitate_kernel.display());
+        levitate_kernel
+    } else {
+        // Fall back to Rocky's kernel
+        let rocky_candidates = [
+            iso_contents.join("images/pxeboot/vmlinuz"),
+            iso_contents.join("isolinux/vmlinuz"),
+        ];
 
-    let kernel_path = kernel_candidates
-        .iter()
-        .find(|p| p.exists())
-        .context("Could not find kernel in Rocky ISO")?;
+        let rocky_kernel = rocky_candidates
+            .iter()
+            .find(|p| p.exists())
+            .context(
+                "No kernel found.\n\
+                 Build LevitateOS kernel: leviso kernel\n\
+                 Or extract Rocky ISO: leviso extract"
+            )?;
 
-    println!("Using kernel: {}", kernel_path.display());
+        println!("Using Rocky kernel (fallback): {}", rocky_kernel.display());
+        println!("  Tip: Run 'leviso kernel' to build LevitateOS kernel");
+        rocky_kernel.clone()
+    };
 
     // Create ISO directory structure
     let iso_root = output_dir.join("iso-root");

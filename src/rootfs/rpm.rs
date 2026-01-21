@@ -208,6 +208,20 @@ pub const REQUIRED_PACKAGES: &[&str] = &[
     // === PAM (authentication) ===
     "pam",
     "pam-libs",
+
+    // === LINUX FIRMWARE ===
+    // Required for network cards, graphics, and other hardware drivers
+    "linux-firmware",
+    "linux-firmware-whence",
+
+    // === DRACUT ===
+    // Initramfs generator - user runs `dracut --force` after kernel install
+    "dracut",
+    "dracut-config-generic",
+
+    // === MICROCODE ===
+    // CPU firmware updates - loaded early in boot
+    "microcode_ctl",
 ];
 
 /// Extracts RPM packages to a staging directory.

@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use super::context::BuildContext;
-use super::parts::{auth, binaries, etc, filesystem, pam, recipe, recipe_gen, systemd};
+use super::parts::{auth, binaries, etc, filesystem, kernel, pam, recipe, recipe_gen, systemd};
 use super::rpm::{find_packages_dirs, RpmExtractor, REQUIRED_PACKAGES};
 
 /// Builder for base system rootfs.
@@ -244,7 +244,50 @@ impl RootfsBuilder {
         recipe::copy_recipe(ctx)?;
         recipe::setup_recipe_config(ctx)?;
 
+        // 13. Copy Linux firmware
+        self.copy_firmware(ctx)?;
+
+        // 14. Copy kernel if pre-built (optional - can be built separately)
+        kernel::copy_kernel(ctx)?;
+
         println!("\n=== Rootfs build complete ===\n");
+        Ok(())
+    }
+
+    /// Copy Linux firmware from extracted RPMs.
+    ///
+    /// Firmware is required for hardware drivers (network cards, graphics, etc.)
+    fn copy_firmware(&self, ctx: &BuildContext) -> Result<()> {
+        let src_firmware = ctx.source.join("usr/lib/firmware");
+        let dst_firmware = ctx.staging.join("usr/lib/firmware");
+
+        if !src_firmware.exists() {
+            println!("Firmware not found in extracted RPMs - skipping");
+            println!("  (Install linux-firmware RPM to enable hardware support)");
+            return Ok(());
+        }
+
+        println!("Copying Linux firmware...");
+        fs::create_dir_all(&dst_firmware)?;
+
+        // Use cp -a to preserve symlinks and attributes
+        let status = Command::new("cp")
+            .args(["-a"])
+            .arg(&src_firmware)
+            .arg(ctx.staging.join("usr/lib/"))
+            .status()
+            .context("Failed to copy firmware")?;
+
+        if !status.success() {
+            anyhow::bail!("Failed to copy firmware directory");
+        }
+
+        // Count firmware files
+        let count = fs::read_dir(&dst_firmware)
+            .map(|d| d.count())
+            .unwrap_or(0);
+        println!("  Copied {} firmware directories", count);
+
         Ok(())
     }
 
@@ -506,6 +549,28 @@ pub fn verify_tarball(path: &Path) -> Result<()> {
         if !contents.contains(&path) {
             missing.push(path);
         }
+    }
+
+    // Check dracut (required for initramfs generation)
+    println!("Checking dracut...");
+    for path in ["./usr/bin/dracut", "./usr/lib/dracut/dracut.sh"] {
+        checked += 1;
+        if !contents.contains(path) {
+            missing.push(path.to_string());
+        }
+    }
+
+    // Check firmware directory exists
+    println!("Checking firmware...");
+    checked += 1;
+    if !contents.contains("./usr/lib/firmware/") {
+        missing.push("./usr/lib/firmware/".to_string());
+    }
+
+    // Check kernel (optional - can be built separately, but warn)
+    println!("Checking kernel (optional)...");
+    if !contents.contains("./boot/vmlinuz") {
+        println!("  Note: No kernel in tarball. Build with 'leviso kernel' or install via recipe.");
     }
 
     println!();

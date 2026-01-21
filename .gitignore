@@ -1,8 +1,11 @@
-# Downloads (Rocky ISO, syslinux, extracted files)
+# Downloads (Rocky ISO, syslinux, linux source, extracted files)
 downloads/
 
 # Build output
 output/
+
+# Local configuration (user-specific paths)
+.env
 
 # Temporary files
 *.tmp

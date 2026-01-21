@@ -7,6 +7,7 @@ pub mod auth;
 pub mod binaries;
 pub mod etc;
 pub mod filesystem;
+pub mod kernel;
 pub mod pam;
 pub mod recipe;
 pub mod recipe_gen;

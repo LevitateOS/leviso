@@ -49,8 +49,11 @@ enum Commands {
         cmd: Option<String>,
     },
 
-    /// Clean build artifacts
-    Clean,
+    /// Clean build artifacts (default: preserves downloads)
+    Clean {
+        #[command(subcommand)]
+        what: Option<CleanTarget>,
+    },
 
     /// Show information
     Show {
@@ -115,6 +118,20 @@ enum VerifyTarget {
         /// Path to tarball (default: output/levitateos-base.tar.xz)
         path: Option<PathBuf>,
     },
+}
+
+#[derive(Subcommand)]
+enum CleanTarget {
+    /// Clean kernel build artifacts only
+    Kernel,
+    /// Clean ISO and initramfs only
+    Iso,
+    /// Clean rootfs tarball only
+    Rootfs,
+    /// Clean downloaded sources (Rocky ISO, Linux source)
+    Downloads,
+    /// Clean everything (downloads + outputs)
+    All,
 }
 
 #[derive(Subcommand)]
@@ -232,8 +249,28 @@ fn main() -> Result<()> {
         }
 
         // ===== CLEAN =====
-        Commands::Clean => {
-            clean::clean(&base_dir)?;
+        Commands::Clean { what } => {
+            match what {
+                None => {
+                    // Default: clean outputs but preserve downloads
+                    clean::clean_outputs(&base_dir)?;
+                }
+                Some(CleanTarget::Kernel) => {
+                    clean::clean_kernel(&base_dir)?;
+                }
+                Some(CleanTarget::Iso) => {
+                    clean::clean_iso(&base_dir)?;
+                }
+                Some(CleanTarget::Rootfs) => {
+                    clean::clean_rootfs(&base_dir)?;
+                }
+                Some(CleanTarget::Downloads) => {
+                    clean::clean_downloads(&base_dir)?;
+                }
+                Some(CleanTarget::All) => {
+                    clean::clean_all(&base_dir)?;
+                }
+            }
         }
 
         // ===== SHOW =====

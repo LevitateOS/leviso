@@ -4,29 +4,26 @@ This document tracks the step-by-step development of Leviso from a minimal bash 
 
 ## Architecture
 
-The ISO contains a squashfs image that is mounted as an overlay at boot:
+The ISO boots directly into an initramfs-based live environment (no squashfs):
 
 ```
 ISO
 ├── boot/
 │   ├── vmlinuz           # Kernel
-│   └── initramfs.img     # Initial ramdisk (mounts squashfs)
-├── leviso/
-│   └── rootfs.sfs        # Squashfs: complete base system
+│   └── initramfs.img     # Complete live environment
 └── EFI/...               # Bootloader
 ```
 
 **Boot flow:**
 1. Kernel + initramfs boot
-2. initramfs mounts squashfs as overlay
-3. Switch root to overlay filesystem
-4. Systemd starts, user gets shell
+2. Initramfs IS the live environment (no switch_root needed)
+3. Systemd starts, user gets shell
 
 **Installation flow:**
-1. Boot ISO → live environment (squashfs overlay)
+1. Boot ISO → live environment (initramfs)
 2. Partition and format target disk
 3. Mount target to `/mnt`
-4. `recipe install base` → installs base system to /mnt
+4. `recipe bootstrap /mnt` → installs base system
 5. Configure (fstab, bootloader, users)
 6. Reboot into installed system
 
@@ -35,13 +32,15 @@ ISO
 ## Current State
 
 - [x] Downloads Rocky 10 ISO for userspace binaries
-- [x] Extracts squashfs rootfs
+- [x] Extracts rootfs for sourcing binaries
 - [x] Builds initramfs with bash + coreutils
 - [x] Creates bootable hybrid BIOS/UEFI ISO
 - [x] QEMU test command (`cargo run -- test` / `--gui`)
 - [x] efivarfs mounted for UEFI verification
-- [ ] Squashfs overlay mount (in progress)
-- [ ] Systemd as init
+- [x] Systemd as PID 1 (boots to multi-user.target)
+- [x] Disk utilities (parted, fdisk, mkfs.ext4, mkfs.fat, mount)
+- [x] Base tarball accessible from live environment (mount /dev/sr0 /media/cdrom)
+- [ ] recipe bootstrap command
 
 ---
 
@@ -56,15 +55,14 @@ ISO
 
 ---
 
-## Phase 2: Squashfs Overlay (Current)
+## Phase 2: Systemd Init ✓
 
-**Goal:** Mount squashfs as overlay filesystem for full base system
+**Goal:** Boot to systemd as PID 1
 
-- [ ] Create squashfs image from extracted rootfs
-- [ ] initramfs mounts squashfs from ISO
-- [ ] OverlayFS with tmpfs upper layer (for writes)
-- [ ] Switch root to overlay
-- [ ] Systemd as PID 1
+- [x] Systemd in initramfs
+- [x] Basic systemd units for live environment (getty, serial-console, chronyd)
+- [x] Boots to multi-user.target
+- [ ] Proper shutdown/reboot (untested)
 
 ---
 
@@ -83,14 +81,26 @@ ISO
 
 ---
 
+## Phase 3.5: Base Tarball Access ✓
+
+**Goal:** Make base tarball accessible from live environment
+
+- [x] ISO exposed as `/dev/sr0` via virtio-scsi CDROM
+- [x] Kernel modules: `virtio_scsi`, `cdrom`, `sr_mod`, `isofs`
+- [x] User mounts with: `mount /dev/sr0 /media/cdrom`
+- [x] Tarball accessible at: `/media/cdrom/levitateos-base.tar.xz`
+
+---
+
 ## Phase 4: Recipe Installation
 
 **Goal:** Install base system to target disk using recipe
 
-- [ ] `recipe install base` installs to /mnt
-- [ ] Recipe reads system recipes from squashfs
-- [ ] Copies files to target disk
-- [ ] Generates fstab
+- [ ] `recipe bootstrap /mnt` installs base system
+- [ ] Recipe binary included in initramfs
+- [x] Base tarball extractable to target (`tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt`)
+- [ ] Installs base packages (coreutils, systemd, linux, etc.)
+- [ ] Copies recipe database to target
 
 ---
 
@@ -98,19 +108,23 @@ ISO
 
 **Goal:** Tools to configure the installed system
 
+Note: Many of these tools need to work INSIDE the chroot (from base tarball), not in live env.
+The live environment needs: nano (or sed workarounds), and ability to extract tarball.
+
 ### 5.1 User Management
-- [ ] `passwd` - set passwords
-- [ ] `useradd` - create users
-- [ ] `groupadd` - create groups
+- [x] `useradd` - create users (in initramfs)
+- [x] `groupadd` - create groups (in initramfs)
+- [x] `chpasswd` - set passwords non-interactively (in initramfs)
+- [ ] `passwd` - interactive password setting (MISSING from initramfs)
 
 ### 5.2 Text Editing
-- [ ] `nano` - text editor for config files
-- [ ] `sed` - stream editor
+- [ ] `nano` - text editor for config files (MISSING from initramfs)
+- [x] `sed` - stream editor (in initramfs)
 
 ### 5.3 Locale & Time
-- [ ] `loadkeys` - keyboard layout ✓
-- [ ] Keymaps ✓
-- [ ] `locale-gen` - generate locales
+- [x] `loadkeys` - keyboard layout
+- [x] Keymaps
+- [ ] `locale-gen` / `localedef` - generate locales (MISSING from initramfs)
 - [ ] Timezone data (`/usr/share/zoneinfo/`)
 
 ---
@@ -193,24 +207,35 @@ cargo run -- test
 ```
 
 ### Installation Test (in QEMU)
+
+**Full installation workflow (TESTED - WORKS):**
 ```bash
-# In live environment:
+# 1. Disk preparation
 lsblk
-parted /dev/vda mklabel gpt
-parted /dev/vda mkpart "EFI" fat32 1MiB 513MiB
-parted /dev/vda set 1 esp on
-parted /dev/vda mkpart "root" ext4 513MiB 100%
+parted -s /dev/vda mklabel gpt
+parted -s /dev/vda mkpart EFI fat32 1MiB 513MiB
+parted -s /dev/vda set 1 esp on
+parted -s /dev/vda mkpart root ext4 513MiB 100%
 
 mkfs.fat -F32 /dev/vda1
-mkfs.ext4 /dev/vda2
+mkfs.ext4 -F /dev/vda2
 
 mount /dev/vda2 /mnt
 mkdir -p /mnt/boot
 mount /dev/vda1 /mnt/boot
 
-recipe install base --root /mnt
+# 2. Mount installation media and extract base system
+mkdir -p /media/cdrom
+mount /dev/sr0 /media/cdrom
+tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt
 
-# Configure and reboot...
+# 3. Configure and reboot (see docs)
+```
+
+**Still needs work:**
+```bash
+# recipe binary not yet in initramfs:
+recipe bootstrap /mnt
 ```
 
 ---
@@ -219,5 +244,5 @@ recipe install base --root /mnt
 
 - Rocky Linux is ONLY for sourcing userspace binaries (temporary)
 - Kernel should eventually be vanilla from kernel.org
-- Squashfs overlay = live environment with full base system
+- Initramfs IS the live environment (no squashfs layer)
 - `recipe` handles both live queries AND installation to target disk

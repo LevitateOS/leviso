@@ -60,6 +60,14 @@ if [ -n "$KVER" ]; then
     # FAT/vfat filesystem for EFI partition
     load_module fat
     load_module vfat
+
+    # SCSI/CD-ROM support (for installation media)
+    load_module virtio_scsi
+    load_module cdrom
+    load_module sr_mod
+
+    # ISO 9660 filesystem (to mount installation media)
+    load_module isofs
 fi
 
 # Create required directories for systemd

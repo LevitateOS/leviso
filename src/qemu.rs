@@ -114,9 +114,14 @@ impl QemuBuilder {
             cmd.args(["-append", append]);
         }
 
-        // CD-ROM boot
+        // CD-ROM (use virtio-scsi for better compatibility with modern kernels)
         if let Some(cdrom) = &self.cdrom {
-            cmd.args(["-cdrom", cdrom.to_str().unwrap()]);
+            // Add virtio-scsi controller and attach CD-ROM as SCSI device
+            cmd.args([
+                "-device", "virtio-scsi-pci,id=scsi0",
+                "-device", "scsi-cd,drive=cdrom0,bus=scsi0.0",
+                "-drive", &format!("id=cdrom0,if=none,format=raw,readonly=on,file={}", cdrom.display()),
+            ]);
         }
 
         // Virtio disk
@@ -199,6 +204,15 @@ pub fn test_direct(base_dir: &Path, cmd: Option<String>) -> Result<()> {
         );
     }
 
+    // Find ISO (for CDROM - needed to access base tarball)
+    let iso_path = output_dir.join("leviso.iso");
+    if !iso_path.exists() {
+        bail!(
+            "ISO not found at {}. Run 'leviso iso' first.",
+            iso_path.display()
+        );
+    }
+
     // Create/find disk (8GB default) - use separate file from 'run' command
     let disk_path = output_dir.join("test-disk.qcow2");
     if !disk_path.exists() {
@@ -215,18 +229,19 @@ pub fn test_direct(base_dir: &Path, cmd: Option<String>) -> Result<()> {
     println!("Quick test: direct kernel boot (serial console)");
     println!("  Kernel:    {}", kernel_path.display());
     println!("  Initramfs: {}", initramfs_path.display());
+    println!("  ISO:       {}", iso_path.display());
     println!("  Disk:      {}", disk_path.display());
 
     if let Some(ref command) = cmd {
         println!("  Command:   {}", command);
-        run_with_command(kernel_path, initramfs_path, command, Some(disk_path))
+        run_with_command(kernel_path, initramfs_path, command, Some(disk_path), Some(iso_path))
     } else {
         println!("Press Ctrl+A, X to exit QEMU\n");
-        run_interactive(kernel_path, initramfs_path, Some(disk_path))
+        run_interactive(kernel_path, initramfs_path, Some(disk_path), Some(iso_path))
     }
 }
 
-fn run_interactive(kernel_path: PathBuf, initramfs_path: PathBuf, disk_path: Option<PathBuf>) -> Result<()> {
+fn run_interactive(kernel_path: PathBuf, initramfs_path: PathBuf, disk_path: Option<PathBuf>, iso_path: Option<PathBuf>) -> Result<()> {
     let mut builder = QemuBuilder::new()
         .kernel(kernel_path)
         .initrd(initramfs_path)
@@ -235,6 +250,10 @@ fn run_interactive(kernel_path: PathBuf, initramfs_path: PathBuf, disk_path: Opt
 
     if let Some(disk) = disk_path {
         builder = builder.disk(disk);
+    }
+
+    if let Some(iso) = iso_path {
+        builder = builder.cdrom(iso);
     }
 
     let status = builder
@@ -249,7 +268,7 @@ fn run_interactive(kernel_path: PathBuf, initramfs_path: PathBuf, disk_path: Opt
     Ok(())
 }
 
-fn run_with_command(kernel_path: PathBuf, initramfs_path: PathBuf, command: &str, disk_path: Option<PathBuf>) -> Result<()> {
+fn run_with_command(kernel_path: PathBuf, initramfs_path: PathBuf, command: &str, disk_path: Option<PathBuf>, iso_path: Option<PathBuf>) -> Result<()> {
     // Use a unique marker to detect command completion
     const DONE_MARKER: &str = "___LEVISO_CMD_DONE___";
 
@@ -262,6 +281,10 @@ fn run_with_command(kernel_path: PathBuf, initramfs_path: PathBuf, command: &str
 
     if let Some(disk) = disk_path {
         builder = builder.disk(disk);
+    }
+
+    if let Some(iso) = iso_path {
+        builder = builder.cdrom(iso);
     }
 
     let mut child = builder.build()
@@ -373,26 +396,25 @@ pub fn run_iso(base_dir: &Path, force_bios: bool, disk_size: Option<String>) -> 
         .cdrom(iso_path)
         .vga("std");
 
-    // Handle virtual disk if requested
-    if let Some(size) = disk_size {
-        let disk_path = output_dir.join("virtual-disk.qcow2");
+    // Always include a virtual disk (default 20GB, like a real system)
+    let size = disk_size.unwrap_or_else(|| "20G".to_string());
+    let disk_path = output_dir.join("virtual-disk.qcow2");
 
-        // Create disk if it doesn't exist
-        if !disk_path.exists() {
-            println!("  Creating {}B virtual disk...", size);
-            let status = Command::new("qemu-img")
-                .args(["create", "-f", "qcow2", disk_path.to_str().unwrap(), &size])
-                .status()
-                .context("Failed to run qemu-img. Is QEMU installed?")?;
+    // Create disk if it doesn't exist
+    if !disk_path.exists() {
+        println!("  Creating {} virtual disk...", size);
+        let status = Command::new("qemu-img")
+            .args(["create", "-f", "qcow2", disk_path.to_str().unwrap(), &size])
+            .status()
+            .context("Failed to run qemu-img. Is QEMU installed?")?;
 
-            if !status.success() {
-                bail!("qemu-img create failed");
-            }
+        if !status.success() {
+            bail!("qemu-img create failed");
         }
-
-        println!("  Disk: {} ({})", disk_path.display(), size);
-        builder = builder.disk(disk_path);
     }
+
+    println!("  Disk: {}", disk_path.display());
+    builder = builder.disk(disk_path);
 
     // UEFI boot by default (it's 2026), unless --bios is specified
     if force_bios {

@@ -9,7 +9,7 @@ use super::context::BuildContext;
 /// Essential kernel modules for disk access and filesystems.
 /// Order matters: dependencies must come before modules that need them.
 const ESSENTIAL_MODULES: &[&str] = &[
-    // Block device driver
+    // Block device driver (for virtual disks)
     "kernel/drivers/block/virtio_blk.ko.xz",
     // ext4 filesystem and dependencies
     "kernel/fs/mbcache.ko.xz",
@@ -18,6 +18,12 @@ const ESSENTIAL_MODULES: &[&str] = &[
     // FAT/vfat filesystem for EFI partition
     "kernel/fs/fat/fat.ko.xz",
     "kernel/fs/fat/vfat.ko.xz",
+    // SCSI/CD-ROM support (for installation media access)
+    "kernel/drivers/scsi/virtio_scsi.ko.xz",
+    "kernel/drivers/cdrom/cdrom.ko.xz",
+    "kernel/drivers/scsi/sr_mod.ko.xz",
+    // ISO 9660 filesystem (to mount installation media)
+    "kernel/fs/isofs/isofs.ko.xz",
 ];
 
 /// Set up kernel modules in initramfs.

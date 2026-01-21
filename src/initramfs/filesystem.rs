@@ -6,13 +6,42 @@ use std::path::Path;
 
 use super::context::BuildContext;
 
-/// Create FHS directory structure in initramfs.
+/// Create FHS directory structure in initramfs with merged-usr layout.
+/// This matches modern Fedora/Rocky expectations where /bin -> usr/bin, etc.
 pub fn create_fhs_structure(initramfs: &Path) -> Result<()> {
+    // Create usr directories first
+    let usr_dirs = [
+        "usr/bin",
+        "usr/sbin",
+        "usr/lib",
+        "usr/lib64",
+        "usr/lib/systemd/system",
+        "usr/lib64/systemd",
+    ];
+
+    for dir in usr_dirs {
+        fs::create_dir_all(initramfs.join(dir))
+            .with_context(|| format!("Failed to create directory: {}", dir))?;
+    }
+
+    // Create merged-usr symlinks (required by modern systemd)
+    let symlinks = [
+        ("bin", "usr/bin"),
+        ("sbin", "usr/sbin"),
+        ("lib", "usr/lib"),
+        ("lib64", "usr/lib64"),
+    ];
+
+    for (link, target) in symlinks {
+        let link_path = initramfs.join(link);
+        if !link_path.exists() && !link_path.is_symlink() {
+            std::os::unix::fs::symlink(target, &link_path)
+                .with_context(|| format!("Failed to create {} -> {} symlink", link, target))?;
+        }
+    }
+
+    // Create other directories
     let dirs = [
-        "bin",
-        "sbin",
-        "lib64",
-        "lib",
         "etc",
         "proc",
         "sys",
@@ -24,8 +53,6 @@ pub fn create_fhs_structure(initramfs: &Path) -> Result<()> {
         "run/lock",
         "var/log",
         "var/tmp",
-        "usr/lib/systemd/system",
-        "usr/lib64/systemd",
         "etc/systemd/system",
         "mnt",
     ];

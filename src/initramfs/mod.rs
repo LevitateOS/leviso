@@ -58,6 +58,10 @@ const COREUTILS: &[&str] = &[
     "localedef",
     // Console
     "agetty", "login",
+    // Network testing
+    "ping",
+    // udev control (for coldplug trigger)
+    "udevadm",
 ];
 
 /// Sbin utilities to copy.

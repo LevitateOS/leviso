@@ -16,6 +16,7 @@ const SYSTEMD_BINARIES: &[&str] = &[
     "systemd-modules-load",
     "systemd-sysctl",
     "systemd-tmpfiles-setup",
+    "systemd-udevd", // Device manager - required for NetworkManager
     // D-Bus activated services (for timedatectl, hostnamectl, etc.)
     "systemd-timedated",
     "systemd-hostnamed",
@@ -48,6 +49,7 @@ const ESSENTIAL_UNITS: &[&str] = &[
     "systemd-tmpfiles-setup.service",
     "systemd-journald.service",
     "systemd-udevd.service",
+    "systemd-udev-trigger.service", // Trigger coldplug events
     // D-Bus activated services
     "systemd-timedated.service",
     "systemd-hostnamed.service",
@@ -57,6 +59,8 @@ const ESSENTIAL_UNITS: &[&str] = &[
     // Sockets
     "systemd-journald.socket",
     "systemd-journald-dev-log.socket",
+    "systemd-udevd-control.socket",
+    "systemd-udevd-kernel.socket",
 ];
 
 /// D-Bus activation symlinks.
@@ -123,6 +127,9 @@ pub fn setup_systemd(ctx: &BuildContext) -> Result<()> {
 
     // Enable getty target
     enable_getty_target(ctx)?;
+
+    // Set up udev (device manager)
+    setup_udev(ctx)?;
 
     // Create machine-id and os-release
     create_system_files(ctx)?;
@@ -370,6 +377,110 @@ VERSION="1.0"
 PRETTY_NAME="LevitateOS Live"
 "#,
     )?;
+
+    Ok(())
+}
+
+/// Essential udev helper binaries.
+const UDEV_HELPERS: &[&str] = &[
+    "ata_id",
+    "scsi_id",
+    "cdrom_id",
+    "v4l_id",
+    "dmi_memory_id",
+    "mtd_probe",
+];
+
+/// Set up udev device manager.
+fn setup_udev(ctx: &BuildContext) -> Result<()> {
+    println!("  Setting up udev...");
+
+    // Copy udev rules
+    let rules_src = ctx.rootfs.join("usr/lib/udev/rules.d");
+    let rules_dst = ctx.initramfs.join("usr/lib/udev/rules.d");
+    fs::create_dir_all(&rules_dst)?;
+
+    if rules_src.is_dir() {
+        let mut count = 0;
+        for entry in fs::read_dir(&rules_src)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().map(|e| e == "rules").unwrap_or(false) {
+                let filename = path.file_name().unwrap();
+                fs::copy(&path, rules_dst.join(filename))?;
+                count += 1;
+            }
+        }
+        println!("    Copied {} udev rules", count);
+    }
+
+    // Copy udev helpers
+    let udev_src = ctx.rootfs.join("usr/lib/udev");
+    let udev_dst = ctx.initramfs.join("usr/lib/udev");
+    fs::create_dir_all(&udev_dst)?;
+
+    for helper in UDEV_HELPERS {
+        let src = udev_src.join(helper);
+        let dst = udev_dst.join(helper);
+        if src.exists() && !dst.exists() {
+            fs::copy(&src, &dst)?;
+            let mut perms = fs::metadata(&dst)?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&dst, perms)?;
+        }
+    }
+    println!("    Copied udev helpers");
+
+    // Copy udev.conf
+    let udev_conf_src = udev_src.join("udev.conf");
+    let udev_conf_dst = udev_dst.join("udev.conf");
+    if udev_conf_src.exists() {
+        fs::copy(&udev_conf_src, &udev_conf_dst)?;
+    }
+
+    // Copy hwdb.d (hardware database)
+    let hwdb_src = udev_src.join("hwdb.d");
+    let hwdb_dst = udev_dst.join("hwdb.d");
+    if hwdb_src.is_dir() {
+        fs::create_dir_all(&hwdb_dst)?;
+        for entry in fs::read_dir(&hwdb_src)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                let filename = path.file_name().unwrap();
+                fs::copy(&path, hwdb_dst.join(filename))?;
+            }
+        }
+        println!("    Copied hardware database");
+    }
+
+    // Enable udev service in sysinit.target (runs before basic.target)
+    let sysinit_wants = ctx
+        .initramfs
+        .join("etc/systemd/system/sysinit.target.wants");
+    fs::create_dir_all(&sysinit_wants)?;
+
+    // systemd-udevd.service socket activation
+    for socket in &["systemd-udevd-control.socket", "systemd-udevd-kernel.socket"] {
+        let link = sysinit_wants.join(socket);
+        if !link.exists() {
+            std::os::unix::fs::symlink(
+                format!("/usr/lib/systemd/system/{}", socket),
+                &link,
+            )?;
+        }
+    }
+
+    // Enable udev trigger service (coldplug)
+    let trigger_link = sysinit_wants.join("systemd-udev-trigger.service");
+    if !trigger_link.exists() {
+        std::os::unix::fs::symlink(
+            "/usr/lib/systemd/system/systemd-udev-trigger.service",
+            &trigger_link,
+        )?;
+    }
+
+    println!("    Enabled udev services");
 
     Ok(())
 }

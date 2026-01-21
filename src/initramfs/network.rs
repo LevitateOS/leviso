@@ -215,6 +215,23 @@ level=INFO
         copy_dir_contents(&conf_d_src, &conf_d_dst)?;
     }
 
+    // Add config to ensure all devices are managed and auto-connect
+    // This overrides any Rocky defaults that might mark devices unmanaged
+    let manage_all_config = r#"# LevitateOS: Manage all devices by default
+[main]
+# Don't prevent auto-default for any devices
+no-auto-default=
+
+[device]
+# Manage ALL devices (no match-device means all)
+managed=true
+"#;
+    fs::write(
+        conf_d_dst.join("99-leviso-manage-ethernet.conf"),
+        manage_all_config,
+    )?;
+    println!("  Added 99-leviso-manage-ethernet.conf");
+
     Ok(())
 }
 

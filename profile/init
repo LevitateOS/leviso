@@ -91,6 +91,12 @@ if [ -n "$KVER" ]; then
 
     # ISO 9660 filesystem (to mount installation media)
     load_module isofs
+
+    # Network drivers (for NetworkManager)
+    load_module virtio_net  # QEMU/KVM virtual network
+    load_module e1000       # Intel legacy (VirtualBox, VMware)
+    load_module e1000e      # Intel modern
+    load_module r8169       # Realtek (common in laptops)
 else
     echo "[init] Warning: No kernel modules directory found"
 fi

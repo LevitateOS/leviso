@@ -128,6 +128,12 @@ impl QemuBuilder {
             ]);
         }
 
+        // Network: virtio-net with user-mode NAT (provides DHCP)
+        cmd.args([
+            "-netdev", "user,id=net0",
+            "-device", "virtio-net-pci,netdev=net0",
+        ]);
+
         // Display options
         if self.nographic {
             cmd.args(["-nographic", "-serial", "mon:stdio"]);

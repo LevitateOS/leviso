@@ -1,4 +1,9 @@
 //! Shared test utilities for leviso tests.
+//!
+//! Note: #[allow(dead_code)] is used because different test files import
+//! different subsets of these helpers, causing false "unused" warnings.
+
+#![allow(dead_code)]
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -99,15 +104,6 @@ pub fn create_mock_binary(path: &Path) {
     let mut perms = fs::metadata(path).expect("Failed to get metadata").permissions();
     perms.set_mode(0o755);
     fs::set_permissions(path, perms).expect("Failed to set permissions");
-}
-
-/// Create a mock shared library file.
-pub fn create_mock_library(path: &Path) {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).expect("Failed to create parent dir for library");
-    }
-    // Just create an empty file for testing
-    fs::write(path, b"").expect("Failed to create mock library");
 }
 
 /// Assert that a symlink exists and points to the expected target.

@@ -51,7 +51,7 @@ const COREUTILS: &[&str] = &[
 
 /// Sbin utilities to copy.
 const SBIN_UTILS: &[&str] = &[
-    "mount", "umount", "hostname", "insmod",
+    "mount", "umount", "hostname", "modprobe", "depmod",
     // Phase 2: disk utilities
     "blkid", "fdisk", "parted", "wipefs", "mkfs.ext4", "mkfs.fat",
     // Non-interactive disk partitioning (for installation)

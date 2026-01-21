@@ -7,11 +7,11 @@ use std::path::Path;
 use super::context::BuildContext;
 
 /// Essential kernel modules for disk access and filesystems.
-/// Order matters: dependencies must come before modules that need them.
+/// With modprobe, order no longer matters - dependencies are resolved automatically.
 const ESSENTIAL_MODULES: &[&str] = &[
     // Block device driver (for virtual disks)
     "kernel/drivers/block/virtio_blk.ko.xz",
-    // ext4 filesystem and dependencies
+    // ext4 filesystem and dependencies (modprobe handles ordering)
     "kernel/fs/mbcache.ko.xz",
     "kernel/fs/jbd2/jbd2.ko.xz",
     "kernel/fs/ext4/ext4.ko.xz",
@@ -24,6 +24,21 @@ const ESSENTIAL_MODULES: &[&str] = &[
     "kernel/drivers/scsi/sr_mod.ko.xz",
     // ISO 9660 filesystem (to mount installation media)
     "kernel/fs/isofs/isofs.ko.xz",
+];
+
+/// Module metadata files needed by modprobe for dependency resolution.
+const MODULE_METADATA_FILES: &[&str] = &[
+    "modules.dep",
+    "modules.dep.bin",
+    "modules.alias",
+    "modules.alias.bin",
+    "modules.softdep",
+    "modules.symbols",
+    "modules.symbols.bin",
+    "modules.builtin",
+    "modules.builtin.bin",
+    "modules.builtin.modinfo",
+    "modules.order",
 ];
 
 /// Set up kernel modules in initramfs.
@@ -54,10 +69,43 @@ pub fn setup_modules(ctx: &BuildContext) -> Result<()> {
         }
     }
 
-    // Copy modules.dep (needed for modprobe, but we use insmod directly)
-    let moddep_src = src_modules.join("modules.dep");
-    if moddep_src.exists() {
-        fs::copy(&moddep_src, dst_modules.join("modules.dep"))?;
+    // Copy module metadata files (required for modprobe dependency resolution)
+    println!("  Copying module metadata for modprobe...");
+    for metadata_file in MODULE_METADATA_FILES {
+        let src = src_modules.join(metadata_file);
+        if src.exists() {
+            fs::copy(&src, dst_modules.join(metadata_file))?;
+        }
+    }
+
+    // Run depmod to regenerate dependency info for our subset of modules
+    // This creates a modules.dep specific to the modules we copied
+    println!("  Running depmod to generate dependency info...");
+    let depmod_status = std::process::Command::new("depmod")
+        .args([
+            "-a",
+            "-b",
+            ctx.initramfs.to_str().unwrap(),
+            &kernel_version,
+        ])
+        .status();
+
+    match depmod_status {
+        Ok(status) if status.success() => {
+            println!("  depmod completed successfully");
+        }
+        Ok(status) => {
+            println!(
+                "  Warning: depmod exited with status {} (module loading may still work)",
+                status
+            );
+        }
+        Err(e) => {
+            println!(
+                "  Warning: Could not run depmod: {} (using pre-built modules.dep)",
+                e
+            );
+        }
     }
 
     Ok(())
@@ -76,4 +124,3 @@ fn find_kernel_version(modules_base: &Path) -> Result<String> {
     }
     anyhow::bail!("Could not find kernel modules directory")
 }
-

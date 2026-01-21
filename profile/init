@@ -61,39 +61,38 @@ else
     echo "[init] No CPU microcode found (install linux-firmware for security patches)"
 fi
 
-# Load essential kernel modules
+# Load essential kernel modules using modprobe (handles dependencies automatically)
 echo "[init] Loading kernel modules..."
 KVER=$(ls /lib/modules/ 2>/dev/null | head -1)
 if [ -n "$KVER" ]; then
-    # Function to load a module if it exists
+    # modprobe automatically resolves dependencies from modules.dep
+    # No need for manual ordering - just load what we need
     load_module() {
         local mod="$1"
-        if [ -f "/lib/modules/$KVER/${mod}.ko.xz" ]; then
-            /bin/xz -dk "/lib/modules/$KVER/${mod}.ko.xz" 2>/dev/null
-            /bin/insmod "/lib/modules/$KVER/${mod}.ko" 2>/dev/null && \
-                echo "[init] Loaded $mod" || echo "[init] $mod load failed (may be built-in)"
+        if modprobe "$mod" 2>/dev/null; then
+            echo "[init] Loaded $mod"
+        else
+            echo "[init] $mod load failed (may be built-in or missing)"
         fi
     }
 
     # Block device drivers
     load_module virtio_blk
 
-    # ext4 filesystem and dependencies (order matters)
-    load_module mbcache
-    load_module jbd2
+    # ext4 filesystem (modprobe loads mbcache, jbd2 dependencies automatically)
     load_module ext4
 
-    # FAT/vfat filesystem for EFI partition
-    load_module fat
+    # FAT/vfat filesystem for EFI partition (modprobe loads fat dependency)
     load_module vfat
 
     # SCSI/CD-ROM support (for installation media)
     load_module virtio_scsi
-    load_module cdrom
-    load_module sr_mod
+    load_module sr_mod  # modprobe loads cdrom dependency
 
     # ISO 9660 filesystem (to mount installation media)
     load_module isofs
+else
+    echo "[init] Warning: No kernel modules directory found"
 fi
 
 # Create required directories for systemd

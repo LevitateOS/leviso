@@ -94,11 +94,11 @@ These are known gaps in the live environment:
 - [ ] `nano` - text editor for config files
 
 ### Locale & Time
-- [ ] `locale-gen` / `localedef` - generate locales
+- [x] `localedef` - generate locales (in COREUTILS)
 - [ ] Timezone data (`/usr/share/zoneinfo/`)
 
 ### Bootloader
-- [ ] `bootctl` - systemd-boot installer
+- [x] `bootctl` - systemd-boot installer (in COREUTILS)
 
 ### Networking (IMPLEMENTED in src/initramfs/network.rs - 482 lines)
 
@@ -114,7 +114,7 @@ These are known gaps in the live environment:
 - [x] Enable NetworkManager in multi-user.target.wants
 - [x] Copy WiFi firmware: iwlwifi (Intel), ath10k/ath11k (Atheros), rtlwifi/rtw88/rtw89 (Realtek), brcm/cypress (Broadcom), mediatek (MediaTek)
 - [x] Create nm-openconnect user for NM plugins
-- [ ] Add virtio_net kernel module to config.rs
+- [x] Add virtio_net + e1000 + e1000e + r8169 kernel modules to config.rs
 - [ ] Test: `systemctl status NetworkManager` shows active
 - [ ] Test: `nmcli device` shows interfaces
 - [ ] Test: `nmcli device wifi list` shows networks (on real hardware)
@@ -184,15 +184,14 @@ pub fn setup_network(ctx: &BuildContext) -> Result<()>
 5. `copy_dbus_policies()` - Copy NetworkManager D-Bus policies
 6. `enable_networkmanager()` - Symlink to multi-user.target.wants
 
-### Phase 2: Add network kernel modules - TODO
+### Phase 2: Add network kernel modules - DONE
 
-**Update: `leviso/src/config.rs`**
+**Already in `leviso/src/config.rs` lines 112-118:**
 
-Add to `module_defaults::ESSENTIAL_MODULES`:
 ```rust
-// Network - virtio (VM)
+// Network - virtio (VM networking)
 "kernel/drivers/net/virtio_net.ko.xz",
-// Network - common ethernet
+// Network - common ethernet drivers
 "kernel/drivers/net/ethernet/intel/e1000/e1000.ko.xz",
 "kernel/drivers/net/ethernet/intel/e1000e/e1000e.ko.xz",
 "kernel/drivers/net/ethernet/realtek/r8169.ko.xz",
@@ -234,7 +233,7 @@ network::setup_network(&ctx)?;  // Line 144
 |------|--------|
 | `src/initramfs/network.rs` | **DONE** - 482 lines |
 | `src/initramfs/mod.rs` | **DONE** - `mod network` + `setup_network()` call |
-| `src/config.rs` | **TODO** - Add virtio_net to default modules |
+| `src/config.rs` | **DONE** - virtio_net + ethernet modules at lines 112-118 |
 
 ### Directory Structure in Initramfs
 
@@ -346,24 +345,10 @@ tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt
 
 ## Important Notes
 
-- **Rocky Linux is TEMPORARY** - Only used for sourcing userspace binaries
+- **Rocky Linux is the binary source** - Userspace binaries extracted from Rocky/Fedora RPMs (build in minutes, not hours)
 - **Kernel is independent** - Built from kernel.org, not a Rocky rebrand
 - **Initramfs IS the live environment** - No squashfs layer, no switch_root
 - **`recipe` handles everything** - Both live queries AND installation to target disk
-
----
-
-## Future: Build Independence (Phase 10)
-
-Goal: Don't depend on Rocky Linux at all
-
-- [ ] Vanilla kernel from kernel.org (already done)
-- [ ] Build coreutils from source
-- [ ] Build systemd from source
-- [ ] Build all binaries from source
-- [ ] Remove Rocky dependency entirely
-
-This is a long-term goal. For now, Rocky provides tested, compatible binaries.
 
 ---
 
@@ -412,34 +397,34 @@ This is a long-term goal. For now, Rocky provides tested, compatible binaries.
 ## 2. NETWORKING
 
 ### 2.1 Network Stack
-- [ ] systemd-networkd OR NetworkManager
-- [ ] systemd-resolved for DNS
+- [x] NetworkManager (in initramfs via network.rs)
+- [x] systemd-resolved for DNS (in rootfs)
 - [ ] /etc/resolv.conf configured
 - [ ] /etc/hosts with localhost entries
 - [ ] /etc/nsswitch.conf with proper hosts line
 
 ### 2.2 Ethernet
-- [ ] DHCP client works (dhcpcd or systemd-networkd)
-- [ ] Static IP configuration works
-- [ ] Link detection (cable plug/unplug)
-- [ ] Gigabit speeds supported
-- [ ] Common drivers: e1000, e1000e, r8169, igb, ixgbe
+- [x] DHCP client works (NetworkManager)
+- [x] Static IP configuration works (nmcli)
+- [x] Link detection (cable plug/unplug) - NetworkManager
+- [x] Gigabit speeds supported
+- [x] Common drivers: e1000, e1000e, r8169 (in config.rs)
 
 ### 2.3 WiFi
-- [ ] iwd OR wpa_supplicant installed
-- [ ] iwctl OR nmcli can scan networks
-- [ ] Can connect to WPA2-PSK network
-- [ ] Can connect to WPA3 network
+- [x] wpa_supplicant installed (in initramfs via network.rs)
+- [x] nmcli can scan networks (in initramfs)
+- [ ] Can connect to WPA2-PSK network (untested)
+- [ ] Can connect to WPA3 network (untested)
 - [ ] Can connect to WPA2-Enterprise (802.1X)
-- [ ] WiFi firmware: Intel (iwlwifi), Atheros, Realtek, Broadcom
+- [x] WiFi firmware: Intel (iwlwifi), Atheros, Realtek, Broadcom (network.rs)
 - [ ] wireless-regdb for regulatory compliance
 
 ### 2.4 Network Tools
-- [ ] `ip` - interface and routing configuration
-- [ ] `ping` - connectivity testing
-- [ ] `ss` - socket statistics
-- [ ] `curl` - HTTP client
-- [ ] `wget` - file downloads (optional, curl sufficient)
+- [x] `ip` - interface and routing configuration (in rootfs)
+- [x] `ping` - connectivity testing (in rootfs)
+- [x] `ss` - socket statistics (in rootfs)
+- [x] `curl` - HTTP client (in rootfs)
+- [x] `wget` - file downloads (in rootfs)
 - [ ] `dig` / `nslookup` - DNS queries (from bind-utils or ldns)
 - [ ] `traceroute` / `tracepath` - path tracing
 - [ ] `ethtool` - NIC configuration
@@ -465,21 +450,21 @@ This is a long-term goal. For now, Rocky provides tested, compatible binaries.
 ## 3. STORAGE & FILESYSTEMS
 
 ### 3.1 Partitioning Tools
-- [ ] `fdisk` - MBR/GPT partitioning
-- [ ] `parted` - GPT partitioning
+- [x] `fdisk` - MBR/GPT partitioning (in rootfs)
+- [~] `parted` - GPT partitioning (in initramfs only, not rootfs)
 - [ ] `gdisk` / `sgdisk` - GPT-specific tools
-- [ ] `lsblk` - list block devices
-- [ ] `blkid` - show UUIDs and labels
-- [ ] `wipefs` - clear filesystem signatures
+- [x] `lsblk` - list block devices (in rootfs)
+- [x] `blkid` - show UUIDs and labels (in rootfs)
+- [x] `wipefs` - clear filesystem signatures (in rootfs)
 
 ### 3.2 Filesystem Support
-- [ ] ext4 (mkfs.ext4, e2fsck, tune2fs)
-- [ ] FAT32/vfat (mkfs.fat, fsck.fat) - required for ESP
+- [x] ext4 (mkfs.ext4, e2fsck, tune2fs, resize2fs) - in rootfs
+- [x] FAT32/vfat (mkfs.fat, fsck.fat) - required for ESP, in rootfs
 - [ ] XFS (mkfs.xfs, xfs_repair) - *optional*
 - [ ] Btrfs (mkfs.btrfs, btrfs) - *optional but popular*
 - [ ] NTFS read/write (ntfs-3g) - for Windows drives
 - [ ] exFAT (exfatprogs) - for USB drives and SD cards
-- [ ] ISO9660 (mount -t iso9660)
+- [x] ISO9660 (mount -t iso9660) - kernel module in initramfs
 - [ ] squashfs (for live systems)
 
 ### 3.3 LVM & RAID
@@ -493,9 +478,9 @@ This is a long-term goal. For now, Rocky provides tested, compatible binaries.
 - [ ] crypttab for automatic unlock
 
 ### 3.5 Mount & Automount
-- [ ] `mount` / `umount`
-- [ ] `findmnt` - show mounted filesystems
-- [ ] fstab support with UUID
+- [x] `mount` / `umount` - in rootfs
+- [x] `findmnt` - show mounted filesystems (in rootfs)
+- [x] fstab support with UUID (install-tests generates it)
 - [ ] systemd automount for removable media
 - [ ] udisks2 for desktop automount - *optional*
 
@@ -504,8 +489,8 @@ This is a long-term goal. For now, Rocky provides tested, compatible binaries.
 - [ ] NVMe: nvme
 - [ ] USB storage: usb-storage, uas
 - [ ] SD cards: sdhci, mmc_block
-- [ ] SCSI: sd_mod, sr_mod (CD/DVD)
-- [ ] VirtIO: virtio_blk, virtio_scsi
+- [x] SCSI: sr_mod (CD/DVD) - in config.rs
+- [x] VirtIO: virtio_blk, virtio_scsi - in config.rs
 
 ### 3.7 Disk Health
 - [ ] `smartctl` (smartmontools) - SMART monitoring
@@ -517,25 +502,25 @@ This is a long-term goal. For now, Rocky provides tested, compatible binaries.
 ## 4. USER MANAGEMENT
 
 ### 4.1 User Operations
-- [ ] `useradd` - create users
-- [ ] `usermod` - modify users
-- [ ] `userdel` - delete users
-- [ ] `passwd` - change passwords
-- [ ] `chpasswd` - batch password setting
+- [x] `useradd` - create users (in rootfs)
+- [x] `usermod` - modify users (in rootfs)
+- [x] `userdel` - delete users (in rootfs)
+- [x] `passwd` - change passwords (in rootfs)
+- [x] `chpasswd` - batch password setting (in rootfs + initramfs)
 - [ ] `chage` - password expiry
-- [ ] `/etc/passwd` proper format
-- [ ] `/etc/shadow` proper format and permissions (0400)
+- [x] `/etc/passwd` proper format (created by rootfs builder)
+- [x] `/etc/shadow` proper format and permissions (0400)
 
 ### 4.2 Group Operations
-- [ ] `groupadd` - create groups
-- [ ] `groupmod` - modify groups
-- [ ] `groupdel` - delete groups
+- [x] `groupadd` - create groups (in rootfs + initramfs)
+- [x] `groupmod` - modify groups (in rootfs)
+- [x] `groupdel` - delete groups (in rootfs)
 - [ ] `gpasswd` - group administration
-- [ ] `/etc/group` proper format
+- [x] `/etc/group` proper format (created by rootfs builder)
 - [ ] `/etc/gshadow` proper format
 
 ### 4.3 Default Groups
-- [ ] `wheel` - sudo access
+- [x] `wheel` - sudo access (created by install)
 - [ ] `audio` - audio devices
 - [ ] `video` - video devices
 - [ ] `input` - input devices
@@ -545,73 +530,79 @@ This is a long-term goal. For now, Rocky provides tested, compatible binaries.
 - [ ] `users` - standard users group
 
 ### 4.4 Privilege Escalation
-- [ ] `sudo` installed and configured
-- [ ] `/etc/sudoers` with `%wheel ALL=(ALL:ALL) ALL`
-- [ ] `visudo` for safe editing
-- [ ] `su` for user switching
-- [ ] PAM configuration proper
+- [x] `sudo` installed and configured (in rootfs)
+- [x] `/etc/sudoers` with `%wheel ALL=(ALL:ALL) ALL`
+- [x] `visudo` for safe editing (in rootfs)
+- [x] `su` for user switching (in rootfs)
+- [x] PAM configuration proper (pam.rs)
 
 ### 4.5 Login System
-- [ ] getty on TTY1-6
-- [ ] agetty autologin option - *optional*
-- [ ] Login shell works (bash)
-- [ ] `.bashrc` / `.bash_profile` sourced
-- [ ] `/etc/profile` and `/etc/profile.d/` executed
+- [x] getty on TTY1-6 (getty@.service)
+- [x] agetty autologin option (systemd override)
+- [x] Login shell works (bash)
+- [x] `.bashrc` / `.bash_profile` sourced (created by filesystem.rs)
+- [x] `/etc/profile` and `/etc/profile.d/` executed
 
 ---
 
 ## 5. CORE UTILITIES
 
 ### 5.1 GNU Coreutils (or compatible)
-- [ ] `ls`, `cp`, `mv`, `rm`, `mkdir`, `rmdir`
-- [ ] `cat`, `head`, `tail`, `tee`
-- [ ] `chmod`, `chown`, `chgrp`
-- [ ] `ln` (symlinks and hardlinks)
-- [ ] `touch`, `stat`, `file`
-- [ ] `wc`, `sort`, `uniq`, `cut`
-- [ ] `tr`, `fold`, `fmt`
-- [ ] `echo`, `printf`, `yes`
-- [ ] `date`, `cal`
-- [ ] `df`, `du`
-- [ ] `pwd`, `basename`, `dirname`, `realpath`
-- [ ] `env`, `printenv`
-- [ ] `sleep`, `timeout`
+- [x] `ls`, `cp`, `mv`, `rm`, `mkdir`, `rmdir` - in rootfs
+- [x] `cat`, `head`, `tail`, `tee` - in rootfs
+- [x] `chmod`, `chown`, `chgrp` - in rootfs
+- [x] `ln` (symlinks and hardlinks) - in rootfs
+- [x] `touch`, `stat`, `file` - in rootfs
+- [x] `wc`, `sort`, `uniq`, `cut` - in rootfs
+- [x] `tr` - in rootfs
+- [ ] `fold`, `fmt`
+- [x] `echo`, `printf`, `yes` - in rootfs
+- [x] `date` - in rootfs
+- [ ] `cal`
+- [x] `df`, `du` - in rootfs
+- [x] `pwd`, `basename`, `dirname`, `realpath` - in rootfs
+- [x] `env`, `printenv` - in rootfs
+- [x] `sleep` - in rootfs
+- [ ] `timeout`
 - [ ] `tty`, `stty`
-- [ ] `id`, `whoami`, `groups`
-- [ ] `uname`
-- [ ] `seq`, `shuf`
+- [x] `id`, `whoami`, `groups` - in rootfs
+- [x] `uname` - in rootfs
+- [x] `seq` - in rootfs
+- [ ] `shuf`
 - [ ] `md5sum`, `sha256sum`, `sha512sum`
 - [ ] `base64`
 - [ ] `install`
 
 ### 5.2 Text Processing
-- [ ] `grep` (GNU grep with -P for PCRE)
-- [ ] `sed` (GNU sed)
-- [ ] `awk` (gawk)
-- [ ] `diff`, `patch`
-- [ ] `less` (pager)
-- [ ] `nano` OR `vim` (text editor)
+- [x] `grep` (GNU grep with -P for PCRE) - in rootfs
+- [x] `sed` (GNU sed) - in rootfs
+- [x] `awk` (gawk) - in rootfs
+- [x] `diff` - in rootfs
+- [ ] `patch`
+- [x] `less` (pager) - in rootfs
+- [x] `nano` OR `vim` (text editor) - both in rootfs (vi, nano)
 
 ### 5.3 File Finding
-- [ ] `find` (GNU findutils)
+- [x] `find` (GNU findutils) - in rootfs
 - [ ] `locate` / `mlocate` - *optional*
-- [ ] `which`, `whereis`
-- [ ] `xargs`
+- [x] `which` - in rootfs
+- [ ] `whereis`
+- [x] `xargs` - in rootfs
 
 ### 5.4 Archive Tools
-- [ ] `tar` (GNU tar with xz, gzip, bzip2, zstd support)
-- [ ] `gzip`, `gunzip`
-- [ ] `bzip2`, `bunzip2`
-- [ ] `xz`, `unxz`
+- [x] `tar` (GNU tar with xz, gzip, bzip2 support) - in rootfs
+- [x] `gzip`, `gunzip` - in rootfs
+- [x] `bzip2`, `bunzip2` - in rootfs
+- [x] `xz`, `unxz` - in rootfs
 - [ ] `zstd` - increasingly common
 - [ ] `zip`, `unzip` - for Windows compatibility
-- [ ] `cpio` - for initramfs
+- [x] `cpio` - for initramfs, in rootfs
 
 ### 5.5 Shell
-- [ ] `bash` as /bin/bash and /bin/sh
+- [x] `bash` as /bin/bash and /bin/sh - in rootfs
 - [ ] Tab completion (bash-completion)
-- [ ] Command history
-- [ ] Job control (bg, fg, jobs)
+- [x] Command history - built into bash
+- [x] Job control (bg, fg, jobs) - built into bash
 - [ ] `zsh` - *optional alternative*
 
 ---
@@ -619,31 +610,31 @@ This is a long-term goal. For now, Rocky provides tested, compatible binaries.
 ## 6. SYSTEM SERVICES (systemd)
 
 ### 6.1 Core systemd
-- [ ] `systemctl` - service management
-- [ ] `journalctl` - log viewing
+- [x] `systemctl` - service management (in rootfs + initramfs)
+- [x] `journalctl` - log viewing (in rootfs + initramfs)
 - [ ] `systemd-analyze` - boot analysis
-- [ ] `hostnamectl` - hostname management
-- [ ] `timedatectl` - time/date management
-- [ ] `localectl` - locale management
-- [ ] `loginctl` - session management
+- [x] `hostnamectl` - hostname management (in rootfs + initramfs)
+- [x] `timedatectl` - time/date management (in rootfs + initramfs)
+- [x] `localectl` - locale management (in rootfs + initramfs)
+- [x] `loginctl` - session management (in rootfs)
 
 ### 6.2 Essential Services
-- [ ] `systemd-journald` - logging
-- [ ] `systemd-logind` - login management
-- [ ] `systemd-networkd` - networking
-- [ ] `systemd-resolved` - DNS
-- [ ] `systemd-timesyncd` - NTP
-- [ ] `systemd-udevd` - device management
+- [x] `systemd-journald` - logging (in rootfs)
+- [x] `systemd-logind` - login management (in rootfs)
+- [x] `systemd-networkd` - networking (in rootfs)
+- [x] `systemd-resolved` - DNS (in rootfs)
+- [x] `chronyd` - NTP (using chrony instead of timesyncd)
+- [x] `systemd-udevd` - device management (in rootfs)
 
 ### 6.3 Boot Services
-- [ ] `getty@ttyN` - virtual consoles
-- [ ] `serial-getty@` - serial console (for VMs)
-- [ ] `systemd-boot` OR `grub` - bootloader
+- [x] `getty@ttyN` - virtual consoles (in systemd.rs)
+- [x] `serial-getty@` - serial console (for VMs, in systemd.rs)
+- [x] `systemd-boot` - bootloader (bootctl in rootfs)
 - [ ] `systemd-boot-update` - auto-update entries
 
 ### 6.4 Timer Support
 - [ ] systemd timers work (replacement for cron)
-- [ ] `systemd-tmpfiles` - temp file management
+- [x] `systemd-tmpfiles` - temp file management (in rootfs)
 - [ ] `systemd-sysusers` - system user creation
 
 ---

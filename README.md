@@ -54,7 +54,7 @@ output/              # Build outputs (gitignored)
 ├── initramfs-root/  # Unpacked initramfs contents
 ├── initramfs.cpio.gz
 ├── iso-root/        # ISO contents before packaging
-└── leviso.iso       # Final bootable ISO
+└── levitateos.iso   # Final bootable ISO
 
 profile/
 └── init             # Init script (runs as PID 1)

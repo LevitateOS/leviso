@@ -40,6 +40,6 @@ pub mod context;
 pub mod parts;
 pub mod rpm;
 
-pub use builder::RootfsBuilder;
+pub use builder::{extract_tarball, list_tarball, verify_tarball, RootfsBuilder};
 pub use context::BuildContext;
 pub use rpm::{RpmExtractor, REQUIRED_PACKAGES};

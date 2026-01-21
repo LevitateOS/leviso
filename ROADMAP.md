@@ -128,6 +128,9 @@ These are known gaps in the live environment:
 - [ ] Tab completion (bash-completion)
 - [x] Welcome message with install instructions (/etc/motd)
 
+### Documentation
+- [ ] `levitate-docs` TUI documentation viewer (requires Node.js - post-install via recipe)
+
 ---
 
 ## Implementation Plan: Networking

@@ -235,7 +235,7 @@ Useful commands:
   timedatectl list-timezones   - List available timezones
   lsblk                        - List block devices
 
-Documentation: https://levitateos.org/docs
+Full documentation: Run 'levitate-docs' after installation
 ================================================================================
 "#;
 

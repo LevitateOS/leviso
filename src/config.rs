@@ -89,6 +89,29 @@ impl RockyConfig {
     }
 }
 
+/// Default essential modules for initramfs.
+pub mod module_defaults {
+    /// Default essential kernel modules.
+    /// Format: paths relative to /lib/modules/<version>/
+    pub const ESSENTIAL_MODULES: &[&str] = &[
+        // Block device driver (for virtual disks)
+        "kernel/drivers/block/virtio_blk.ko.xz",
+        // ext4 filesystem and dependencies
+        "kernel/fs/mbcache.ko.xz",
+        "kernel/fs/jbd2/jbd2.ko.xz",
+        "kernel/fs/ext4/ext4.ko.xz",
+        // FAT/vfat filesystem for EFI partition
+        "kernel/fs/fat/fat.ko.xz",
+        "kernel/fs/fat/vfat.ko.xz",
+        // SCSI/CD-ROM support (for installation media access)
+        "kernel/drivers/scsi/virtio_scsi.ko.xz",
+        "kernel/drivers/cdrom/cdrom.ko.xz",
+        "kernel/drivers/scsi/sr_mod.ko.xz",
+        // ISO 9660 filesystem (to mount installation media)
+        "kernel/fs/isofs/isofs.ko.xz",
+    ];
+}
+
 /// Leviso configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -100,6 +123,8 @@ pub struct Config {
     pub linux_git_url: String,
     /// Rocky Linux source configuration
     pub rocky: RockyConfig,
+    /// Additional kernel modules to include in initramfs
+    pub extra_modules: Vec<String>,
 }
 
 impl Config {
@@ -164,11 +189,23 @@ impl Config {
 
         let rocky = RockyConfig::from_env(&env_vars);
 
+        // Parse extra modules from comma-separated list
+        let extra_modules = env_vars
+            .get("EXTRA_MODULES")
+            .map(|s| {
+                s.split(',')
+                    .map(|m| m.trim().to_string())
+                    .filter(|m| !m.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
+
         Self {
             linux_source,
             kernel_localversion,
             linux_git_url,
             rocky,
+            extra_modules,
         }
     }
 
@@ -191,10 +228,26 @@ impl Config {
         println!("    ROCKY_FILENAME: {}", self.rocky.filename);
         println!("    ROCKY_SHA256: {}...", &self.rocky.sha256[..16]);
         println!();
+        if !self.extra_modules.is_empty() {
+            println!("  Extra modules:");
+            for module in &self.extra_modules {
+                println!("    - {}", module);
+            }
+            println!();
+        }
         if self.has_linux_source() {
             println!("  Linux source: FOUND");
         } else {
             println!("  Linux source: NOT FOUND (run 'leviso download linux' to fetch)");
         }
+    }
+
+    /// Get all modules (defaults + extra).
+    pub fn all_modules(&self) -> Vec<&str> {
+        let mut modules: Vec<&str> = module_defaults::ESSENTIAL_MODULES.to_vec();
+        for extra in &self.extra_modules {
+            modules.push(extra);
+        }
+        modules
     }
 }

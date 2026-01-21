@@ -22,6 +22,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use crate::config::Config;
 use context::BuildContext;
 
 /// Coreutils binaries to copy.
@@ -72,6 +73,9 @@ pub fn build_initramfs(base_dir: &Path) -> Result<()> {
     // Check host tools first
     rootfs::check_host_tools()?;
 
+    // Load configuration for module list
+    let config = Config::load(base_dir);
+
     let extract_dir = base_dir.join("downloads");
     let output_dir = base_dir.join("output");
     let initramfs_root = output_dir.join("initramfs-root");
@@ -114,7 +118,8 @@ pub fn build_initramfs(base_dir: &Path) -> Result<()> {
     filesystem::copy_keymaps(&ctx)?;
 
     // Set up kernel modules (for disk drivers)
-    modules::setup_modules(&ctx)?;
+    let module_list = config.all_modules();
+    modules::setup_modules(&ctx, &module_list)?;
 
     // Create root user (must be before dbus adds system users)
     users::create_root_user(&ctx.initramfs)?;

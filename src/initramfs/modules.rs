@@ -6,26 +6,6 @@ use std::path::Path;
 
 use super::context::BuildContext;
 
-/// Essential kernel modules for disk access and filesystems.
-/// With modprobe, order no longer matters - dependencies are resolved automatically.
-const ESSENTIAL_MODULES: &[&str] = &[
-    // Block device driver (for virtual disks)
-    "kernel/drivers/block/virtio_blk.ko.xz",
-    // ext4 filesystem and dependencies (modprobe handles ordering)
-    "kernel/fs/mbcache.ko.xz",
-    "kernel/fs/jbd2/jbd2.ko.xz",
-    "kernel/fs/ext4/ext4.ko.xz",
-    // FAT/vfat filesystem for EFI partition
-    "kernel/fs/fat/fat.ko.xz",
-    "kernel/fs/fat/vfat.ko.xz",
-    // SCSI/CD-ROM support (for installation media access)
-    "kernel/drivers/scsi/virtio_scsi.ko.xz",
-    "kernel/drivers/cdrom/cdrom.ko.xz",
-    "kernel/drivers/scsi/sr_mod.ko.xz",
-    // ISO 9660 filesystem (to mount installation media)
-    "kernel/fs/isofs/isofs.ko.xz",
-];
-
 /// Module metadata files needed by modprobe for dependency resolution.
 const MODULE_METADATA_FILES: &[&str] = &[
     "modules.dep",
@@ -42,7 +22,10 @@ const MODULE_METADATA_FILES: &[&str] = &[
 ];
 
 /// Set up kernel modules in initramfs.
-pub fn setup_modules(ctx: &BuildContext) -> Result<()> {
+///
+/// The `modules` parameter specifies which modules to copy.
+/// Each entry is a path relative to /lib/modules/<version>/.
+pub fn setup_modules(ctx: &BuildContext, modules: &[&str]) -> Result<()> {
     println!("Setting up kernel modules...");
 
     // Find kernel version
@@ -54,8 +37,8 @@ pub fn setup_modules(ctx: &BuildContext) -> Result<()> {
     let dst_modules = ctx.initramfs.join("lib/modules").join(&kernel_version);
     fs::create_dir_all(&dst_modules)?;
 
-    // Copy essential modules
-    for module in ESSENTIAL_MODULES {
+    // Copy specified modules
+    for module in modules {
         let src = src_modules.join(module);
         if src.exists() {
             let module_name = Path::new(module)

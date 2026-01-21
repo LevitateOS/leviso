@@ -19,61 +19,62 @@ use std::os::unix::fs::PermissionsExt;
 // =============================================================================
 
 #[cheat_aware(
-    protects = "Binary dependencies are correctly identified from ldd output",
+    protects = "Binary dependencies are correctly identified from readelf output",
     severity = "HIGH",
     ease = "MEDIUM",
     cheats = [
         "Hardcode expected libraries instead of parsing",
-        "Accept partial ldd output",
-        "Skip vdso filtering validation"
+        "Accept partial readelf output",
+        "Skip library name extraction"
     ],
     consequence = "Missing shared libraries: binaries crash on load"
 )]
 #[test]
-fn test_parse_ldd_standard_format() {
+fn test_parse_readelf_standard_format() {
     let output = r#"
-        linux-vdso.so.1 (0x00007ffee9bfe000)
-        libc.so.6 => /lib64/libc.so.6 (0x00007f1234000000)
-        /lib64/ld-linux-x86-64.so.2 (0x00007f1234500000)
+Dynamic section at offset 0x2f50 contains 27 entries:
+  Tag        Type                         Name/Value
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [libpthread.so.0]
+ 0x000000000000000c (INIT)               0x1000
     "#;
 
-    let libs = binary::parse_ldd_output(output).expect("parse should succeed");
+    let libs = binary::parse_readelf_output(output).expect("parse should succeed");
 
-    assert!(libs.contains(&"/lib64/libc.so.6".to_string()));
-    assert!(libs.contains(&"/lib64/ld-linux-x86-64.so.2".to_string()));
-    // linux-vdso is virtual, should not be included
-    assert!(!libs.iter().any(|l| l.contains("vdso")));
+    assert!(libs.contains(&"libc.so.6".to_string()));
+    assert!(libs.contains(&"libpthread.so.0".to_string()));
+    assert_eq!(libs.len(), 2);
 }
 
 #[cheat_aware(
-    protects = "Missing libraries are handled gracefully without crashing",
+    protects = "Multiple NEEDED entries are all captured",
     severity = "MEDIUM",
     ease = "EASY",
     cheats = [
-        "Ignore 'not found' entries silently",
-        "Accept missing lib as optional",
-        "Skip warning about missing deps"
+        "Only capture first library",
+        "Skip libraries with certain names",
+        "Limit number of captured libs"
     ],
-    consequence = "Build succeeds but binary fails at runtime"
+    consequence = "Missing libraries in initramfs"
 )]
 #[test]
-fn test_parse_ldd_not_found_warning() {
+fn test_parse_readelf_multiple_needed() {
     let output = r#"
-        libfoo.so.1 => not found
-        libc.so.6 => /lib64/libc.so.6 (0x00007f1234000000)
+ 0x0000000000000001 (NEEDED)             Shared library: [libm.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [libdl.so.2]
     "#;
 
-    // Should not fail, just warn about missing lib
-    let libs = binary::parse_ldd_output(output).expect("parse should succeed");
+    let libs = binary::parse_readelf_output(output).expect("parse should succeed");
 
-    // Should still find libc
-    assert!(libs.contains(&"/lib64/libc.so.6".to_string()));
-    // Should not include "not found"
-    assert!(!libs.iter().any(|l| l.contains("not found")));
+    assert!(libs.contains(&"libm.so.6".to_string()));
+    assert!(libs.contains(&"libc.so.6".to_string()));
+    assert!(libs.contains(&"libdl.so.2".to_string()));
+    assert_eq!(libs.len(), 3);
 }
 
 #[cheat_aware(
-    protects = "Empty ldd output handled correctly",
+    protects = "Empty readelf output handled correctly",
     severity = "LOW",
     ease = "EASY",
     cheats = [
@@ -84,9 +85,9 @@ fn test_parse_ldd_not_found_warning() {
     consequence = "Phantom libraries added to initramfs"
 )]
 #[test]
-fn test_parse_ldd_empty_output() {
+fn test_parse_readelf_empty_output() {
     let output = "";
-    let libs = binary::parse_ldd_output(output).expect("parse should succeed");
+    let libs = binary::parse_readelf_output(output).expect("parse should succeed");
     assert!(libs.is_empty());
 }
 
@@ -102,9 +103,15 @@ fn test_parse_ldd_empty_output() {
     consequence = "Unnecessary libraries bloat initramfs"
 )]
 #[test]
-fn test_parse_ldd_statically_linked() {
-    let output = "    not a dynamic executable";
-    let libs = binary::parse_ldd_output(output).expect("parse should succeed");
+fn test_parse_readelf_no_needed_entries() {
+    // readelf output for a static binary has no NEEDED entries
+    let output = r#"
+Dynamic section at offset 0x2f50 contains 10 entries:
+  Tag        Type                         Name/Value
+ 0x000000000000000c (INIT)               0x1000
+ 0x000000000000000d (FINI)               0x2000
+    "#;
+    let libs = binary::parse_readelf_output(output).expect("parse should succeed");
     assert!(libs.is_empty());
 }
 
@@ -581,4 +588,117 @@ fn test_make_executable() {
 
     // Check executable bits (755 = rwxr-xr-x)
     assert_eq!(mode & 0o111, 0o111, "File should be executable");
+}
+
+// =============================================================================
+// config.rs tests
+// =============================================================================
+
+use leviso::config::{module_defaults, Config, RockyConfig};
+
+#[cheat_aware(
+    protects = "Rocky config uses correct defaults when no env vars set",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Hardcode wrong defaults",
+        "Skip env var checking",
+        "Use stale cached values"
+    ],
+    consequence = "Wrong Rocky version downloaded"
+)]
+#[test]
+fn test_rocky_config_defaults() {
+    let config = RockyConfig::default();
+
+    assert_eq!(config.version, "10.1");
+    assert_eq!(config.arch, "x86_64");
+    assert!(config.url.contains("Rocky-10.1"));
+    assert!(config.filename.contains("Rocky-10.1"));
+    assert!(!config.sha256.is_empty());
+}
+
+#[cheat_aware(
+    protects = "Module defaults contain essential modules",
+    severity = "HIGH",
+    ease = "EASY",
+    cheats = [
+        "Return empty module list",
+        "Skip essential modules",
+        "Hardcode incomplete list"
+    ],
+    consequence = "Initramfs missing essential modules, boot fails"
+)]
+#[test]
+fn test_module_defaults_contain_essentials() {
+    let modules = module_defaults::ESSENTIAL_MODULES;
+
+    // Must have virtio for VM disk access
+    assert!(modules.iter().any(|m| m.contains("virtio_blk")));
+    // Must have ext4 for root filesystem
+    assert!(modules.iter().any(|m| m.contains("ext4")));
+    // Must have FAT for EFI partition
+    assert!(modules.iter().any(|m| m.contains("fat") || m.contains("vfat")));
+}
+
+#[cheat_aware(
+    protects = "Config.all_modules() combines defaults with extras",
+    severity = "MEDIUM",
+    ease = "EASY",
+    cheats = [
+        "Return only defaults",
+        "Return only extras",
+        "Duplicate modules"
+    ],
+    consequence = "Extra modules not included in initramfs"
+)]
+#[test]
+fn test_config_all_modules_includes_extras() {
+    let env = TestEnv::new();
+
+    // Write .env with extra modules
+    fs::write(
+        env.base_dir.join(".env"),
+        "EXTRA_MODULES=kernel/drivers/nvme/host/nvme.ko.xz,kernel/fs/xfs/xfs.ko.xz",
+    )
+    .unwrap();
+
+    let config = Config::load(&env.base_dir);
+    let all_modules = config.all_modules();
+
+    // Should include defaults
+    assert!(all_modules.iter().any(|m| m.contains("virtio_blk")));
+    assert!(all_modules.iter().any(|m| m.contains("ext4")));
+
+    // Should include extras
+    assert!(all_modules.iter().any(|m| m.contains("nvme")));
+    assert!(all_modules.iter().any(|m| m.contains("xfs")));
+}
+
+#[cheat_aware(
+    protects = "Empty EXTRA_MODULES doesn't break config",
+    severity = "LOW",
+    ease = "EASY",
+    cheats = [
+        "Crash on empty string",
+        "Add phantom modules",
+        "Skip empty check"
+    ],
+    consequence = "Build fails with empty EXTRA_MODULES"
+)]
+#[test]
+fn test_config_empty_extra_modules() {
+    let env = TestEnv::new();
+
+    // Write .env with empty extra modules
+    fs::write(env.base_dir.join(".env"), "EXTRA_MODULES=").unwrap();
+
+    let config = Config::load(&env.base_dir);
+
+    // Extra modules should be empty
+    assert!(config.extra_modules.is_empty());
+
+    // But all_modules should still have defaults
+    let all_modules = config.all_modules();
+    assert!(!all_modules.is_empty());
 }

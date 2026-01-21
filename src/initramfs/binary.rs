@@ -34,7 +34,7 @@ pub fn get_library_dependencies(binary_path: &Path) -> Result<Vec<String>> {
 /// Parse readelf -d output to extract NEEDED library names.
 ///
 /// Example readelf output:
-/// ```
+/// ```text
 /// Dynamic section at offset 0x2d0e0 contains 28 entries:
 ///   Tag        Type                         Name/Value
 ///  0x0000000000000001 (NEEDED)             Shared library: [libtinfo.so.6]

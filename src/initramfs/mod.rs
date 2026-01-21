@@ -62,6 +62,10 @@ const COREUTILS: &[&str] = &[
     "ping",
     // udev control (for coldplug trigger)
     "udevadm",
+    // User management (extracted from RPM - not in minimal rootfs)
+    "passwd",
+    // Text editor (extracted from RPM - not in minimal rootfs)
+    "nano",
 ];
 
 /// Sbin utilities to copy.

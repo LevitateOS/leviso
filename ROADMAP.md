@@ -90,8 +90,8 @@ ISO
 These are known gaps in the live environment:
 
 ### User Tools
-- [ ] `passwd` - interactive password setting
-- [ ] `nano` - text editor for config files
+- [x] `passwd` - interactive password setting
+- [x] `nano` - text editor for config files
 
 ### Locale & Time
 - [x] `localedef` - generate locales (in COREUTILS)
@@ -115,8 +115,8 @@ These are known gaps in the live environment:
 - [x] Copy WiFi firmware: iwlwifi (Intel), ath10k/ath11k (Atheros), rtlwifi/rtw88/rtw89 (Realtek), brcm/cypress (Broadcom), mediatek (MediaTek)
 - [x] Create nm-openconnect user for NM plugins
 - [x] Add virtio_net + e1000 + e1000e + r8169 kernel modules to config.rs
-- [ ] Test: `systemctl status NetworkManager` shows active
-- [ ] Test: `nmcli device` shows interfaces
+- [x] Test: `systemctl status NetworkManager` shows active
+- [x] Test: `nmcli device` shows interfaces (eth0 connected, DHCP works)
 - [ ] Test: `nmcli device wifi list` shows networks (on real hardware)
 
 ### Recipe

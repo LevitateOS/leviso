@@ -13,6 +13,13 @@ use std::process::Command;
 
 use super::context::BuildContext;
 
+/// Known RPM locations for binaries not in the minimal rootfs.
+/// Format: (binary_name, rpm_glob_pattern, path_in_rpm)
+const RPM_BINARY_SOURCES: &[(&str, &str, &str)] = &[
+    ("passwd", "shadow-utils-*.rpm", "usr/bin/passwd"),
+    ("nano", "nano-*.rpm", "usr/bin/nano"),
+];
+
 /// Extract library dependencies from an ELF binary using readelf.
 ///
 /// This is architecture-independent - readelf reads the ELF headers directly
@@ -169,6 +176,71 @@ pub fn find_binary(rootfs: &Path, binary: &str) -> Option<PathBuf> {
     bin_candidates.into_iter().find(|p| p.exists())
 }
 
+/// Extract a binary from an RPM when it's not in the rootfs.
+/// Returns the path to the extracted binary, or None if extraction failed.
+pub fn extract_binary_from_rpm(ctx: &BuildContext, binary: &str) -> Option<PathBuf> {
+    // Check if this binary has a known RPM source
+    let rpm_info = RPM_BINARY_SOURCES.iter().find(|(name, _, _)| *name == binary)?;
+    let (_name, rpm_pattern, path_in_rpm) = *rpm_info;
+
+    // Find the RPM in the ISO packages
+    let packages_dir = ctx.base_dir.join("downloads/iso-contents/BaseOS/Packages");
+
+    // Search all subdirectories (packages are organized by first letter)
+    let rpm_path = find_rpm_by_pattern(&packages_dir, rpm_pattern)?;
+
+    // Create a temporary extraction directory
+    let extract_dir = ctx.base_dir.join("output/rpm-tmp");
+    let _ = fs::create_dir_all(&extract_dir);
+
+    // Extract the specific file using rpm2cpio and cpio
+    let output = Command::new("sh")
+        .current_dir(&extract_dir)
+        .args([
+            "-c",
+            &format!(
+                "rpm2cpio '{}' | cpio -idm './{}'",
+                rpm_path.display(),
+                path_in_rpm
+            ),
+        ])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let extracted_path = extract_dir.join(path_in_rpm);
+    if extracted_path.exists() {
+        Some(extracted_path)
+    } else {
+        None
+    }
+}
+
+/// Find an RPM file matching a glob pattern in the packages directory.
+fn find_rpm_by_pattern(packages_dir: &Path, pattern: &str) -> Option<PathBuf> {
+    // Packages are organized in subdirectories by first letter
+    for entry in fs::read_dir(packages_dir).ok()? {
+        let entry = entry.ok()?;
+        let subdir = entry.path();
+        if subdir.is_dir() {
+            for rpm_entry in fs::read_dir(&subdir).ok()? {
+                let rpm_entry = rpm_entry.ok()?;
+                let rpm_name = rpm_entry.file_name();
+                let rpm_name_str = rpm_name.to_string_lossy();
+                // Simple glob matching: check if name starts with pattern prefix and ends with .rpm
+                let prefix = pattern.trim_end_matches("*.rpm").trim_end_matches("-*.rpm");
+                if rpm_name_str.starts_with(prefix) && rpm_name_str.ends_with(".rpm") {
+                    return Some(rpm_entry.path());
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Make a file executable (chmod 755).
 pub fn make_executable(path: &Path) -> Result<()> {
     let mut perms = fs::metadata(path)
@@ -182,11 +254,21 @@ pub fn make_executable(path: &Path) -> Result<()> {
 
 /// Copy a binary and its library dependencies to initramfs.
 pub fn copy_binary_with_libs(ctx: &BuildContext, binary: &str) -> Result<()> {
+    // First try to find in rootfs, then fall back to RPM extraction
     let bin_path = match find_binary(&ctx.rootfs, binary) {
         Some(p) => p,
         None => {
-            println!("  Warning: {} not found, skipping", binary);
-            return Ok(());
+            // Try extracting from RPM
+            match extract_binary_from_rpm(ctx, binary) {
+                Some(p) => {
+                    println!("  Extracted {} from RPM", binary);
+                    p
+                }
+                None => {
+                    println!("  Warning: {} not found, skipping", binary);
+                    return Ok(());
+                }
+            }
         }
     };
 

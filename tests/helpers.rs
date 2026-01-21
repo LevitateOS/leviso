@@ -2,6 +2,15 @@
 //!
 //! Note: #[allow(dead_code)] is used because different test files import
 //! different subsets of these helpers, causing false "unused" warnings.
+//!
+//! # STOP. READ. THEN ACT.
+//!
+//! This file is for UNIT TEST helpers only.
+//!
+//! **E2E installation tests (QEMU, booting, installation) belong in the
+//! `install-tests` crate, NOT here.**
+//!
+//! See `leviso/tests/README.md` for what belongs where.
 
 #![allow(dead_code)]
 

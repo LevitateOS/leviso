@@ -1,3 +1,12 @@
+//! Leviso - LevitateOS ISO and rootfs builder.
+//!
+//! # STOP. READ. THEN ACT.
+//!
+//! Before modifying this crate:
+//! 1. Read the module you're about to change
+//! 2. E2E installation tests go in `install-tests/`, NOT in `leviso/tests/`
+//! 3. See `tests/README.md` for what tests belong where
+
 mod clean;
 mod config;
 mod download;

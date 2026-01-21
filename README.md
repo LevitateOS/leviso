@@ -1,5 +1,7 @@
 # leviso
 
+> **STOP. READ. THEN ACT.** E2E installation tests belong in `install-tests/`, NOT in `leviso/tests/`. See `tests/README.md`.
+
 Minimal, self-contained bootable Linux ISO builder for LevitateOS.
 
 ## Quick Start

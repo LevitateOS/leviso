@@ -5,6 +5,13 @@
 //! 2. Setting up systemd as init
 //! 3. Configuring D-Bus, PAM, Chrony, and NetworkManager
 //! 4. Building a cpio archive
+//!
+//! # STOP. READ. THEN ACT.
+//!
+//! This module has many submodules. Before adding anything:
+//! 1. Read the existing submodules (binary, filesystem, systemd, network, etc.)
+//! 2. Check if similar functionality already exists
+//! 3. Understand the BuildContext pattern used throughout
 
 pub mod binary;
 pub mod chrony;
@@ -30,7 +37,7 @@ use context::BuildContext;
 const COREUTILS: &[&str] = &[
     "ls", "cat", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "chmod", "chown", "echo", "pwd",
     "head", "tail", "grep", "find", "wc", "sort", "uniq", "uname", "env", "printenv", "clear",
-    "sleep", "ln", "readlink", "dirname", "basename",
+    "sleep", "ln", "readlink", "dirname", "basename", "stty", "tty",
     // procps-ng utilities (memory/process info)
     "free", "ps", "top", "uptime", "vmstat", "w", "watch", "pgrep", "pkill",
     // Phase 2: disk info

@@ -135,6 +135,9 @@ pub fn build_initramfs(base_dir: &Path) -> Result<()> {
     // Copy keymaps
     filesystem::copy_keymaps(&ctx)?;
 
+    // Copy timezone data
+    filesystem::copy_zoneinfo(&ctx)?;
+
     // Set up kernel modules (for disk drivers)
     let module_list = config.all_modules();
     modules::setup_modules(&ctx, &module_list)?;
@@ -160,6 +163,9 @@ pub fn build_initramfs(base_dir: &Path) -> Result<()> {
 
     // Create shell configuration
     filesystem::create_shell_config(&ctx.initramfs)?;
+
+    // Create welcome message with install instructions
+    filesystem::create_welcome_message(&ctx.initramfs)?;
 
     // Set up PAM (required for login/agetty)
     pam::setup_pam(&ctx)?;

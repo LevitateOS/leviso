@@ -95,7 +95,7 @@ These are known gaps in the live environment:
 
 ### Locale & Time
 - [x] `localedef` - generate locales (in COREUTILS)
-- [ ] Timezone data (`/usr/share/zoneinfo/`)
+- [x] Timezone data (`/usr/share/zoneinfo/`)
 
 ### Bootloader
 - [x] `bootctl` - systemd-boot installer (in COREUTILS)
@@ -124,9 +124,9 @@ These are known gaps in the live environment:
 - [ ] `recipe bootstrap /mnt` command
 
 ### Quality of Life
-- [ ] Proper shutdown/reboot (untested)
+- [x] Proper shutdown/reboot (via `poweroff`/`reboot` aliases)
 - [ ] Tab completion (bash-completion)
-- [ ] Welcome message with install instructions
+- [x] Welcome message with install instructions (/etc/motd)
 
 ---
 

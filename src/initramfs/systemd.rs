@@ -16,7 +16,8 @@ const SYSTEMD_BINARIES: &[&str] = &[
     "systemd-modules-load",
     "systemd-sysctl",
     "systemd-tmpfiles-setup",
-    "systemd-udevd", // Device manager - required for NetworkManager
+    "systemd-udevd",  // Device manager - required for NetworkManager
+    "systemd-logind", // Login/session manager - required for shutdown/reboot
     // D-Bus activated services (for timedatectl, hostnamectl, etc.)
     "systemd-timedated",
     "systemd-hostnamed",
@@ -375,6 +376,27 @@ fn create_system_files(ctx: &BuildContext) -> Result<()> {
 ID=levitateos
 VERSION="1.0"
 PRETTY_NAME="LevitateOS Live"
+"#,
+    )?;
+
+    // Polkit rule to allow root to poweroff/reboot without authentication
+    // This is needed for live environment where we don't have a full polkit setup
+    let polkit_rules_dir = ctx.initramfs.join("etc/polkit-1/rules.d");
+    fs::create_dir_all(&polkit_rules_dir)?;
+    fs::write(
+        polkit_rules_dir.join("50-allow-root-poweroff.rules"),
+        r#"// Allow root to power off/reboot without authentication
+polkit.addRule(function(action, subject) {
+    if ((action.id == "org.freedesktop.login1.power-off" ||
+         action.id == "org.freedesktop.login1.power-off-multiple-sessions" ||
+         action.id == "org.freedesktop.login1.reboot" ||
+         action.id == "org.freedesktop.login1.reboot-multiple-sessions" ||
+         action.id == "org.freedesktop.login1.halt" ||
+         action.id == "org.freedesktop.login1.halt-multiple-sessions") &&
+        subject.user == "root") {
+        return polkit.Result.YES;
+    }
+});
 "#,
     )?;
 

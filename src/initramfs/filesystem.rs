@@ -124,6 +124,15 @@ pub fn create_shell_config(initramfs: &Path) -> Result<()> {
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin
 export HOME=/root
 export PS1='root@leviso:\w# '
+
+# Aliases for power management (live environment doesn't have full polkit)
+alias poweroff='systemctl poweroff --force'
+alias reboot='systemctl reboot --force'
+alias halt='systemctl halt --force'
+
+# Show welcome message on login
+cat /etc/motd
+
 cd /root
 "#,
     )?;
@@ -134,6 +143,11 @@ cd /root
 export PATH=/bin:/sbin:/usr/bin:/usr/sbin
 export HOME=/root
 export PS1='root@leviso:\w# '
+
+# Aliases for power management (live environment doesn't have full polkit)
+alias poweroff='systemctl poweroff --force'
+alias reboot='systemctl reboot --force'
+alias halt='systemctl halt --force'
 "#,
     )?;
 
@@ -148,6 +162,93 @@ pub fn copy_init_script(ctx: &BuildContext) -> Result<()> {
 
     super::binary::make_executable(&init_dst)?;
     println!("Copied init script");
+
+    Ok(())
+}
+
+/// Copy timezone data for timedatectl.
+pub fn copy_zoneinfo(ctx: &BuildContext) -> Result<()> {
+    let zoneinfo_src = ctx.rootfs.join("usr/share/zoneinfo");
+    let zoneinfo_dst = ctx.initramfs.join("usr/share/zoneinfo");
+
+    if zoneinfo_src.exists() {
+        println!("Copying timezone data...");
+        copy_dir_recursive(&zoneinfo_src, &zoneinfo_dst)?;
+
+        // Set default timezone to UTC
+        let localtime = ctx.initramfs.join("etc/localtime");
+        if !localtime.exists() {
+            std::os::unix::fs::symlink("/usr/share/zoneinfo/UTC", &localtime)
+                .context("Failed to create /etc/localtime symlink")?;
+        }
+
+        // Create timezone config
+        fs::write(ctx.initramfs.join("etc/timezone"), "UTC\n")?;
+
+        println!("  Timezone data copied (default: UTC)");
+    } else {
+        println!("  Warning: Timezone data not found in rootfs");
+    }
+
+    Ok(())
+}
+
+/// Create welcome message shown on login.
+pub fn create_welcome_message(initramfs: &Path) -> Result<()> {
+    let motd = r#"
+================================================================================
+                         Welcome to LevitateOS Live
+================================================================================
+
+This is a live environment. To install LevitateOS to disk:
+
+  1. Partition your disk:
+     parted -s /dev/vda mklabel gpt
+     parted -s /dev/vda mkpart EFI fat32 1MiB 513MiB
+     parted -s /dev/vda set 1 esp on
+     parted -s /dev/vda mkpart root ext4 513MiB 100%
+
+  2. Format partitions:
+     mkfs.fat -F32 /dev/vda1
+     mkfs.ext4 -F /dev/vda2
+
+  3. Mount and extract:
+     mount /dev/vda2 /mnt && mkdir -p /mnt/boot && mount /dev/vda1 /mnt/boot
+     mount /dev/sr0 /media/cdrom
+     tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt
+
+  4. Configure fstab (use your UUIDs from 'blkid'):
+     nano /mnt/etc/fstab
+
+  5. Install bootloader:
+     bootctl --esp-path=/mnt/boot install
+
+  6. Set root password:
+     chroot /mnt passwd
+
+  7. Reboot:
+     umount -R /mnt && reboot
+
+Useful commands:
+  nmcli device status          - Show network interfaces
+  nmcli device wifi list       - Scan for WiFi networks
+  timedatectl list-timezones   - List available timezones
+  lsblk                        - List block devices
+
+Documentation: https://levitateos.org/docs
+================================================================================
+"#;
+
+    fs::write(initramfs.join("etc/motd"), motd)?;
+
+    // Also create issue file for pre-login prompt
+    let issue = r#"
+LevitateOS Live - \l
+
+"#;
+    fs::write(initramfs.join("etc/issue"), issue)?;
+
+    println!("Created welcome message");
 
     Ok(())
 }

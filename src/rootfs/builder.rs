@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use super::context::BuildContext;
-use super::parts::{binaries, etc, filesystem, pam, recipe, recipe_gen, systemd};
+use super::parts::{auth, binaries, etc, filesystem, pam, recipe, recipe_gen, systemd};
 use super::rpm::{find_packages_dirs, RpmExtractor, REQUIRED_PACKAGES};
 
 /// Builder for base system rootfs.
@@ -210,6 +210,9 @@ impl RootfsBuilder {
         // 6. Copy systemd binaries and setup
         binaries::copy_systemd_binaries(ctx)?;
         binaries::copy_login_binaries(ctx)?;
+
+        // 7. Copy sudo support libraries (from auth.rs single source of truth)
+        binaries::copy_sudo_libs(ctx)?;
 
         // 7. Copy systemd units
         systemd::copy_systemd_units(ctx)?;
@@ -416,6 +419,24 @@ pub fn verify_tarball(path: &Path) -> Result<()> {
     // Check critical sbin
     println!("Checking critical sbin utilities...");
     for bin in critical_sbin {
+        let path = format!("./usr/sbin/{}", bin);
+        checked += 1;
+        if !contents.contains(&path) {
+            missing.push(path);
+        }
+    }
+
+    // Check auth critical binaries (from auth.rs single source of truth)
+    // These MUST exist - users need su/sudo for privilege escalation
+    println!("Checking auth binaries (su/sudo)...");
+    for bin in auth::AUTH_CRITICAL_BIN {
+        let path = format!("./usr/bin/{}", bin);
+        checked += 1;
+        if !contents.contains(&path) {
+            missing.push(path);
+        }
+    }
+    for bin in auth::AUTH_CRITICAL_SBIN {
         let path = format!("./usr/sbin/{}", bin);
         checked += 1;
         if !contents.contains(&path) {

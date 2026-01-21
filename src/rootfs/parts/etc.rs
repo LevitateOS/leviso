@@ -238,6 +238,73 @@ ENCRYPT_METHOD SHA512
 "#,
     )?;
 
+    // /etc/sudoers - sudo configuration
+    // wheel group members can use sudo with password
+    fs::write(
+        etc.join("sudoers"),
+        r#"## Sudoers file - LevitateOS
+##
+## This file MUST be edited with visudo!
+## Run: visudo
+##
+
+# Host alias specification
+# (none needed for single host)
+
+# User alias specification
+# (none needed)
+
+# Cmnd alias specification
+# (none needed)
+
+# Defaults specification
+Defaults   !visiblepw
+Defaults   always_set_home
+Defaults   match_group_by_gid
+Defaults   env_reset
+Defaults   env_keep = "COLORS DISPLAY HOSTNAME HISTSIZE KDEDIR LS_COLORS"
+Defaults   env_keep += "MAIL QTDIR USERNAME LANG LC_ADDRESS LC_CTYPE"
+Defaults   env_keep += "LC_COLLATE LC_IDENTIFICATION LC_MEASUREMENT LC_MESSAGES"
+Defaults   env_keep += "LC_MONETARY LC_NAME LC_NUMERIC LC_PAPER LC_TELEPHONE"
+Defaults   env_keep += "LC_TIME LC_ALL LANGUAGE LINGUAS _XKB_CHARSET XAUTHORITY"
+Defaults   secure_path = /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# User privilege specification
+root    ALL=(ALL:ALL) ALL
+
+# Allow members of group wheel to execute any command
+%wheel  ALL=(ALL:ALL) ALL
+
+# Include drop-in files from /etc/sudoers.d
+@includedir /etc/sudoers.d
+"#,
+    )?;
+
+    // Set proper permissions on sudoers (must be 0440)
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = fs::metadata(etc.join("sudoers"))?.permissions();
+    perms.set_mode(0o440);
+    fs::set_permissions(etc.join("sudoers"), perms)?;
+
+    // /etc/sudoers.d/ directory for drop-in configs
+    fs::create_dir_all(etc.join("sudoers.d"))?;
+
+    // /etc/sudo.conf - sudo configuration
+    fs::write(
+        etc.join("sudo.conf"),
+        r#"# sudo.conf - sudo configuration file
+#
+# Plugin configuration
+Plugin sudoers_policy sudoers.so
+Plugin sudoers_io sudoers.so
+Plugin sudoers_audit sudoers.so
+
+# Path to sudo log file
+Set disable_coredump true
+Set group_source static
+"#,
+    )?;
+
     Ok(())
 }
 

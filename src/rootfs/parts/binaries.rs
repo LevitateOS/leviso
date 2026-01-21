@@ -27,7 +27,9 @@
 //! See: .teams/KNOWLEDGE_false-positives-testing.md
 
 use anyhow::{bail, Result};
+use std::fs;
 
+use super::auth;
 use crate::rootfs::binary::{copy_binary_with_libs, copy_bash, copy_sbin_binary_with_libs};
 use crate::rootfs::context::BuildContext;
 
@@ -159,7 +161,11 @@ pub fn copy_coreutils(ctx: &BuildContext) -> Result<()> {
     let mut missing = Vec::new();
     let mut copied = 0;
 
-    for binary in BIN {
+    // Combine BIN with AUTH_BIN (single source of truth from auth.rs)
+    let all_bin: Vec<&str> = BIN.iter().chain(auth::AUTH_BIN.iter()).copied().collect();
+    let total = all_bin.len();
+
+    for binary in &all_bin {
         match copy_binary_with_libs(ctx, binary, "usr/bin") {
             Ok(true) => copied += 1,
             Ok(false) => missing.push(*binary),
@@ -179,7 +185,7 @@ pub fn copy_coreutils(ctx: &BuildContext) -> Result<()> {
         );
     }
 
-    println!("  Copied {}/{} binaries to /usr/bin", copied, BIN.len());
+    println!("  Copied {}/{} binaries to /usr/bin", copied, total);
     Ok(())
 }
 
@@ -190,7 +196,11 @@ pub fn copy_sbin_utils(ctx: &BuildContext) -> Result<()> {
     let mut missing = Vec::new();
     let mut copied = 0;
 
-    for binary in SBIN {
+    // Combine SBIN with AUTH_SBIN (single source of truth from auth.rs)
+    let all_sbin: Vec<&str> = SBIN.iter().chain(auth::AUTH_SBIN.iter()).copied().collect();
+    let total = all_sbin.len();
+
+    for binary in &all_sbin {
         match copy_sbin_binary_with_libs(ctx, binary) {
             Ok(true) => copied += 1,
             Ok(false) => missing.push(*binary),
@@ -210,7 +220,7 @@ pub fn copy_sbin_utils(ctx: &BuildContext) -> Result<()> {
         );
     }
 
-    println!("  Copied {}/{} binaries to /usr/sbin", copied, SBIN.len());
+    println!("  Copied {}/{} binaries to /usr/sbin", copied, total);
     Ok(())
 }
 
@@ -283,5 +293,49 @@ pub fn copy_login_binaries(ctx: &BuildContext) -> Result<()> {
     }
 
     println!("  Copied login binaries");
+    Ok(())
+}
+
+/// Copy sudo support libraries (libexec plugins).
+///
+/// These are dynamically loaded by sudo and not discoverable via ldd.
+/// Source of truth: auth::SUDO_LIBEXEC
+pub fn copy_sudo_libs(ctx: &BuildContext) -> Result<()> {
+    println!("Copying sudo support libraries...");
+
+    let src_dir = ctx.source.join("usr/libexec/sudo");
+    let dst_dir = ctx.staging.join("usr/libexec/sudo");
+
+    if !src_dir.exists() {
+        bail!(
+            "sudo libexec not found at {}\n\
+             Is the 'sudo' package extracted? Check rpm.rs uses auth::AUTH_PACKAGES.",
+            src_dir.display()
+        );
+    }
+
+    fs::create_dir_all(&dst_dir)?;
+
+    let mut copied = 0;
+    for lib in auth::SUDO_LIBEXEC {
+        let src = src_dir.join(lib);
+        let dst = dst_dir.join(lib);
+
+        if src.is_symlink() {
+            // Handle symlinks (preserve them)
+            let target = fs::read_link(&src)?;
+            if dst.exists() || dst.is_symlink() {
+                fs::remove_file(&dst)?;
+            }
+            std::os::unix::fs::symlink(&target, &dst)?;
+            copied += 1;
+        } else if src.exists() {
+            fs::copy(&src, &dst)?;
+            copied += 1;
+        }
+        // Skip if doesn't exist - some libs may be optional
+    }
+
+    println!("  Copied {}/{} sudo libraries", copied, auth::SUDO_LIBEXEC.len());
     Ok(())
 }

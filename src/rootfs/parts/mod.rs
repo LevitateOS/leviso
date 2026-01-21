@@ -3,6 +3,7 @@
 //! This module contains all the components needed to build a complete
 //! installed system rootfs for LevitateOS.
 
+pub mod auth;
 pub mod binaries;
 pub mod etc;
 pub mod filesystem;

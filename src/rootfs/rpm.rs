@@ -26,6 +26,8 @@ use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use super::parts::auth;
+
 /// Required RPM packages for a functional base system.
 ///
 /// This is the Arch-like "exactly enough" list. Each package here is
@@ -231,9 +233,15 @@ impl RpmExtractor {
         self
     }
 
-    /// Extract all required packages.
+    /// Extract all required packages, including auth packages from auth.rs.
     pub fn extract_all(&self) -> Result<()> {
-        self.extract_packages(REQUIRED_PACKAGES)
+        // Combine base packages with auth packages (single source of truth)
+        let all_packages: Vec<&str> = REQUIRED_PACKAGES
+            .iter()
+            .chain(auth::AUTH_PACKAGES.iter())
+            .copied()
+            .collect();
+        self.extract_packages(&all_packages)
     }
 
     /// Extract specified packages.

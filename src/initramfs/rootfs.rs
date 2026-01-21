@@ -86,7 +86,8 @@ pub fn validate_rootfs(rootfs: &Path) -> Result<()> {
 
 /// Check that required host tools are available.
 pub fn check_host_tools() -> Result<()> {
-    let tools = ["ldd", "cpio", "gzip"];
+    // readelf instead of ldd - works for cross-compilation
+    let tools = ["readelf", "cpio", "gzip"];
 
     for tool in tools {
         let status = Command::new("which").arg(tool).output();

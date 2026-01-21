@@ -1,6 +1,11 @@
-//! Binary and library copying utilities for catalyst.
+//! Binary and library copying utilities for rootfs building.
+//!
+//! Uses `readelf -d` instead of `ldd` to extract library dependencies.
+//! This works for cross-compilation since readelf reads ELF headers directly
+//! without executing the binary (which ldd does via the host dynamic linker).
 
 use anyhow::{Context, Result};
+use std::collections::HashSet;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -8,35 +13,45 @@ use std::process::Command;
 
 use super::context::BuildContext;
 
-/// Parse ldd output to extract library paths.
-/// For "not found" libraries, returns the library name so we can search for it in rootfs.
-pub fn parse_ldd_output(output: &str) -> Result<Vec<String>> {
+/// Extract library dependencies from an ELF binary using readelf.
+///
+/// This is architecture-independent - readelf reads the ELF headers directly
+/// without executing the binary, unlike ldd which uses the host dynamic linker.
+pub fn get_library_dependencies(binary_path: &Path) -> Result<Vec<String>> {
+    let output = Command::new("readelf")
+        .args(["-d", binary_path.to_str().unwrap()])
+        .output()
+        .context("Failed to run readelf - is binutils installed?")?;
+
+    if !output.status.success() {
+        // Not an ELF binary or readelf failed - return empty list
+        return Ok(Vec::new());
+    }
+
+    parse_readelf_output(&String::from_utf8_lossy(&output.stdout))
+}
+
+/// Parse readelf -d output to extract NEEDED library names.
+///
+/// Example readelf output:
+/// ```
+/// Dynamic section at offset 0x2d0e0 contains 28 entries:
+///   Tag        Type                         Name/Value
+///  0x0000000000000001 (NEEDED)             Shared library: [libtinfo.so.6]
+///  0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+/// ```
+pub fn parse_readelf_output(output: &str) -> Result<Vec<String>> {
     let mut libs = Vec::new();
 
     for line in output.lines() {
-        let line = line.trim();
-
-        // Handle "not found" case - ldd runs on HOST, so library might still be in rootfs
-        // Return the library name so copy_library can search for it
-        if line.contains("not found") {
-            if let Some(lib_name) = line.split_whitespace().next() {
-                // Return just the library name, copy_library will search for it
-                libs.push(lib_name.to_string());
-            }
-            continue;
-        }
-
-        if line.contains("=>") {
-            if let Some(path_part) = line.split("=>").nth(1) {
-                if let Some(path) = path_part.split_whitespace().next() {
-                    if path.starts_with('/') {
-                        libs.push(path.to_string());
-                    }
+        // Look for lines containing "(NEEDED)" and "Shared library:"
+        if line.contains("(NEEDED)") && line.contains("Shared library:") {
+            // Extract library name from [libname.so.X]
+            if let Some(start) = line.find('[') {
+                if let Some(end) = line.find(']') {
+                    let lib_name = &line[start + 1..end];
+                    libs.push(lib_name.to_string());
                 }
-            }
-        } else if line.starts_with('/') {
-            if let Some(path) = line.split_whitespace().next() {
-                libs.push(path.to_string());
             }
         }
     }
@@ -44,42 +59,60 @@ pub fn parse_ldd_output(output: &str) -> Result<Vec<String>> {
     Ok(libs)
 }
 
+/// Find a library in the rootfs by name.
+fn find_library(rootfs: &Path, lib_name: &str) -> Option<PathBuf> {
+    let candidates = [
+        rootfs.join("usr/lib64").join(lib_name),
+        rootfs.join("lib64").join(lib_name),
+        rootfs.join("usr/lib").join(lib_name),
+        rootfs.join("lib").join(lib_name),
+        // Systemd private libraries
+        rootfs.join("usr/lib64/systemd").join(lib_name),
+        rootfs.join("usr/lib/systemd").join(lib_name),
+    ];
+
+    candidates.into_iter().find(|p| p.exists() || p.is_symlink())
+}
+
+/// Recursively get all library dependencies (including transitive).
+///
+/// Some libraries depend on other libraries. We need to copy all of them.
+pub fn get_all_dependencies(rootfs: &Path, binary_path: &Path) -> Result<HashSet<String>> {
+    let mut all_libs = HashSet::new();
+    let mut to_process = vec![binary_path.to_path_buf()];
+    let mut processed = HashSet::new();
+
+    while let Some(path) = to_process.pop() {
+        if processed.contains(&path) {
+            continue;
+        }
+        processed.insert(path.clone());
+
+        let deps = get_library_dependencies(&path)?;
+        for lib_name in deps {
+            if all_libs.insert(lib_name.clone()) {
+                // New library - find it and check its dependencies too
+                if let Some(lib_path) = find_library(rootfs, &lib_name) {
+                    to_process.push(lib_path);
+                }
+            }
+        }
+    }
+
+    Ok(all_libs)
+}
+
 /// Copy a library from rootfs to staging, handling symlinks.
 ///
 /// NOTE: This will FAIL if the library is not found in the rootfs. We do NOT
 /// fall back to the host system to ensure reproducible builds.
-pub fn copy_library(rootfs: &Path, lib_path: &str, staging: &Path) -> Result<()> {
-    let lib_filename = Path::new(lib_path).file_name().unwrap_or_default();
-
-    // Only look in rootfs - never fall back to host system for reproducible builds
-    let src_candidates = [
-        rootfs.join(lib_path.trim_start_matches('/')),
-        rootfs.join("usr").join(lib_path.trim_start_matches('/')),
-        // Standard library paths
-        rootfs.join("usr/lib64").join(lib_filename),
-        rootfs.join("lib64").join(lib_filename),
-        rootfs.join("usr/lib").join(lib_filename),
-        rootfs.join("lib").join(lib_filename),
-        // Systemd private libraries (libsystemd-shared lives here)
-        rootfs.join("usr/lib64/systemd").join(lib_filename),
-        rootfs.join("usr/lib/systemd").join(lib_filename),
-    ];
-
-    let src = src_candidates
-        .iter()
-        .find(|p| p.exists())
-        .with_context(|| {
-            format!(
-                "Could not find library '{}' in rootfs. Searched:\n  {}",
-                lib_path,
-                src_candidates.iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join("\n  ")
-            )
-        })?;
-
-    // Determine destination path based on where we found it
-    let lib_filename = Path::new(lib_path)
-        .file_name()
-        .with_context(|| format!("Library path has no filename: {}", lib_path))?;
+pub fn copy_library(rootfs: &Path, lib_name: &str, staging: &Path) -> Result<()> {
+    let src = find_library(rootfs, lib_name).with_context(|| {
+        format!(
+            "Could not find library '{}' in rootfs (searched lib64, lib, systemd paths)",
+            lib_name
+        )
+    })?;
 
     // Check if this is a systemd private library
     let dest_path = if src.to_string_lossy().contains("lib64/systemd")
@@ -88,48 +121,47 @@ pub fn copy_library(rootfs: &Path, lib_path: &str, staging: &Path) -> Result<()>
         // Systemd private libraries stay in their own directory
         let dest_dir = staging.join("usr/lib64/systemd");
         fs::create_dir_all(&dest_dir)?;
-        dest_dir.join(lib_filename)
-    } else if lib_path.contains("lib64") || src.to_string_lossy().contains("lib64") {
-        staging.join("usr/lib64").join(lib_filename)
+        dest_dir.join(lib_name)
+    } else if src.to_string_lossy().contains("lib64") {
+        staging.join("usr/lib64").join(lib_name)
     } else {
-        staging.join("usr/lib").join(lib_filename)
+        staging.join("usr/lib").join(lib_name)
     };
 
-    if !dest_path.exists() {
-        // Handle symlinks
-        if src.is_symlink() {
-            let link_target = fs::read_link(src)?;
-            // If it's a relative symlink, resolve it
-            let actual_src = if link_target.is_relative() {
-                src.parent()
-                    .with_context(|| format!("Library path has no parent: {}", src.display()))?
-                    .join(&link_target)
-            } else {
-                link_target.clone()
-            };
+    if dest_path.exists() {
+        return Ok(()); // Already copied
+    }
 
-            // Copy the actual file
-            if actual_src.exists() {
-                fs::copy(&actual_src, &dest_path)?;
-            } else {
-                // Try in rootfs
-                let rootfs_target = rootfs.join(
-                    link_target
-                        .to_str()
-                        .with_context(|| {
-                            format!("Link target is not valid UTF-8: {}", link_target.display())
-                        })?
-                        .trim_start_matches('/'),
-                );
-                if rootfs_target.exists() {
-                    fs::copy(&rootfs_target, &dest_path)?;
-                } else {
-                    fs::copy(src, &dest_path)?;
-                }
+    // Handle symlinks - copy both the symlink target and create the symlink
+    if src.is_symlink() {
+        let link_target = fs::read_link(&src)?;
+
+        // Resolve the actual file
+        let actual_src = if link_target.is_relative() {
+            src.parent()
+                .context("Library path has no parent")?
+                .join(&link_target)
+        } else {
+            rootfs.join(link_target.to_str().unwrap().trim_start_matches('/'))
+        };
+
+        if actual_src.exists() {
+            // Copy the actual file first
+            let target_name = link_target.file_name().unwrap_or(link_target.as_os_str());
+            let target_dest = dest_path.parent().unwrap().join(target_name);
+            if !target_dest.exists() {
+                fs::copy(&actual_src, &target_dest)?;
+            }
+            // Create symlink
+            if !dest_path.exists() {
+                std::os::unix::fs::symlink(&link_target, &dest_path)?;
             }
         } else {
-            fs::copy(src, &dest_path)?;
+            // Symlink target not found, copy the symlink itself
+            fs::copy(&src, &dest_path)?;
         }
+    } else {
+        fs::copy(&src, &dest_path)?;
     }
 
     Ok(())
@@ -190,17 +222,12 @@ pub fn copy_binary_with_libs(ctx: &BuildContext, binary: &str, dest_dir: &str) -
         make_executable(&dest)?;
     }
 
-    // Get and copy its libraries - FAIL if any are missing
-    let ldd_output = Command::new("ldd").arg(&bin_path).output();
+    // Get all library dependencies (including transitive) using readelf
+    let libs = get_all_dependencies(&ctx.source, &bin_path)?;
 
-    if let Ok(output) = ldd_output {
-        if output.status.success() {
-            let libs = parse_ldd_output(&String::from_utf8_lossy(&output.stdout))?;
-            for lib in &libs {
-                copy_library(&ctx.source, lib, &ctx.staging)
-                    .with_context(|| format!("Binary '{}' requires library '{}' which is missing", binary, lib))?;
-            }
-        }
+    for lib_name in &libs {
+        copy_library(&ctx.source, lib_name, &ctx.staging)
+            .with_context(|| format!("Binary '{}' requires library '{}' which is missing", binary, lib_name))?;
     }
 
     Ok(true)
@@ -226,17 +253,12 @@ pub fn copy_sbin_binary_with_libs(ctx: &BuildContext, binary: &str) -> Result<bo
         make_executable(&dest)?;
     }
 
-    // Get and copy its libraries - FAIL if any are missing
-    let ldd_output = Command::new("ldd").arg(&bin_path).output();
+    // Get all library dependencies (including transitive) using readelf
+    let libs = get_all_dependencies(&ctx.source, &bin_path)?;
 
-    if let Ok(output) = ldd_output {
-        if output.status.success() {
-            let libs = parse_ldd_output(&String::from_utf8_lossy(&output.stdout))?;
-            for lib in &libs {
-                copy_library(&ctx.source, lib, &ctx.staging)
-                    .with_context(|| format!("Binary '{}' requires library '{}' which is missing", binary, lib))?;
-            }
-        }
+    for lib_name in &libs {
+        copy_library(&ctx.source, lib_name, &ctx.staging)
+            .with_context(|| format!("Binary '{}' requires library '{}' which is missing", binary, lib_name))?;
     }
 
     Ok(true)
@@ -261,19 +283,39 @@ pub fn copy_bash(ctx: &BuildContext) -> Result<()> {
     fs::copy(bash_path, &bash_dest)?;
     make_executable(&bash_dest)?;
 
-    // Get library dependencies using ldd
-    let ldd_output = Command::new("ldd")
-        .arg(bash_path)
-        .output()
-        .context("Failed to run ldd")?;
-
-    let libs = parse_ldd_output(&String::from_utf8_lossy(&ldd_output.stdout))?;
+    // Get all library dependencies using readelf (cross-compilation safe)
+    let libs = get_all_dependencies(&ctx.source, bash_path)?;
 
     // Copy libraries - FAIL if any are missing
-    for lib in &libs {
-        copy_library(&ctx.source, lib, &ctx.staging)
-            .with_context(|| format!("bash requires library '{}' which is missing", lib))?;
+    for lib_name in &libs {
+        copy_library(&ctx.source, lib_name, &ctx.staging)
+            .with_context(|| format!("bash requires library '{}' which is missing", lib_name))?;
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_readelf_output() {
+        let output = r#"
+Dynamic section at offset 0x2d0e0 contains 28 entries:
+  Tag        Type                         Name/Value
+ 0x0000000000000001 (NEEDED)             Shared library: [libtinfo.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+ 0x000000000000000c (INIT)               0x5000
+"#;
+        let libs = parse_readelf_output(output).unwrap();
+        assert_eq!(libs, vec!["libtinfo.so.6", "libc.so.6"]);
+    }
+
+    #[test]
+    fn test_parse_readelf_empty() {
+        let output = "not an ELF file";
+        let libs = parse_readelf_output(output).unwrap();
+        assert!(libs.is_empty());
+    }
 }

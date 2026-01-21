@@ -3,9 +3,8 @@
 use anyhow::Result;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
-use std::process::Command;
 
-use super::binary::parse_ldd_output;
+use super::binary::{copy_library, get_all_dependencies};
 use super::context::BuildContext;
 
 /// D-Bus binaries to copy.
@@ -83,18 +82,11 @@ fn copy_dbus_binaries(ctx: &BuildContext) -> Result<()> {
             fs::set_permissions(&dst, perms)?;
             println!("  Copied {}", binary);
 
-            // Get library dependencies
-            let ldd_output = Command::new("ldd").arg(&src).output();
-            if let Ok(output) = ldd_output {
-                if output.status.success() {
-                    let libs = parse_ldd_output(&String::from_utf8_lossy(&output.stdout))?;
-                    for lib in &libs {
-                        // Log warning instead of silent failure
-                        if let Err(e) = super::binary::copy_library(&ctx.rootfs, lib, &ctx.initramfs)
-                        {
-                            println!("  Warning: Failed to copy library {}: {}", lib, e);
-                        }
-                    }
+            // Get library dependencies using readelf (cross-compilation safe)
+            let libs = get_all_dependencies(&ctx.rootfs, &src)?;
+            for lib_name in &libs {
+                if let Err(e) = copy_library(&ctx.rootfs, lib_name, &ctx.initramfs) {
+                    println!("  Warning: Failed to copy library {}: {}", lib_name, e);
                 }
             }
         }

@@ -28,6 +28,13 @@ const IPROUTE_BINARIES: &[(&str, &str)] = &[
     ("ip", "usr/sbin"),                 // Network configuration
 ];
 
+/// NetworkManager helper binaries (in /usr/libexec).
+const NM_HELPERS: &[&str] = &[
+    "nm-dhcp-helper",   // Required for internal DHCP client
+    "nm-daemon-helper", // General daemon helper
+    "nm-dispatcher",    // Dispatcher scripts handler
+];
+
 /// NetworkManager systemd units.
 const NM_UNITS: &[&str] = &[
     "NetworkManager.service",
@@ -178,6 +185,35 @@ fn copy_network_binaries(ctx: &BuildContext) -> Result<()> {
     // Copy iproute2 binaries
     for (binary, src_dir) in IPROUTE_BINARIES {
         copy_binary(binary, src_dir)?;
+    }
+
+    // Copy NetworkManager helper binaries from /usr/libexec
+    let libexec_src = ctx.rootfs.join("usr/libexec");
+    let libexec_dst = ctx.initramfs.join("usr/libexec");
+    fs::create_dir_all(&libexec_dst)?;
+
+    for helper in NM_HELPERS {
+        let src = libexec_src.join(helper);
+        let dst = libexec_dst.join(helper);
+        if src.exists() {
+            if !dst.exists() {
+                fs::copy(&src, &dst)?;
+                let mut perms = fs::metadata(&dst)?.permissions();
+                perms.set_mode(0o755);
+                fs::set_permissions(&dst, perms)?;
+                println!("  Copied {}", helper);
+
+                // Copy library dependencies
+                let libs = get_all_dependencies(&ctx.rootfs, &src)?;
+                for lib_name in &libs {
+                    if let Err(e) = copy_library(&ctx.rootfs, lib_name, &ctx.initramfs) {
+                        println!("    Warning: Failed to copy library {}: {}", lib_name, e);
+                    }
+                }
+            }
+        } else {
+            println!("  Warning: {} not found", helper);
+        }
     }
 
     Ok(())

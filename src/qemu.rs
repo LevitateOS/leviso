@@ -305,7 +305,7 @@ fn run_with_command(kernel_path: PathBuf, initramfs_path: PathBuf, command: &str
     });
 
     let start = Instant::now();
-    let timeout = Duration::from_secs(30);
+    let timeout = Duration::from_secs(60);
     let mut boot_finished = false;
     let mut command_sent = false;
     let mut output_buffer = String::new();

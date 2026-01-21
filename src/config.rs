@@ -109,6 +109,12 @@ pub mod module_defaults {
         "kernel/drivers/scsi/sr_mod.ko.xz",
         // ISO 9660 filesystem (to mount installation media)
         "kernel/fs/isofs/isofs.ko.xz",
+        // Network - virtio (VM networking)
+        "kernel/drivers/net/virtio_net.ko.xz",
+        // Network - common ethernet drivers
+        "kernel/drivers/net/ethernet/intel/e1000/e1000.ko.xz",
+        "kernel/drivers/net/ethernet/intel/e1000e/e1000e.ko.xz",
+        "kernel/drivers/net/ethernet/realtek/r8169.ko.xz",
     ];
 }
 

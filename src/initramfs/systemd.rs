@@ -52,6 +52,7 @@ const ESSENTIAL_UNITS: &[&str] = &[
     "systemd-timedated.service",
     "systemd-hostnamed.service",
     "systemd-localed.service",
+    "systemd-logind.service",
     "chronyd.service",
     // Sockets
     "systemd-journald.socket",

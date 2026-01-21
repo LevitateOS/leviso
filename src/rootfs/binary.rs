@@ -69,6 +69,8 @@ fn find_library(rootfs: &Path, lib_name: &str) -> Option<PathBuf> {
         // Systemd private libraries
         rootfs.join("usr/lib64/systemd").join(lib_name),
         rootfs.join("usr/lib/systemd").join(lib_name),
+        // sudo private libraries
+        rootfs.join("usr/libexec/sudo").join(lib_name),
     ];
 
     candidates.into_iter().find(|p| p.exists() || p.is_symlink())

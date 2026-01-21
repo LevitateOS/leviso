@@ -87,8 +87,8 @@ impl QemuBuilder {
         let cpu = self.cpu.as_deref().unwrap_or("Skylake-Client");
         cmd.args(["-cpu", cpu]);
 
-        // Memory (default: 512M)
-        let mem = self.memory.as_deref().unwrap_or("512M");
+        // Memory (default: 4G - LevitateOS is a daily driver OS, not a toy)
+        let mem = self.memory.as_deref().unwrap_or("4G");
         cmd.args(["-m", mem]);
 
         // Direct kernel boot

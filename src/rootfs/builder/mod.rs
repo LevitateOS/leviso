@@ -162,6 +162,21 @@ impl RootfsBuilder {
 
         extractor.extract_all()?;
 
+        // Fix permissions: some RPM files (like sudo) are setuid without owner read
+        // We need to read them to copy, so ensure all files are readable
+        let chmod_output = Command::new("chmod")
+            .args(["-R", "+r"])
+            .arg(&rpm_staging)
+            .output()
+            .context("Failed to fix permissions on extracted RPMs")?;
+
+        if !chmod_output.status.success() {
+            eprintln!(
+                "Warning: chmod failed: {}",
+                String::from_utf8_lossy(&chmod_output.stderr)
+            );
+        }
+
         println!("\n=== RPM extraction complete ===\n");
         Ok(rpm_staging)
     }

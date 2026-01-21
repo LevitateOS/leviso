@@ -6,6 +6,18 @@ Leviso builds the LevitateOS ISO and rootfs tarball. LevitateOS is a **daily dri
 
 The rootfs tarball (~70 MB) is intentionally small. Users install firmware, kernels, and applications via `recipe install`. This is NOT an embedded/container OS - it's a desktop/workstation OS.
 
+## System Requirements (MODERN HARDWARE)
+
+**LevitateOS targets modern computers. It will ship with a local LLM. Stop treating it like a toy.**
+
+| Resource | Minimum | QEMU Default |
+|----------|---------|--------------|
+| RAM | 8 GB | 4 GB |
+| Storage | 64 GB SSD | 32 GB |
+| CPU | x86-64-v3 (2015+) | Skylake |
+
+**NEVER** use minimal resource values (512MB RAM, etc). This is not an embedded OS.
+
 ---
 
 ## Commands

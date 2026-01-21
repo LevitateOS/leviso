@@ -3,7 +3,7 @@
 //! This module creates a bootable initramfs by:
 //! 1. Extracting binaries and libraries from a Rocky Linux rootfs
 //! 2. Setting up systemd as init
-//! 3. Configuring D-Bus, PAM, and Chrony
+//! 3. Configuring D-Bus, PAM, Chrony, and NetworkManager
 //! 4. Building a cpio archive
 
 pub mod binary;
@@ -12,6 +12,7 @@ pub mod context;
 pub mod dbus;
 pub mod filesystem;
 pub mod modules;
+pub mod network;
 pub mod pam;
 pub mod rootfs;
 pub mod systemd;
@@ -30,6 +31,8 @@ const COREUTILS: &[&str] = &[
     "ls", "cat", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "chmod", "chown", "echo", "pwd",
     "head", "tail", "grep", "find", "wc", "sort", "uniq", "uname", "env", "printenv", "clear",
     "sleep", "ln", "readlink", "dirname", "basename",
+    // procps-ng utilities (memory/process info)
+    "free", "ps", "top", "uptime", "vmstat", "w", "watch", "pgrep", "pkill",
     // Phase 2: disk info
     "lsblk",
     // Phase 3: system config
@@ -129,6 +132,9 @@ pub fn build_initramfs(base_dir: &Path) -> Result<()> {
 
     // Set up D-Bus (required for systemctl, timedatectl, etc.)
     dbus::setup_dbus(&ctx)?;
+
+    // Set up networking (NetworkManager, wpa_supplicant, WiFi firmware)
+    network::setup_network(&ctx)?;
 
     // Set up Chrony NTP and its user
     chrony::ensure_chrony_user(&ctx)?;

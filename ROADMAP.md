@@ -100,10 +100,23 @@ These are known gaps in the live environment:
 ### Bootloader
 - [ ] `bootctl` - systemd-boot installer
 
-### Networking
-- [ ] Full NetworkManager or systemd-networkd
-- [ ] `dhcpcd` or DHCP in networkd
-- [ ] WiFi tools (iwd, wpa_supplicant)
+### Networking (DETAILED IMPLEMENTATION PLAN EXISTS)
+
+**See: Implementation Plan below for full details**
+
+- [ ] Create `src/initramfs/network.rs` module
+- [ ] Copy NetworkManager + nmcli + wpa_supplicant binaries
+- [ ] Copy /etc/NetworkManager/ configs
+- [ ] Copy /usr/lib64/NetworkManager/ plugins
+- [ ] Copy NetworkManager D-Bus policies
+- [ ] Copy systemd service units (NetworkManager.service, wpa_supplicant.service)
+- [ ] Enable NetworkManager in multi-user.target.wants
+- [ ] Add virtio_net kernel module to config.rs
+- [ ] Add e1000, e1000e, r8169 ethernet drivers
+- [ ] Copy WiFi firmware: iwlwifi (Intel), ath10k/ath11k (Atheros), rtlwifi/rtw88 (Realtek), brcm (Broadcom)
+- [ ] Test: `systemctl status NetworkManager` shows active
+- [ ] Test: `nmcli device` shows interfaces
+- [ ] Test: `nmcli device wifi list` shows networks (on real hardware)
 
 ### Recipe
 - [ ] `recipe` binary in initramfs
@@ -113,6 +126,173 @@ These are known gaps in the live environment:
 - [ ] Proper shutdown/reboot (untested)
 - [ ] Tab completion (bash-completion)
 - [ ] Welcome message with install instructions
+
+---
+
+## Implementation Plan: Networking
+
+**Goal:** Add full networking support (NetworkManager + WiFi + Ethernet) to the live ISO so users can connect to networks and download packages.
+
+**Scope:**
+- Full NetworkManager with nmcli and wpa_supplicant
+- Common WiFi firmware (Intel, Atheros, Realtek, Broadcom)
+- Auto-start on boot
+
+### Phase 1: Create network.rs module
+
+**New file: `leviso/src/initramfs/network.rs`**
+
+```rust
+// Network binaries to copy
+const NETWORK_BINARIES: &[&str] = &[
+    "ip",              // iproute2 - network config
+    "ping",            // connectivity test
+];
+
+const NETWORK_SBIN: &[&str] = &[
+    "wpa_supplicant",  // WiFi authentication
+    "wpa_cli",         // WiFi control
+    "wpa_passphrase",  // PSK generation
+];
+
+const NETWORKMANAGER_BINARIES: &[&str] = &[
+    "NetworkManager",  // Main daemon (usr/sbin)
+    "nmcli",           // CLI tool (usr/bin)
+];
+
+// Systemd units to copy
+const NETWORK_UNITS: &[&str] = &[
+    "NetworkManager.service",
+    "NetworkManager-wait-online.service",
+    "NetworkManager-dispatcher.service",
+    "wpa_supplicant.service",
+];
+
+pub fn setup_network(ctx: &BuildContext) -> Result<()>
+```
+
+**Functions needed:**
+1. `copy_network_binaries()` - Copy NetworkManager, nmcli, wpa_supplicant, ip
+2. `copy_networkmanager_configs()` - Copy /etc/NetworkManager/ configs
+3. `copy_networkmanager_plugins()` - Copy /usr/lib64/NetworkManager/ plugins
+4. `copy_network_units()` - Copy systemd service files
+5. `copy_dbus_policies()` - Copy NetworkManager D-Bus policies
+6. `enable_networkmanager()` - Symlink to multi-user.target.wants
+
+### Phase 2: Add network kernel modules
+
+**Update: `leviso/src/config.rs`**
+
+Add to `module_defaults::ESSENTIAL_MODULES`:
+```rust
+// Network - virtio (VM)
+"kernel/drivers/net/virtio_net.ko.xz",
+// Network - common ethernet
+"kernel/drivers/net/ethernet/intel/e1000/e1000.ko.xz",
+"kernel/drivers/net/ethernet/intel/e1000e/e1000e.ko.xz",
+"kernel/drivers/net/ethernet/realtek/r8169.ko.xz",
+```
+
+**Note**: WiFi drivers are large. Use modprobe auto-loading rather than bundling all 88 drivers.
+
+### Phase 3: Copy WiFi firmware
+
+**New function in network.rs: `copy_wifi_firmware()`**
+
+Copy firmware for common WiFi chipsets:
+```
+/usr/lib/firmware/iwlwifi-*      # Intel WiFi (most laptops)
+/usr/lib/firmware/ath10k/        # Atheros
+/usr/lib/firmware/ath11k/        # Newer Atheros
+/usr/lib/firmware/rtlwifi/       # Realtek
+/usr/lib/firmware/rtw88/         # Newer Realtek
+/usr/lib/firmware/brcm/          # Broadcom
+/usr/lib/firmware/mediatek/      # MediaTek
+```
+
+**Size estimate**: ~100-150MB for common firmware
+
+### Phase 4: Update initramfs build
+
+**Update: `leviso/src/initramfs/mod.rs`**
+
+```rust
+mod network;  // Add module
+
+// In build_initramfs():
+// After dbus setup (NetworkManager needs D-Bus):
+network::setup_network(&ctx)?;
+```
+
+### Files to Create/Modify
+
+| File | Action |
+|------|--------|
+| `src/initramfs/network.rs` | **CREATE** - Main networking module |
+| `src/initramfs/mod.rs` | MODIFY - Add `mod network`, call `setup_network()` |
+| `src/config.rs` | MODIFY - Add virtio_net to default modules |
+
+### Directory Structure in Initramfs
+
+```
+/usr/sbin/NetworkManager
+/usr/sbin/wpa_supplicant
+/usr/sbin/wpa_cli
+/usr/bin/nmcli
+/sbin/ip
+/etc/NetworkManager/NetworkManager.conf
+/etc/NetworkManager/conf.d/
+/usr/lib64/NetworkManager/          # Plugins
+/usr/share/dbus-1/system.d/org.freedesktop.NetworkManager.conf
+/usr/lib/systemd/system/NetworkManager.service
+/usr/lib/firmware/iwlwifi-*         # Intel WiFi firmware
+/usr/lib/firmware/ath10k/           # Atheros firmware
+```
+
+### Dependencies
+
+NetworkManager requires (already in initramfs):
+- D-Bus (already set up)
+- systemd (already set up)
+- polkit (may need to add)
+
+### Verification
+
+1. **Build test**: `cargo build` succeeds
+2. **Boot test**: `cargo run -- run`
+   - Check: `systemctl status NetworkManager` shows active
+   - Check: `nmcli device` shows network interfaces
+   - Check: `nmcli connection up <ethernet>` connects (if DHCP available)
+3. **WiFi test** (on real hardware or with USB passthrough):
+   - Check: `nmcli device wifi list` shows networks
+   - Check: `nmcli device wifi connect <SSID> password <pass>` connects
+
+### Estimated Size Impact
+
+| Component | Size |
+|-----------|------|
+| NetworkManager + libs | ~15 MB |
+| wpa_supplicant + libs | ~5 MB |
+| iproute2 (ip) | ~1 MB |
+| Common WiFi firmware | ~100-150 MB |
+| **Total** | **~120-170 MB** |
+
+### Boot Behavior
+
+1. systemd starts
+2. D-Bus socket activates
+3. NetworkManager.service starts (WantedBy=multi-user.target)
+4. NetworkManager auto-configures Ethernet via DHCP
+5. WiFi available via `nmcli device wifi`
+
+### Risks & Mitigations
+
+| Risk | Mitigation |
+|------|------------|
+| Firmware bloat | Only include common chipsets, not all 354MB |
+| Missing polkit | Test without, add if NetworkManager complains |
+| D-Bus conflicts | NetworkManager D-Bus config must not conflict with existing |
+| Boot slowdown | NetworkManager-wait-online.service can delay boot; don't enable it |
 
 ---
 

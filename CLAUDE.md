@@ -1,5 +1,13 @@
 # CLAUDE.md - Leviso
 
+## Context
+
+Leviso builds the LevitateOS ISO and rootfs tarball. LevitateOS is a **daily driver Linux distribution competing with Arch Linux** - minimal base that users build up via `recipe`.
+
+The rootfs tarball (~70 MB) is intentionally small. Users install firmware, kernels, and applications via `recipe install`. This is NOT an embedded/container OS - it's a desktop/workstation OS.
+
+---
+
 ## Commands
 
 ```bash

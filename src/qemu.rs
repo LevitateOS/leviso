@@ -205,7 +205,7 @@ pub fn test_direct(base_dir: &Path, cmd: Option<String>) -> Result<()> {
     }
 
     // Find ISO (for CDROM - needed to access base tarball)
-    let iso_path = output_dir.join("leviso.iso");
+    let iso_path = output_dir.join("levitateos.iso");
     if !iso_path.exists() {
         bail!(
             "ISO not found at {}. Run 'leviso iso' first.",
@@ -378,9 +378,9 @@ fn run_with_command(kernel_path: PathBuf, initramfs_path: PathBuf, command: &str
 }
 
 /// Run the ISO in QEMU GUI (closest to bare metal)
-pub fn run_iso(base_dir: &Path, force_bios: bool, disk_size: Option<String>) -> Result<()> {
+pub fn run_iso(base_dir: &Path, disk_size: Option<String>) -> Result<()> {
     let output_dir = base_dir.join("output");
-    let iso_path = output_dir.join("leviso.iso");
+    let iso_path = output_dir.join("levitateos.iso");
 
     if !iso_path.exists() {
         bail!(
@@ -392,9 +392,7 @@ pub fn run_iso(base_dir: &Path, force_bios: bool, disk_size: Option<String>) -> 
     println!("Running ISO in QEMU GUI...");
     println!("  ISO: {}", iso_path.display());
 
-    let mut builder = QemuBuilder::new()
-        .cdrom(iso_path)
-        .vga("std");
+    let mut builder = QemuBuilder::new().cdrom(iso_path).vga("std");
 
     // Always include a virtual disk (default 20GB, like a real system)
     let size = disk_size.unwrap_or_else(|| "20G".to_string());
@@ -416,15 +414,17 @@ pub fn run_iso(base_dir: &Path, force_bios: bool, disk_size: Option<String>) -> 
     println!("  Disk: {}", disk_path.display());
     builder = builder.disk(disk_path);
 
-    // UEFI boot by default (it's 2026), unless --bios is specified
-    if force_bios {
-        println!("  Boot: BIOS (legacy)");
-    } else if let Some(ovmf_path) = find_ovmf() {
-        println!("  Boot: UEFI ({})", ovmf_path.display());
-        builder = builder.uefi(ovmf_path);
-    } else {
-        println!("  Boot: BIOS (OVMF not found, install edk2-ovmf for UEFI)");
-    }
+    // LevitateOS requires UEFI boot
+    let ovmf_path = find_ovmf().context(
+        "OVMF firmware not found. LevitateOS requires UEFI boot.\n\
+         Install OVMF:\n\
+         - Fedora/RHEL: sudo dnf install edk2-ovmf\n\
+         - Debian/Ubuntu: sudo apt install ovmf\n\
+         - Arch: sudo pacman -S edk2-ovmf",
+    )?;
+
+    println!("  Boot: UEFI ({})", ovmf_path.display());
+    builder = builder.uefi(ovmf_path);
 
     let status = builder
         .build()

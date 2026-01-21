@@ -6,8 +6,9 @@ use std::process::Command;
 const ROCKY_DVD_URL: &str =
     "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/Rocky-10.1-x86_64-dvd1.iso";
 const ROCKY_DVD_SIZE: &str = "8.6GB";
-const SYSLINUX_URL: &str =
-    "https://mirrors.edge.kernel.org/pub/linux/utils/boot/syslinux/syslinux-6.03.tar.xz";
+
+// SHA256 checksum for Rocky 10.1 DVD ISO (from Rocky's CHECKSUM file)
+const ROCKY_DVD_SHA256: &str = "bd29df7f8a99b6fc4686f52cbe9b46cf90e07f90be2c0c5f1f18c2ecdd432d34";
 
 pub fn download_rocky(base_dir: &Path) -> Result<()> {
     let downloads_dir = base_dir.join("downloads");
@@ -37,56 +38,44 @@ pub fn download_rocky(base_dir: &Path) -> Result<()> {
         bail!("curl failed with status: {}", status);
     }
 
+    // Verify download integrity
+    verify_checksum(&iso_path, ROCKY_DVD_SHA256)?;
+
     println!("Downloaded to {}", iso_path.display());
     Ok(())
 }
 
-pub fn download_syslinux(base_dir: &Path) -> Result<PathBuf> {
-    let downloads_dir = base_dir.join("downloads");
-    let syslinux_tar = downloads_dir.join("syslinux-6.03.tar.xz");
-    let syslinux_dir = downloads_dir.join("syslinux-6.03");
+/// Verify SHA256 checksum of a downloaded file.
+fn verify_checksum(file_path: &Path, expected_sha256: &str) -> Result<()> {
+    println!("Verifying SHA256 checksum...");
 
-    if syslinux_dir.join("bios/core/isolinux.bin").exists() {
-        println!("Syslinux already downloaded and extracted.");
-        return Ok(syslinux_dir);
+    let output = Command::new("sha256sum")
+        .arg(file_path.to_str().unwrap())
+        .output()
+        .context("Failed to run sha256sum")?;
+
+    if !output.status.success() {
+        bail!("sha256sum failed");
     }
 
-    fs::create_dir_all(&downloads_dir)?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let actual = stdout
+        .split_whitespace()
+        .next()
+        .context("Could not parse sha256sum output")?;
 
-    if !syslinux_tar.exists() {
-        println!("Downloading syslinux from kernel.org...");
-        let status = Command::new("curl")
-            .args([
-                "-L",
-                "-o",
-                syslinux_tar.to_str().unwrap(),
-                "--progress-bar",
-                SYSLINUX_URL,
-            ])
-            .status()
-            .context("Failed to download syslinux")?;
-
-        if !status.success() {
-            bail!("Failed to download syslinux");
-        }
+    if actual != expected_sha256 {
+        fs::remove_file(file_path)?;
+        bail!(
+            "Checksum mismatch!\n  Expected: {}\n  Got: {}\n\
+             The download may be corrupted. Deleted partial file.",
+            expected_sha256,
+            actual
+        );
     }
 
-    println!("Extracting syslinux...");
-    let status = Command::new("tar")
-        .args([
-            "-xf",
-            syslinux_tar.to_str().unwrap(),
-            "-C",
-            downloads_dir.to_str().unwrap(),
-        ])
-        .status()
-        .context("Failed to extract syslinux")?;
-
-    if !status.success() {
-        bail!("Failed to extract syslinux");
-    }
-
-    Ok(syslinux_dir)
+    println!("Checksum verified OK");
+    Ok(())
 }
 
 /// Download Rocky Linux DVD ISO (8.6GB) for binary manifest extraction.
@@ -153,6 +142,9 @@ pub fn download_rocky_dvd(base_dir: &Path, skip_confirm: bool) -> Result<PathBuf
         let _ = fs::remove_file(&dvd_path);
         bail!("curl failed with status: {}", status);
     }
+
+    // Verify download integrity
+    verify_checksum(&dvd_path, ROCKY_DVD_SHA256)?;
 
     println!("Downloaded to {}", dvd_path.display());
     Ok(dvd_path)

@@ -3,21 +3,16 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use crate::download::download_syslinux;
-
 pub fn create_iso(base_dir: &Path) -> Result<()> {
     let extract_dir = base_dir.join("downloads");
     let iso_contents = extract_dir.join("iso-contents");
     let output_dir = base_dir.join("output");
     let initramfs = output_dir.join("initramfs.cpio.gz");
-    let iso_output = output_dir.join("leviso.iso");
+    let iso_output = output_dir.join("levitateos.iso");
 
     if !initramfs.exists() {
         bail!("Initramfs not found. Run 'leviso initramfs' first.");
     }
-
-    // Download syslinux for BIOS boot
-    let syslinux_dir = download_syslinux(base_dir)?;
 
     // Find kernel - prefer built LevitateOS kernel, fall back to Rocky
     let levitate_kernel = output_dir.join("staging/boot/vmlinuz");
@@ -25,38 +20,33 @@ pub fn create_iso(base_dir: &Path) -> Result<()> {
         println!("Using LevitateOS kernel: {}", levitate_kernel.display());
         levitate_kernel
     } else {
-        // Fall back to Rocky's kernel
-        let rocky_candidates = [
-            iso_contents.join("images/pxeboot/vmlinuz"),
-            iso_contents.join("isolinux/vmlinuz"),
-        ];
+        // Fall back to Rocky's kernel (only pxeboot path - no isolinux)
+        let rocky_kernel = iso_contents.join("images/pxeboot/vmlinuz");
 
-        let rocky_kernel = rocky_candidates
-            .iter()
-            .find(|p| p.exists())
-            .context(
+        if !rocky_kernel.exists() {
+            bail!(
                 "No kernel found.\n\
-                 Build LevitateOS kernel: leviso kernel\n\
-                 Or extract Rocky ISO: leviso extract"
-            )?;
+                 Build LevitateOS kernel: leviso build kernel\n\
+                 Or extract Rocky ISO: leviso extract rocky"
+            );
+        }
 
         println!("Using Rocky kernel (fallback): {}", rocky_kernel.display());
-        println!("  Tip: Run 'leviso kernel' to build LevitateOS kernel");
-        rocky_kernel.clone()
+        println!("  Tip: Run 'leviso build kernel' to build LevitateOS kernel");
+        rocky_kernel
     };
 
-    // Create ISO directory structure
+    // Create ISO directory structure (UEFI only - no isolinux)
     let iso_root = output_dir.join("iso-root");
     if iso_root.exists() {
         fs::remove_dir_all(&iso_root)?;
     }
 
-    fs::create_dir_all(iso_root.join("isolinux"))?;
     fs::create_dir_all(iso_root.join("boot"))?;
     fs::create_dir_all(iso_root.join("EFI/BOOT"))?;
 
     // Copy kernel and initramfs
-    fs::copy(kernel_path, iso_root.join("boot/vmlinuz"))?;
+    fs::copy(&kernel_path, iso_root.join("boot/vmlinuz"))?;
     fs::copy(&initramfs, iso_root.join("boot/initramfs.img"))?;
 
     // Copy base tarball if it exists
@@ -68,121 +58,85 @@ pub fn create_iso(base_dir: &Path) -> Result<()> {
         println!("  Copied to ISO root as levitateos-base.tar.xz");
     } else {
         println!("Warning: base tarball not found. Installation will not work.");
-        println!("  Build it with: cargo run -- rootfs");
+        println!("  Build it with: cargo run -- build rootfs");
     }
-
-    // === BIOS Boot Setup (isolinux) ===
-    fs::copy(
-        syslinux_dir.join("bios/core/isolinux.bin"),
-        iso_root.join("isolinux/isolinux.bin"),
-    )?;
-    fs::copy(
-        syslinux_dir.join("bios/com32/elflink/ldlinux/ldlinux.c32"),
-        iso_root.join("isolinux/ldlinux.c32"),
-    )?;
-
-    let isolinux_cfg = r#"DEFAULT leviso
-TIMEOUT 30
-PROMPT 1
-
-LABEL leviso
-    MENU LABEL Leviso
-    LINUX /boot/vmlinuz
-    INITRD /boot/initramfs.img
-    APPEND console=ttyS0,115200n8 console=tty0 earlyprintk=ttyS0,115200 panic=30 rdinit=/init
-"#;
-    fs::write(iso_root.join("isolinux/isolinux.cfg"), isolinux_cfg)?;
 
     // === UEFI Boot Setup (GRUB EFI) ===
     let efi_src = iso_contents.join("EFI/BOOT");
-    if efi_src.exists() {
-        println!("Setting up UEFI boot...");
+    if !efi_src.exists() {
+        bail!(
+            "EFI boot files not found at {}.\n\
+             LevitateOS requires UEFI boot. Run 'leviso extract rocky' first.",
+            efi_src.display()
+        );
+    }
 
-        // Copy GRUB EFI bootloader
-        fs::copy(
-            efi_src.join("BOOTX64.EFI"),
-            iso_root.join("EFI/BOOT/BOOTX64.EFI"),
-        )?;
-        fs::copy(
-            efi_src.join("grubx64.efi"),
-            iso_root.join("EFI/BOOT/grubx64.efi"),
-        )?;
+    println!("Setting up UEFI boot...");
 
-        // Create GRUB config for Leviso
-        let grub_cfg = r#"set default=0
+    // Copy GRUB EFI bootloader
+    fs::copy(
+        efi_src.join("BOOTX64.EFI"),
+        iso_root.join("EFI/BOOT/BOOTX64.EFI"),
+    )?;
+    fs::copy(
+        efi_src.join("grubx64.efi"),
+        iso_root.join("EFI/BOOT/grubx64.efi"),
+    )?;
+
+    // Create GRUB config with normal boot and emergency shell options
+    let grub_cfg = r#"set default=0
 set timeout=5
 
-menuentry 'Leviso' {
+menuentry 'LevitateOS' {
     linuxefi /boot/vmlinuz console=ttyS0,115200n8 console=tty0 earlyprintk=ttyS0,115200 panic=30 rdinit=/init
     initrdefi /boot/initramfs.img
 }
+
+menuentry 'LevitateOS (Emergency Shell)' {
+    linuxefi /boot/vmlinuz console=ttyS0,115200n8 console=tty0 earlyprintk=ttyS0,115200 emergency rdinit=/init
+    initrdefi /boot/initramfs.img
+}
 "#;
-        fs::write(iso_root.join("EFI/BOOT/grub.cfg"), grub_cfg)?;
+    fs::write(iso_root.join("EFI/BOOT/grub.cfg"), grub_cfg)?;
 
-        // Create EFI boot image (efiboot.img)
-        let efiboot_img = output_dir.join("efiboot.img");
-        create_efi_boot_image(&iso_root, &efiboot_img)?;
+    // Create EFI boot image (efiboot.img)
+    let efiboot_img = output_dir.join("efiboot.img");
+    create_efi_boot_image(&iso_root, &efiboot_img)?;
 
-        // Create hybrid ISO with both BIOS and UEFI boot
-        println!("Creating hybrid BIOS/UEFI bootable ISO with xorriso...");
-        let status = Command::new("xorriso")
-            .args([
-                "-as", "mkisofs",
-                "-o", iso_output.to_str().unwrap(),
-                // BIOS boot
-                "-isohybrid-mbr", syslinux_dir.join("bios/mbr/isohdpfx.bin").to_str().unwrap(),
-                "-c", "isolinux/boot.cat",
-                "-b", "isolinux/isolinux.bin",
-                "-no-emul-boot",
-                "-boot-load-size", "4",
-                "-boot-info-table",
-                // UEFI boot
-                "-eltorito-alt-boot",
-                "-e", "efiboot.img",
-                "-no-emul-boot",
-                "-isohybrid-gpt-basdat",
-                // Source
-                iso_root.to_str().unwrap(),
-            ])
-            .status()
-            .context("Failed to run xorriso")?;
+    // Create UEFI-only bootable ISO with xorriso
+    println!("Creating UEFI bootable ISO with xorriso...");
+    let status = Command::new("xorriso")
+        .args([
+            "-as",
+            "mkisofs",
+            "-o",
+            iso_output.to_str().unwrap(),
+            // Use partition offset for better GPT compatibility on some firmware
+            "-partition_offset",
+            "16",
+            // UEFI boot via El Torito
+            "-e",
+            "efiboot.img",
+            "-no-emul-boot",
+            "-isohybrid-gpt-basdat",
+            // Source
+            iso_root.to_str().unwrap(),
+        ])
+        .status()
+        .context("Failed to run xorriso. Is xorriso installed?")?;
 
-        if !status.success() {
-            bail!("xorriso failed");
-        }
-    } else {
-        // Fallback: BIOS-only boot
-        println!("EFI files not found, creating BIOS-only bootable ISO...");
-        let status = Command::new("xorriso")
-            .args([
-                "-as", "mkisofs",
-                "-o", iso_output.to_str().unwrap(),
-                "-isohybrid-mbr", syslinux_dir.join("bios/mbr/isohdpfx.bin").to_str().unwrap(),
-                "-c", "isolinux/boot.cat",
-                "-b", "isolinux/isolinux.bin",
-                "-no-emul-boot",
-                "-boot-load-size", "4",
-                "-boot-info-table",
-                iso_root.to_str().unwrap(),
-            ])
-            .status()
-            .context("Failed to run xorriso")?;
-
-        if !status.success() {
-            bail!("xorriso failed");
-        }
+    if !status.success() {
+        bail!("xorriso failed");
     }
 
     println!("Created ISO at: {}", iso_output.display());
-    println!("\nTo run in QEMU GUI (UEFI by default):");
+    println!("\nTo run in QEMU (UEFI):");
     println!("  cargo run -- run");
-    println!("\nTo force BIOS boot:");
-    println!("  cargo run -- run --bios");
 
     Ok(())
 }
 
-/// Create a FAT12/16 image containing EFI boot files
+/// Create a FAT16 image containing EFI boot files
 fn create_efi_boot_image(iso_root: &Path, efiboot_img: &Path) -> Result<()> {
     // Create a FAT image file (16MB for FAT16 minimum + space for EFI files)
     let size_mb = 16;
@@ -202,24 +156,22 @@ fn create_efi_boot_image(iso_root: &Path, efiboot_img: &Path) -> Result<()> {
         bail!("dd failed");
     }
 
-    // Format as FAT16 (FAT12 can't handle files >4MB well)
+    // Format as FAT16
     let status = Command::new("mkfs.fat")
         .args(["-F", "16", efiboot_img.to_str().unwrap()])
         .status()
-        .context("Failed to format efiboot.img")?;
+        .context("Failed to format efiboot.img. Is dosfstools installed?")?;
 
     if !status.success() {
         bail!("mkfs.fat failed");
     }
 
-    // Mount and copy EFI files using mtools (no root required)
-    // Create EFI/BOOT directory structure
+    // Create EFI/BOOT directory structure using mtools
     let status = Command::new("mmd")
         .args(["-i", efiboot_img.to_str().unwrap(), "::EFI"])
         .status();
 
     if status.is_err() || !status.unwrap().success() {
-        // mtools not available, try mcopy directly
         println!("Note: mtools not fully available, using alternative method");
     }
 
@@ -230,7 +182,8 @@ fn create_efi_boot_image(iso_root: &Path, efiboot_img: &Path) -> Result<()> {
     // Copy EFI files
     let _ = Command::new("mcopy")
         .args([
-            "-i", efiboot_img.to_str().unwrap(),
+            "-i",
+            efiboot_img.to_str().unwrap(),
             iso_root.join("EFI/BOOT/BOOTX64.EFI").to_str().unwrap(),
             "::EFI/BOOT/",
         ])
@@ -238,7 +191,8 @@ fn create_efi_boot_image(iso_root: &Path, efiboot_img: &Path) -> Result<()> {
 
     let _ = Command::new("mcopy")
         .args([
-            "-i", efiboot_img.to_str().unwrap(),
+            "-i",
+            efiboot_img.to_str().unwrap(),
             iso_root.join("EFI/BOOT/grubx64.efi").to_str().unwrap(),
             "::EFI/BOOT/",
         ])
@@ -246,7 +200,8 @@ fn create_efi_boot_image(iso_root: &Path, efiboot_img: &Path) -> Result<()> {
 
     let _ = Command::new("mcopy")
         .args([
-            "-i", efiboot_img.to_str().unwrap(),
+            "-i",
+            efiboot_img.to_str().unwrap(),
             iso_root.join("EFI/BOOT/grub.cfg").to_str().unwrap(),
             "::EFI/BOOT/",
         ])

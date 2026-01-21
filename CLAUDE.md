@@ -13,8 +13,7 @@ The rootfs tarball (~70 MB) is intentionally small. Users install firmware, kern
 ```bash
 cargo run -- test           # Quick debug (terminal, serial)
 cargo run -- test -c "cmd"  # Run command after boot, exit
-cargo run -- run            # Full test (QEMU GUI, UEFI)
-cargo run -- run --bios     # BIOS boot
+cargo run -- run            # Full test (QEMU GUI, UEFI only)
 ```
 
 **Never pipe `cargo run -- test` to tail/head** - breaks output buffering.
@@ -23,7 +22,7 @@ cargo run -- run --bios     # BIOS boot
 
 ```
 leviso/
-├── downloads/           # Rocky ISO, rootfs, syslinux (gitignored)
+├── downloads/           # Rocky ISO, extracted rootfs (gitignored)
 ├── output/              # initramfs, ISO outputs (gitignored)
 ├── profile/init         # Init script (PID 1)
 └── src/                 # Rust source

@@ -35,6 +35,32 @@ if [ -d /sys/firmware/efi/efivars ]; then
     /bin/mount -t efivarfs efivarfs /sys/firmware/efi/efivars
 fi
 
+# Load CPU microcode for security patches (before other modules)
+echo "[init] Loading CPU microcode..."
+if [ -d /lib/firmware/intel-ucode ] && grep -q GenuineIntel /proc/cpuinfo 2>/dev/null; then
+    # Intel microcode - loaded via /dev/cpu/microcode
+    if [ -c /dev/cpu/microcode ]; then
+        for ucode in /lib/firmware/intel-ucode/*; do
+            [ -f "$ucode" ] && cat "$ucode" > /dev/cpu/microcode 2>/dev/null
+        done
+        echo "[init] Intel microcode loaded"
+    else
+        echo "[init] Intel microcode: /dev/cpu/microcode not available (kernel may auto-load)"
+    fi
+elif [ -d /lib/firmware/amd-ucode ] && grep -q AuthenticAMD /proc/cpuinfo 2>/dev/null; then
+    # AMD microcode - loaded via /dev/cpu/microcode
+    if [ -c /dev/cpu/microcode ]; then
+        for ucode in /lib/firmware/amd-ucode/*; do
+            [ -f "$ucode" ] && cat "$ucode" > /dev/cpu/microcode 2>/dev/null
+        done
+        echo "[init] AMD microcode loaded"
+    else
+        echo "[init] AMD microcode: /dev/cpu/microcode not available (kernel may auto-load)"
+    fi
+else
+    echo "[init] No CPU microcode found (install linux-firmware for security patches)"
+fi
+
 # Load essential kernel modules
 echo "[init] Loading kernel modules..."
 KVER=$(ls /lib/modules/ 2>/dev/null | head -1)
@@ -83,6 +109,23 @@ fi
 
 # Create /etc/mtab symlink
 /bin/ln -sf /proc/self/mounts /etc/mtab
+
+# Check for emergency mode (boot with "emergency" on kernel cmdline)
+if grep -q emergency /proc/cmdline; then
+    echo ""
+    echo "========================================"
+    echo "[init] EMERGENCY SHELL"
+    echo "========================================"
+    echo "[init] Emergency mode requested via kernel cmdline"
+    echo "[init] You have a root shell before systemd starts."
+    echo "[init] Useful commands:"
+    echo "         mount -o remount,rw /      # Make root writable"
+    echo "         dmesg | less              # Check kernel messages"
+    echo "         exit                      # Continue boot to systemd"
+    echo ""
+    /bin/bash
+    echo "[init] Exiting emergency shell, continuing boot..."
+fi
 
 echo "[init] All mounts complete. Handing off to systemd..."
 echo "[init] systemd path: /usr/lib/systemd/systemd"

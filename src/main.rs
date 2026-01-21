@@ -32,11 +32,8 @@ enum Commands {
         target: Option<BuildTarget>,
     },
 
-    /// Run the ISO in QEMU
+    /// Run the ISO in QEMU (UEFI boot)
     Run {
-        /// Force BIOS boot instead of UEFI
-        #[arg(long)]
-        bios: bool,
         /// Don't attach virtual disk
         #[arg(long)]
         no_disk: bool,
@@ -189,7 +186,7 @@ fn main() -> Result<()> {
                     iso::create_iso(&base_dir)?;
 
                     println!("\n=== Build Complete ===");
-                    println!("  ISO: output/leviso.iso");
+                    println!("  ISO: output/levitateos.iso");
                     println!("  Tarball: output/levitateos-base.tar.xz");
                     println!("\nNext: leviso run");
                 }
@@ -217,16 +214,16 @@ fn main() -> Result<()> {
         }
 
         // ===== RUN =====
-        Commands::Run { bios, no_disk, disk_size } => {
+        Commands::Run { no_disk, disk_size } => {
             // Auto-build if ISO doesn't exist
-            let iso_path = base_dir.join("output/leviso.iso");
+            let iso_path = base_dir.join("output/levitateos.iso");
             if !iso_path.exists() {
                 println!("ISO not found, building...\n");
                 initramfs::build_initramfs(&base_dir)?;
                 iso::create_iso(&base_dir)?;
             }
             let disk = if no_disk { None } else { Some(disk_size) };
-            qemu::run_iso(&base_dir, bios, disk)?;
+            qemu::run_iso(&base_dir, disk)?;
         }
 
         Commands::Test { cmd } => {

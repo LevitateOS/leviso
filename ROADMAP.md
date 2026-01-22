@@ -3,9 +3,58 @@
 > **DOCUMENTATION NOTE:** This roadmap will be used to create the installation guide
 > and user documentation. Keep descriptions clear, complete, and user-facing.
 
-**Version:** 1.0
+**Version:** 1.1
 **Last Updated:** 2026-01-22
 **Goal:** Everything a user needs to use LevitateOS as their primary operating system, competing directly with Arch Linux.
+
+---
+
+## ⚠️ ARCHISO PARITY STATUS
+
+> **Reference:** See `docs/archiso-parity-checklist.md` for full details (verified 2026-01-22)
+
+LevitateOS aims for parity with archiso - the Arch Linux installation ISO. This section tracks critical gaps.
+
+### P0 - Critical Gaps (Blocking for Daily Driver)
+
+| Gap | Impact | Status |
+|-----|--------|--------|
+| **Intel/AMD microcode** | CPU bugs, security vulnerabilities | NOT IN BUILD |
+| **genfstab equivalent** | Users must manually write fstab | NOT IMPLEMENTED |
+| **arch-chroot equivalent** | Users must manually set up chroot | NOT IMPLEMENTED |
+| **cryptsetup (LUKS)** | No encrypted disk support | NOT IN BUILD |
+| **lvm2** | No LVM support | NOT IN BUILD |
+| **btrfs-progs** | No Btrfs support | NOT IN BUILD |
+
+### P1 - Important Gaps
+
+| Gap | Impact | Status |
+|-----|--------|--------|
+| Volatile journal storage | Logs may fill tmpfs | NOT CONFIGURED |
+| do-not-suspend config | Live session may sleep during install | NOT CONFIGURED |
+| SSH server (sshd) | No remote installation/rescue | NOT ENABLED |
+| pciutils (lspci) | Cannot identify PCI hardware | NOT IN BUILD |
+| usbutils (lsusb) | Cannot identify USB devices | NOT IN BUILD |
+| dmidecode | Cannot read BIOS/DMI info | NOT IN BUILD |
+| ethtool | Cannot diagnose NICs | NOT IN BUILD |
+| gdisk/sgdisk | Only fdisk for GPT (less capable) | NOT IN BUILD |
+| iwd | Only wpa_supplicant for WiFi | NOT IN BUILD |
+| wireless-regdb | WiFi may violate regulations | NOT IN BUILD |
+| sof-firmware | Modern laptop sound may not work | NOT IN BUILD |
+| ISO SHA512 checksum | Users cannot verify downloads | NOT GENERATED |
+
+### What's Working (Verified)
+
+| Feature | Status |
+|---------|--------|
+| UEFI boot | ✅ Verified in E2E test |
+| NetworkManager + WiFi firmware | ✅ Enabled, firmware included |
+| Autologin to root shell | ✅ Like archiso |
+| machine-id empty | ✅ Regenerates on first boot |
+| Hostname set ("levitateos") | ✅ Configured |
+| recstrap (squashfs extraction) | ✅ Working |
+| systemd as PID 1 | ✅ Verified |
+| Serial console | ✅ Enabled |
 
 ---
 
@@ -49,6 +98,33 @@ ISO
 3. Reboot into installed system
 
 **Key insight:** The squashfs IS the complete system. Live = Installed.
+
+---
+
+## Installation Guide Outline
+
+> This roadmap will be converted into user-facing installation documentation.
+> Each section maps to a documentation page.
+
+### Pre-Installation (Website)
+1. **System Requirements** - CPU, RAM, storage
+2. **Download ISO** - Links, SHA512 verification
+3. **Create Boot Media** - dd, Ventoy, Rufus
+
+### Live Environment (Installation Guide)
+1. **Boot the ISO** - UEFI boot process
+2. **Connect to Network** - `nmcli` for WiFi, automatic for Ethernet
+3. **Prepare Disks** - `fdisk`/`parted`, `mkfs`
+4. **Extract System** - `recstrap /mnt`
+5. **Configure System** - fstab, hostname, users, passwords
+6. **Install Bootloader** - `bootctl install`
+7. **Reboot** - First boot into installed system
+
+### Post-Installation (Wiki)
+1. **First Boot** - What to expect
+2. **Package Management** - Using `recipe`
+3. **Desktop Environment** - Installing Sway, GNOME, etc.
+4. **Troubleshooting** - Common issues
 
 ---
 
@@ -171,22 +247,85 @@ Result: Live = Installed (same files!)
 
 ---
 
-## What's Missing from Initramfs
+## What's Missing from Live Environment
 
-These are known gaps in the live environment:
+These are known gaps in the live environment (squashfs):
 
-### User Tools
+### Critical Tools (P0 - BLOCKING)
+- [ ] `genfstab` - generate fstab from mounted filesystems (arch-install-scripts)
+- [ ] `levi-chroot` - arch-chroot equivalent for entering installed system
+- [ ] `cryptsetup` - LUKS disk encryption
+- [ ] `lvm2` - Logical Volume Manager (pvcreate, vgcreate, lvcreate)
+- [ ] `btrfs-progs` - Btrfs filesystem tools
+
+### Important Tools (P1)
+- [ ] `gdisk` / `sgdisk` - GPT partitioning (better than fdisk for GPT)
+- [ ] `pciutils` (lspci) - identify PCI hardware
+- [ ] `usbutils` (lsusb) - identify USB devices
+- [ ] `dmidecode` - BIOS/DMI information
+- [ ] `ethtool` - NIC diagnostics and configuration
+- [ ] `iwd` - alternative WiFi daemon (often more reliable)
+- [ ] `wireless-regdb` - WiFi regulatory database
+
+### Live Environment Config (P1)
+- [ ] Volatile journal storage (`Storage=volatile` in journald.conf)
+- [ ] do-not-suspend logind config (prevent sleep during install)
+
+### User Tools (Working)
 - [x] `passwd` - interactive password setting
 - [x] `nano` - text editor for config files
 
-### Locale & Time
+### Locale & Time (Working)
 - [x] `localedef` - generate locales (in COREUTILS)
 - [x] Timezone data (`/usr/share/zoneinfo/`)
 
-### Bootloader
+### Bootloader (Working)
 - [x] `bootctl` - systemd-boot installer (in COREUTILS)
 
-### Networking (IMPLEMENTED in src/initramfs/network.rs - 482 lines)
+---
+
+## Live Environment Configuration Gaps
+
+These are configuration issues that don't require new binaries, just systemd config files.
+
+### Volatile Journal Storage (P1)
+
+archiso configures `journald` to use volatile storage so logs don't fill the tmpfs overlay.
+
+**Fix needed:** Create `/etc/systemd/journald.conf.d/volatile.conf`:
+```ini
+[Journal]
+Storage=volatile
+RuntimeMaxUse=64M
+```
+
+**File to modify:** `leviso/src/build/systemd.rs` - add `setup_volatile_journal()`
+
+### Do-Not-Suspend Config (P1)
+
+archiso prevents the live session from suspending/hibernating during installation.
+
+**Fix needed:** Create `/etc/systemd/logind.conf.d/do-not-suspend.conf`:
+```ini
+[Login]
+HandleSuspendKey=ignore
+HandleHibernateKey=ignore
+HandleLidSwitch=ignore
+HandleLidSwitchExternalPower=ignore
+IdleAction=ignore
+```
+
+**File to modify:** `leviso/src/build/systemd.rs` - add `setup_do_not_suspend()`
+
+### KMS (Kernel Mode Setting)
+
+archiso has a KMS hook for proper graphics mode switching.
+
+**Status:** Not implemented. Investigate if needed for LevitateOS.
+
+---
+
+### Networking (IMPLEMENTED in src/build/network.rs)
 
 - [x] Create `src/initramfs/network.rs` module
 - [x] Copy NetworkManager + nmcli + nmtui + nm-online binaries
@@ -205,10 +344,10 @@ These are known gaps in the live environment:
 - [x] Test: `nmcli device` shows interfaces (eth0 connected, DHCP works)
 - [ ] Test: `nmcli device wifi list` shows networks (on real hardware)
 
-### Recipe
+### Recipe Package Manager
 - [x] `recipe` binary in squashfs (/usr/bin/recipe)
 - [x] Recipe configuration in /etc/recipe/config.toml
-- [ ] `recipe bootstrap /mnt` command (for advanced installation)
+- [ ] `recipe search` / `recipe install` commands (package manager functionality)
 
 ### Quality of Life
 - [x] Proper shutdown/reboot (via `poweroff`/`reboot` aliases)
@@ -220,172 +359,30 @@ These are known gaps in the live environment:
 
 ---
 
-## Implementation Plan: Networking
+## Networking Implementation
 
-> **STATUS: IMPLEMENTED** - See `src/initramfs/network.rs` (482 lines)
->
-> This section documents what was implemented. The code is complete and wired up.
+> **STATUS: ✅ IMPLEMENTED** - See `src/build/network.rs`
 
-**Goal:** Add full networking support (NetworkManager + WiFi + Ethernet) to the live ISO so users can connect to networks and download packages.
+| Component | Status | Location |
+|-----------|--------|----------|
+| NetworkManager | ✅ Working | `src/build/network.rs` |
+| wpa_supplicant | ✅ Working | `src/build/network.rs` |
+| nmcli / nmtui | ✅ Working | Included with NetworkManager |
+| WiFi firmware | ✅ Working | Intel, Atheros, Realtek, Broadcom, MediaTek |
+| Ethernet modules | ✅ Working | virtio_net, e1000, e1000e, r8169 |
+| Auto-start | ✅ Working | NetworkManager.service enabled |
 
-**Scope:**
-- Full NetworkManager with nmcli and wpa_supplicant
-- Common WiFi firmware (Intel, Atheros, Realtek, Broadcom)
-- Auto-start on boot
-
-### Phase 1: Create network.rs module - DONE
-
-**New file: `leviso/src/initramfs/network.rs`**
-
-```rust
-// Network binaries to copy
-const NETWORK_BINARIES: &[&str] = &[
-    "ip",              // iproute2 - network config
-    "ping",            // connectivity test
-];
-
-const NETWORK_SBIN: &[&str] = &[
-    "wpa_supplicant",  // WiFi authentication
-    "wpa_cli",         // WiFi control
-    "wpa_passphrase",  // PSK generation
-];
-
-const NETWORKMANAGER_BINARIES: &[&str] = &[
-    "NetworkManager",  // Main daemon (usr/sbin)
-    "nmcli",           // CLI tool (usr/bin)
-];
-
-// Systemd units to copy
-const NETWORK_UNITS: &[&str] = &[
-    "NetworkManager.service",
-    "NetworkManager-wait-online.service",
-    "NetworkManager-dispatcher.service",
-    "wpa_supplicant.service",
-];
-
-pub fn setup_network(ctx: &BuildContext) -> Result<()>
+### Verification Commands
+```bash
+systemctl status NetworkManager   # Should show active
+nmcli device                      # Should list interfaces
+nmcli device wifi list            # Should show networks (real hardware)
 ```
 
-**Functions needed:**
-1. `copy_network_binaries()` - Copy NetworkManager, nmcli, wpa_supplicant, ip
-2. `copy_networkmanager_configs()` - Copy /etc/NetworkManager/ configs
-3. `copy_networkmanager_plugins()` - Copy /usr/lib64/NetworkManager/ plugins
-4. `copy_network_units()` - Copy systemd service files
-5. `copy_dbus_policies()` - Copy NetworkManager D-Bus policies
-6. `enable_networkmanager()` - Symlink to multi-user.target.wants
-
-### Phase 2: Add network kernel modules - DONE
-
-**Already in `leviso/src/config.rs` lines 112-118:**
-
-```rust
-// Network - virtio (VM networking)
-"kernel/drivers/net/virtio_net.ko.xz",
-// Network - common ethernet drivers
-"kernel/drivers/net/ethernet/intel/e1000/e1000.ko.xz",
-"kernel/drivers/net/ethernet/intel/e1000e/e1000e.ko.xz",
-"kernel/drivers/net/ethernet/realtek/r8169.ko.xz",
-```
-
-**Note**: WiFi drivers are large. Use modprobe auto-loading rather than bundling all 88 drivers.
-
-### Phase 3: Copy WiFi firmware - DONE
-
-**Implemented in network.rs: `copy_wifi_firmware()`**
-
-Copy firmware for common WiFi chipsets:
-```
-/usr/lib/firmware/iwlwifi-*      # Intel WiFi (most laptops)
-/usr/lib/firmware/ath10k/        # Atheros
-/usr/lib/firmware/ath11k/        # Newer Atheros
-/usr/lib/firmware/rtlwifi/       # Realtek
-/usr/lib/firmware/rtw88/         # Newer Realtek
-/usr/lib/firmware/brcm/          # Broadcom
-/usr/lib/firmware/mediatek/      # MediaTek
-```
-
-**Size estimate**: ~100-150MB for common firmware
-
-### Phase 4: Update initramfs build - DONE
-
-**Already in `leviso/src/initramfs/mod.rs`:**
-
-```rust
-pub mod network;  // Line 22
-
-// In build_initramfs():
-network::setup_network(&ctx)?;  // Line 144
-```
-
-### Files Created/Modified
-
-| File | Status |
-|------|--------|
-| `src/initramfs/network.rs` | **DONE** - 482 lines |
-| `src/initramfs/mod.rs` | **DONE** - `mod network` + `setup_network()` call |
-| `src/config.rs` | **DONE** - virtio_net + ethernet modules at lines 112-118 |
-
-### Directory Structure in Initramfs
-
-```
-/usr/sbin/NetworkManager
-/usr/sbin/wpa_supplicant
-/usr/sbin/wpa_cli
-/usr/bin/nmcli
-/sbin/ip
-/etc/NetworkManager/NetworkManager.conf
-/etc/NetworkManager/conf.d/
-/usr/lib64/NetworkManager/          # Plugins
-/usr/share/dbus-1/system.d/org.freedesktop.NetworkManager.conf
-/usr/lib/systemd/system/NetworkManager.service
-/usr/lib/firmware/iwlwifi-*         # Intel WiFi firmware
-/usr/lib/firmware/ath10k/           # Atheros firmware
-```
-
-### Dependencies
-
-NetworkManager requires (already in initramfs):
-- D-Bus (already set up)
-- systemd (already set up)
-- polkit (may need to add)
-
-### Verification
-
-1. **Build test**: `cargo build` succeeds
-2. **Boot test**: `cargo run -- run`
-   - Check: `systemctl status NetworkManager` shows active
-   - Check: `nmcli device` shows network interfaces
-   - Check: `nmcli connection up <ethernet>` connects (if DHCP available)
-3. **WiFi test** (on real hardware or with USB passthrough):
-   - Check: `nmcli device wifi list` shows networks
-   - Check: `nmcli device wifi connect <SSID> password <pass>` connects
-
-### Estimated Size Impact
-
-| Component | Size |
-|-----------|------|
-| NetworkManager + libs | ~15 MB |
-| wpa_supplicant + libs | ~5 MB |
-| iproute2 (ip) | ~1 MB |
-| Common WiFi firmware | ~100-150 MB |
-| **Total** | **~120-170 MB** |
-
-### Boot Behavior
-
-1. systemd starts
-2. D-Bus socket activates
-3. NetworkManager.service starts (WantedBy=multi-user.target)
-4. NetworkManager auto-configures Ethernet via DHCP
-5. WiFi available via `nmcli device wifi`
-
-### Risks & Mitigations
-
-| Risk | Mitigation |
-|------|------------|
-| Firmware bloat | Only include common chipsets, not all 354MB |
-| Missing polkit | Test without, add if NetworkManager complains |
-| D-Bus conflicts | NetworkManager D-Bus config must not conflict with existing |
-| Boot slowdown | NetworkManager-wait-online.service can delay boot; don't enable it |
+### Still Missing (P1)
+- [ ] iwd - alternative WiFi daemon
+- [ ] wireless-regdb - regulatory compliance
+- [ ] sof-firmware - Intel Sound Open Firmware
 
 ---
 
@@ -444,10 +441,20 @@ tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt
 
 ## 1. BOOT & INSTALLATION
 
+### 1.0 ISO Integrity Verification (P1)
+
+archiso provides checksum files so users can verify their download.
+
+- [ ] **SHA512 checksum** - Generate `levitateos-YYYY.MM.DD.iso.sha512` during build
+- [ ] **GPG signature** - Sign checksum file for release verification
+- [ ] Document verification process on website
+
+**File to modify:** `leviso/src/iso.rs` - add checksum generation after xorriso
+
 ### 1.1 Boot Modes
 - [x] UEFI boot (GPT, ESP partition) - verified in E2E test
-- [ ] BIOS/Legacy boot (MBR) - *optional but nice*
-- [ ] Secure Boot signed - *future*
+- [ ] BIOS/Legacy boot (MBR) - P2 (optional but nice)
+- [ ] Secure Boot signed - P3 (future)
 
 ### 1.2 Boot Media
 - [ ] ISO boots on real hardware (needs testing)
@@ -458,11 +465,17 @@ tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt
 - [ ] USB bootable (dd or Ventoy compatible) (needs testing)
 
 ### 1.3 Installation Process (recstrap)
+
+**Installation Helper Scripts (P0 - archiso parity):**
+- [ ] **`genfstab`** - Generate fstab from mounted filesystems (currently manual)
+- [ ] **`levi-chroot`** - Enter installed system like arch-chroot (currently manual)
+
+**Installation Steps:**
 - [x] Partition disk (GPT for UEFI) - verified in E2E test
 - [x] Format partitions (ext4, FAT32 for ESP) - verified in E2E test
 - [x] Mount target filesystem - verified in E2E test
 - [x] Extract squashfs to disk - verified in E2E test
-- [x] Generate fstab with UUIDs - verified in E2E test
+- [~] Generate fstab with UUIDs - **manual only** (no genfstab script)
 - [ ] Set timezone (manual: timedatectl)
 - [ ] Set locale (manual: localectl)
 - [ ] Set hostname (manual: hostnamectl)
@@ -471,6 +484,8 @@ tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt
 - [ ] Add user to wheel group (manual: usermod)
 - [x] Install bootloader (systemd-boot) - verified in E2E test
 - [x] Reboot into installed system - verified in E2E test
+
+> **NOTE:** The E2E test generates fstab manually with a script. Users need `genfstab` for a proper archiso-like experience.
 
 ### 1.4 Post-Installation Verification
 - [x] System boots without ISO - verified in E2E test
@@ -500,13 +515,15 @@ tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt
 - [x] Common drivers: e1000, e1000e, r8169 (in config.rs)
 
 ### 2.3 WiFi
-- [x] wpa_supplicant installed (in initramfs via network.rs)
-- [x] nmcli can scan networks (in initramfs)
-- [ ] Can connect to WPA2-PSK network (untested)
+- [x] wpa_supplicant installed (in squashfs via network.rs)
+- [x] nmcli can scan networks (in squashfs)
+- [ ] Can connect to WPA2-PSK network (untested on real hardware)
 - [ ] Can connect to WPA3 network (untested)
 - [ ] Can connect to WPA2-Enterprise (802.1X)
 - [x] WiFi firmware: Intel (iwlwifi), Atheros, Realtek, Broadcom (network.rs)
-- [ ] wireless-regdb for regulatory compliance
+- [ ] **wireless-regdb** - P1: Required for legal WiFi operation in many countries
+- [ ] **iwd** - P1: Alternative WiFi daemon, often more reliable than wpa_supplicant
+- [ ] **sof-firmware** - P1: Modern laptop sound (Intel SOF)
 
 ### 2.4 Network Tools
 - [x] `ip` - interface and routing configuration (in rootfs)
@@ -514,11 +531,11 @@ tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt
 - [x] `ss` - socket statistics (in rootfs)
 - [x] `curl` - HTTP client (in rootfs)
 - [x] `wget` - file downloads (in rootfs)
-- [ ] `dig` / `nslookup` - DNS queries (from bind-utils or ldns)
-- [ ] `traceroute` / `tracepath` - path tracing
-- [ ] `ethtool` - NIC configuration
-- [ ] `nmap` - network scanning (optional)
-- [ ] `tcpdump` - packet capture (optional)
+- [ ] `dig` / `nslookup` - DNS queries (from bind-utils or ldns) - P2
+- [ ] `traceroute` / `tracepath` - path tracing - P2
+- [ ] **`ethtool`** - P1: NIC diagnostics and configuration
+- [ ] `nmap` - network scanning (optional) - P3
+- [ ] `tcpdump` - packet capture (optional) - P3
 
 ### 2.5 VPN Support
 - [ ] OpenVPN client
@@ -526,8 +543,8 @@ tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt
 - [ ] IPsec support (strongswan or libreswan) - *optional*
 
 ### 2.6 Remote Access
-- [ ] SSH server (sshd) - installable
-- [ ] SSH client (ssh, scp, sftp)
+- [ ] **SSH server (sshd) enabled** - P1: Essential for remote installation/rescue (archiso enables this!)
+- [ ] SSH client (ssh, scp, sftp) - P1
 - [ ] Key-based authentication works
 
 ### 2.7 Firewall
@@ -541,7 +558,7 @@ tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt
 ### 3.1 Partitioning Tools
 - [x] `fdisk` - MBR/GPT partitioning (in rootfs)
 - [~] `parted` - GPT partitioning (in initramfs only, not rootfs)
-- [ ] `gdisk` / `sgdisk` - GPT-specific tools
+- [ ] **`gdisk` / `sgdisk`** - P1: GPT-specific tools (better than fdisk for GPT)
 - [x] `lsblk` - list block devices (in rootfs)
 - [x] `blkid` - show UUIDs and labels (in rootfs)
 - [x] `wipefs` - clear filesystem signatures (in rootfs)
@@ -549,22 +566,22 @@ tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt
 ### 3.2 Filesystem Support
 - [x] ext4 (mkfs.ext4, e2fsck, tune2fs, resize2fs) - in rootfs
 - [x] FAT32/vfat (mkfs.fat, fsck.fat) - required for ESP, in rootfs
-- [ ] XFS (mkfs.xfs, xfs_repair) - *optional*
-- [ ] Btrfs (mkfs.btrfs, btrfs) - *optional but popular*
-- [ ] NTFS read/write (ntfs-3g) - for Windows drives
-- [ ] exFAT (exfatprogs) - for USB drives and SD cards
+- [ ] XFS (mkfs.xfs, xfs_repair) - P2
+- [ ] **Btrfs (mkfs.btrfs, btrfs)** - P0 CRITICAL: Popular default, users expect it
+- [ ] NTFS read/write (ntfs-3g) - P2: for Windows drives
+- [ ] exFAT (exfatprogs) - P2: for USB drives and SD cards
 - [x] ISO9660 (mount -t iso9660) - kernel module in initramfs
-- [ ] squashfs (for live systems)
+- [x] squashfs (for live systems) - kernel module + mksquashfs
 
 ### 3.3 LVM & RAID
-- [ ] LVM2 (pvcreate, vgcreate, lvcreate)
-- [ ] mdadm for software RAID - *optional*
-- [ ] dmraid for fake RAID - *optional*
+- [ ] **LVM2 (pvcreate, vgcreate, lvcreate)** - P0 CRITICAL: Common storage setup
+- [ ] mdadm for software RAID - P2
+- [ ] dmraid for fake RAID - P2
 
 ### 3.4 Encryption
-- [ ] LUKS encryption (cryptsetup)
-- [ ] Encrypted root partition support
-- [ ] crypttab for automatic unlock
+- [ ] **LUKS encryption (cryptsetup)** - P0 CRITICAL: Many users require encrypted root
+- [ ] Encrypted root partition support - depends on cryptsetup
+- [ ] crypttab for automatic unlock - depends on cryptsetup
 
 ### 3.5 Mount & Automount
 - [x] `mount` / `umount` - in rootfs
@@ -731,22 +748,22 @@ tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt
 ## 7. HARDWARE SUPPORT
 
 ### 7.1 CPU
-- [ ] Intel microcode (intel-ucode)
-- [ ] AMD microcode (amd-ucode)
-- [ ] CPU frequency scaling (cpupower)
-- [ ] Temperature monitoring (lm_sensors)
+- [ ] **Intel microcode (intel-ucode)** - P0 CRITICAL: CPU security/stability
+- [ ] **AMD microcode (amd-ucode)** - P0 CRITICAL: CPU security/stability
+- [ ] CPU frequency scaling (cpupower) - P2
+- [ ] Temperature monitoring (lm_sensors) - P2
 
 ### 7.2 Memory
 - [ ] Swap partition/file support
 - [ ] zram/zswap - *optional*
-- [ ] `free` - memory stats
-- [ ] `/proc/meminfo` readable
+- [x] `free` - memory stats (in rootfs)
+- [x] `/proc/meminfo` readable
 
 ### 7.3 PCI/USB Detection
-- [ ] `lspci` (pciutils)
-- [ ] `lsusb` (usbutils)
+- [ ] **`lspci` (pciutils)** - P1: Users need to identify hardware
+- [ ] **`lsusb` (usbutils)** - P1: Users need to identify hardware
 - [ ] `lshw` - *optional but useful*
-- [ ] `dmidecode` - SMBIOS/DMI info
+- [ ] **`dmidecode`** - P1: SMBIOS/DMI info for hardware identification
 
 ### 7.4 Input Devices
 - [ ] Keyboard works (all layouts via loadkeys)
@@ -1000,111 +1017,125 @@ tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt
 
 ## ARCH ISO COMPARISON
 
-Arch Linux ISO includes these packages we should evaluate:
+> **Verified 2026-01-22** - See `docs/archiso-parity-checklist.md` for full analysis
+
+Arch Linux ISO includes these packages. Status in LevitateOS noted.
 
 ### Network & WiFi
-- `dhcpcd` - DHCP client
-- `iwd` - WiFi daemon
-- `wpa_supplicant` - WPA authentication
-- `wireless_tools` - iwconfig etc
-- `wireless-regdb` - regulatory database
-- `ethtool` - NIC config
-- `modemmanager` - mobile broadband
+- `dhcpcd` - DHCP client (N/A - using NetworkManager)
+- `iwd` - WiFi daemon - **MISSING (P1)**
+- `wpa_supplicant` - WPA authentication - ✅ INCLUDED
+- `wireless_tools` - iwconfig etc (deprecated)
+- `wireless-regdb` - regulatory database - **MISSING (P1)**
+- `ethtool` - NIC config - **MISSING (P1)**
+- `modemmanager` - mobile broadband - MISSING (P2)
 
 ### Filesystems
-- `btrfs-progs`
-- `dosfstools`
-- `e2fsprogs`
-- `exfatprogs`
-- `f2fs-tools`
-- `jfsutils`
-- `ntfs-3g`
-- `xfsprogs`
+- `btrfs-progs` - **MISSING (P0)**
+- `dosfstools` - ✅ INCLUDED
+- `e2fsprogs` - ✅ INCLUDED
+- `exfatprogs` - MISSING (P2)
+- `f2fs-tools` - MISSING (P3)
+- `jfsutils` - MISSING (P3)
+- `ntfs-3g` - MISSING (P2)
+- `xfsprogs` - MISSING (P2)
 
 ### Disk Tools
-- `cryptsetup` - LUKS
-- `dmraid`
-- `gptfdisk`
-- `hdparm`
-- `lvm2`
-- `mdadm`
-- `nvme-cli`
-- `parted`
-- `sdparm`
-- `smartmontools`
+- `cryptsetup` - LUKS - **MISSING (P0)**
+- `dmraid` - MISSING (P3)
+- `gptfdisk` (gdisk) - **MISSING (P1)**
+- `hdparm` - MISSING (P2)
+- `lvm2` - **MISSING (P0)**
+- `mdadm` - MISSING (P2)
+- `nvme-cli` - MISSING (P2)
+- `parted` - ✅ INCLUDED (initramfs only)
+- `sdparm` - MISSING (P3)
+- `smartmontools` - MISSING (P2)
 
 ### Hardware
-- `amd-ucode`
-- `intel-ucode`
-- `linux-firmware`
-- `linux-firmware-marvell`
-- `sof-firmware` - sound
-- `dmidecode`
-- `usbutils`
+- `amd-ucode` - **MISSING (P0)**
+- `intel-ucode` - **MISSING (P0)**
+- `linux-firmware` - ✅ INCLUDED (partial)
+- `linux-firmware-marvell` - MISSING (minor)
+- `sof-firmware` - sound - **MISSING (P1)**
+- `dmidecode` - **MISSING (P1)**
+- `usbutils` - **MISSING (P1)**
+- `pciutils` - **MISSING (P1)**
 
 ### Utilities
-- `arch-install-scripts` - genfstab, arch-chroot
-- `diffutils`
-- `less`
-- `man-db`
-- `man-pages`
-- `nano`
-- `rsync`
-- `sudo`
-- `vim`
+- `arch-install-scripts` - genfstab, arch-chroot - **NEED EQUIVALENT (P0)**
+- `diffutils` - ✅ INCLUDED
+- `less` - ✅ INCLUDED
+- `man-db` - MISSING (P1)
+- `man-pages` - MISSING (P1)
+- `nano` - ✅ INCLUDED
+- `rsync` - MISSING (P2)
+- `sudo` - ✅ INCLUDED
+- `vim` - ✅ INCLUDED (vi)
 
 ### VPN
-- `openconnect`
-- `openvpn`
-- `ppp`
-- `vpnc`
-- `wireguard-tools` (in kernel)
+- `openconnect` - MISSING (P2)
+- `openvpn` - MISSING (P2)
+- `ppp` - MISSING (P2)
+- `vpnc` - MISSING (P2)
+- `wireguard-tools` - MISSING (P2)
 
 ### Recovery
-- `clonezilla`
-- `ddrescue`
-- `fsarchiver`
-- `gpart`
-- `partclone`
-- `partimage`
-- `testdisk`
+- `ddrescue` - MISSING (P2)
+- `testdisk` - MISSING (P2)
+- Others - MISSING (P3)
 
 ### VM Support
-- `hyperv`
-- `open-vm-tools`
-- `qemu-guest-agent`
-- `virtualbox-guest-utils-nox`
+- `hyperv` - MISSING (P2)
+- `open-vm-tools` - MISSING (P2)
+- `qemu-guest-agent` - MISSING (P2)
+- `virtualbox-guest-utils-nox` - MISSING (P2)
 
 ---
 
 ## PRIORITY LEVELS
 
-### P0 - Must Have (Blocking Release)
-- Boot and installation works
-- Network (Ethernet + DHCP)
-- User management + sudo
-- Core utilities
-- Package manager basics
+> **Updated based on archiso parity verification (2026-01-22)**
 
-### P1 - Should Have (Important)
-- WiFi support
-- Full filesystem support
-- LUKS encryption
-- SSH
-- All man pages
+### P0 - Must Have (Blocking Daily Driver)
+- [x] Boot and installation works (UEFI)
+- [x] Network (Ethernet + DHCP via NetworkManager)
+- [x] WiFi support (wpa_supplicant + firmware)
+- [x] User management + sudo
+- [x] Core utilities
+- [ ] **Intel/AMD microcode** - CPU security/stability
+- [ ] **genfstab** - fstab generation helper
+- [ ] **levi-chroot** - arch-chroot equivalent
+- [ ] **cryptsetup (LUKS)** - disk encryption
+- [ ] **lvm2** - Logical Volume Manager
+- [ ] **btrfs-progs** - Btrfs filesystem support
+
+### P1 - Should Have (archiso Parity)
+- [ ] Volatile journal storage (prevent tmpfs fill)
+- [ ] do-not-suspend config (prevent sleep during install)
+- [ ] SSH server enabled (remote installation/rescue)
+- [ ] Hardware probing: lspci, lsusb, dmidecode
+- [ ] ethtool (NIC diagnostics)
+- [ ] gdisk/sgdisk (better GPT tools)
+- [ ] iwd (alternative WiFi)
+- [ ] wireless-regdb (regulatory compliance)
+- [ ] sof-firmware (Intel laptop sound)
+- [ ] ISO SHA512 checksum generation
+- [ ] Man pages
 
 ### P2 - Nice to Have (Enhancement)
-- VPN support
+- BIOS/Legacy boot
+- VPN support (WireGuard, OpenVPN)
 - VM guest tools
-- Recovery tools
-- Bluetooth
-- Printing
-- EU compliance (CRA, GDPR basics)
+- Recovery tools (testdisk, ddrescue)
+- ModemManager (mobile broadband)
+- XFS, exFAT, NTFS support
 
 ### P3 - Future
-- Secure Boot
-- Full accessibility
+- Secure Boot signing
+- Full accessibility (brltty, espeakup)
 - SELinux/AppArmor
+- Guided installer (like archinstall)
 
 ---
 
@@ -1114,10 +1145,21 @@ When you implement something:
 1. Change `[ ]` to `[x]`
 2. Add test coverage to appropriate test crate
 3. Update the TEST MATRIX section
-4. Commit with message: `spec: Mark <item> as complete`
+4. Update `docs/archiso-parity-checklist.md` if it's an archiso parity item
+5. Commit with message: `spec: Mark <item> as complete`
 
 When you find something missing:
 1. Add it to the appropriate section
 2. Mark it as `[ ]`
-3. Add a note about priority
-4. Commit with message: `spec: Add <item> requirement`
+3. Add a note about priority (P0/P1/P2/P3)
+4. If archiso has it, add to `docs/archiso-parity-checklist.md`
+5. Commit with message: `spec: Add <item> requirement`
+
+### Priority Definitions
+
+| Priority | Meaning | Example |
+|----------|---------|---------|
+| P0 | Blocking daily driver use | microcode, cryptsetup, genfstab |
+| P1 | archiso parity / should have | lspci, SSH, ethtool |
+| P2 | Nice to have | VPN, VM tools, recovery |
+| P3 | Future / optional | Secure Boot, accessibility |

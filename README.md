@@ -2,7 +2,7 @@
 
 > **STOP. READ. THEN ACT.** E2E installation tests belong in `install-tests/`, NOT in `leviso/tests/`. See `tests/README.md`.
 
-Minimal, self-contained bootable Linux ISO builder for LevitateOS.
+Bootable Linux ISO builder for LevitateOS. Downloads Rocky 10, extracts its rootfs, builds an initramfs with systemd/PAM/D-Bus and ~45 coreutils, and packages a final ISO with both UEFI (GRUB) and BIOS (isolinux) boot support.
 
 ## Quick Start
 

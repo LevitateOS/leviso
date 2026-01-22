@@ -52,14 +52,14 @@ ISO
 
 ---
 
-## Smart Installer: `recstrap`
+## System Extractor: `recstrap`
 
-> **NOTE:** This section documents the recstrap installer architecture.
-> It will be used to create the installation guide documentation.
+> **NOTE:** recstrap is like pacstrap. NOT like archinstall!
+> It extracts squashfs to target. User does EVERYTHING else manually.
 
 ### Why squashfs + recstrap?
 
-Like Arch's `pacstrap`, LevitateOS uses `recstrap` (recipe + strap) for installation.
+Like Arch's `pacstrap`, LevitateOS uses `recstrap` (recipe + strap) to extract the system.
 
 **Problems with cpio initramfs + tarball:**
 - ~400MB RAM usage just for live environment
@@ -75,17 +75,21 @@ Like Arch's `pacstrap`, LevitateOS uses `recstrap` (recipe + strap) for installa
 ### What recstrap does
 
 ```bash
-recstrap /dev/vda
+recstrap /mnt                    # Extract squashfs to /mnt
+recstrap /mnt --squashfs /path   # Custom squashfs location
 ```
 
-1. **Partitions disk** (GPT: 512MB EFI + rest as root)
-2. **Formats partitions** (FAT32 for EFI, ext4 for root)
-3. **Mounts to /mnt**
-4. **Unsquashes filesystem.squashfs → /mnt** (the entire system!)
-5. **Generates /mnt/etc/fstab** with UUIDs
-6. **Installs bootloader** (bootctl)
-7. **Sets root password**
-8. **Done** - user reboots into full daily driver
+That's it. **recstrap only extracts**. Like pacstrap, NOT like archinstall.
+
+User does EVERYTHING else manually (like Arch):
+- Partitioning (fdisk, parted)
+- Formatting (mkfs.ext4, mkfs.fat)
+- Mounting (/mnt, /mnt/boot)
+- fstab generation (genfstab)
+- Bootloader (bootctl install)
+- Password (passwd)
+- Users (useradd)
+- Timezone, locale, hostname
 
 ### Squashfs architecture
 
@@ -104,15 +108,6 @@ Installation: unsquash squashfs to /mnt
 Result: Live = Installed (same files!)
 ```
 
-### Options
-
-```bash
-recstrap /dev/vda                    # Standard install
-recstrap /dev/vda --no-format        # Use existing partitions
-recstrap /dev/vda --efi-size 1G      # Larger EFI partition
-recstrap /dev/vda --skip-bootloader  # Don't install bootloader
-```
-
 ### Implementation status
 
 **Squashfs builder:**
@@ -128,19 +123,13 @@ recstrap /dev/vda --skip-bootloader  # Don't install bootloader
 - [x] Mount overlay (tmpfs) for writes
 - [x] switch_root to live system
 
-**recstrap installer (sibling directory: ../recstrap/):**
-- [x] Disk partitioning (GPT + EFI + root)
-- [x] Partition formatting (FAT32 + ext4)
-- [x] Mount/unmount operations
-- [x] Unsquash filesystem.squashfs to /mnt
-- [x] Generate fstab with UUIDs
-- [x] Install bootloader (bootctl)
-- [x] Set root password
+**recstrap (sibling directory: ../recstrap/):**
+- [x] Extract squashfs to target directory
 
 **Integration:**
 - [x] Update ISO builder for new layout
 - [x] Include recstrap in squashfs
-- [x] Update welcome message to show `recstrap` command
+- [x] Update welcome message to show manual install steps
 
 ---
 
@@ -952,6 +941,45 @@ tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt
 
 ---
 
+## 16. EU COMPLIANCE
+
+> **Goal:** Meet EU Cyber Resilience Act (CRA) and GDPR requirements, enabling LevitateOS
+> for use in EU public sector and enterprise environments.
+
+### 16.1 Privacy by Default (GDPR)
+- [x] No telemetry in base system - documented in PRIVACY.md
+- [x] No phone-home behavior without explicit opt-in - documented in PRIVACY.md
+- [x] Clear documentation of any data collection (if added later) - documented in PRIVACY.md
+- [x] Data stays local unless user explicitly configures otherwise - documented in PRIVACY.md
+
+### 16.2 Cyber Resilience Act (CRA) - Effective Dec 2027
+- [ ] Reproducible builds (binary matches source)
+- [x] Documented vulnerability disclosure process - see SECURITY.md
+- [x] Security update policy (how long, how delivered) - see SECURITY.md
+- [ ] SBOM (Software Bill of Materials) generation
+- [ ] No known exploitable vulnerabilities at release
+- [ ] CE marking documentation (when required)
+
+### 16.3 Supply Chain Transparency
+- [x] Document all upstream sources (Rocky RPMs, kernel.org, etc.) - see SUPPLY-CHAIN.md
+- [x] Verify package signatures from upstream - ISO checksum verified, see SUPPLY-CHAIN.md
+- [x] Mirror capability for EU organizations (self-hostable repos) - documented in SUPPLY-CHAIN.md
+- [ ] Audit trail for package provenance
+
+### 16.4 Sovereignty Features
+- [x] Full offline installation capability - ISO contains complete system
+- [x] No mandatory cloud dependencies - no telemetry, no required services
+- [x] Recipe repos can be self-hosted - documented in SUPPLY-CHAIN.md
+- [x] All crypto keys user-controllable - no vendor-locked keys
+
+### 16.5 Auditability
+- [x] Open source (already satisfied) - all code on GitHub
+- [x] Build process documented and reproducible - see SUPPLY-CHAIN.md
+- [ ] Configuration changes logged (optional audit mode)
+- [ ] Kernel config documented and justified
+
+---
+
 ## TEST MATRIX
 
 | Category | Items | Tested in install-tests | Tested in rootfs-tests |
@@ -1071,6 +1099,7 @@ Arch Linux ISO includes these packages we should evaluate:
 - Recovery tools
 - Bluetooth
 - Printing
+- EU compliance (CRA, GDPR basics)
 
 ### P3 - Future
 - Secure Boot

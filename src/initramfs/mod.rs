@@ -43,6 +43,14 @@ const BUSYBOX_URL: &str =
 const BUSYBOX_COMMANDS: &[&str] = &[
     "sh", "mount", "umount", "mkdir", "cat", "ls", "sleep", "switch_root", "echo", "test", "[",
     "grep", "sed", "ln", "rm", "cp", "mv", "chmod", "chown", "mknod", "losetup", "mount.loop",
+    "insmod", "modprobe", "xz",  // For loading CDROM kernel modules
+];
+
+/// Kernel modules needed for CDROM access (Rocky kernel has these as modules).
+const CDROM_MODULES: &[&str] = &[
+    "kernel/drivers/cdrom/cdrom.ko.xz",
+    "kernel/drivers/scsi/sr_mod.ko.xz",
+    "kernel/fs/isofs/isofs.ko.xz",
 ];
 
 /// Build the tiny initramfs.
@@ -63,6 +71,9 @@ pub fn build_tiny_initramfs(base_dir: &Path) -> Result<()> {
 
     // Copy/download busybox
     copy_busybox(base_dir, &initramfs_root)?;
+
+    // Copy CDROM kernel modules (needed for Rocky kernel)
+    copy_cdrom_modules(base_dir, &initramfs_root)?;
 
     // Create init script
     create_init_script(base_dir, &initramfs_root)?;
@@ -87,10 +98,12 @@ fn create_directory_structure(root: &Path) -> Result<()> {
         "dev",
         "proc",
         "sys",
-        "mnt",      // ISO mount point
-        "squashfs", // Squashfs mount point
-        "overlay",  // Overlay work directory
-        "newroot",  // Final rootfs
+        "tmp",       // Temp files (for module decompression)
+        "mnt",       // ISO mount point
+        "squashfs",  // Squashfs mount point
+        "overlay",   // Overlay work directory
+        "newroot",   // Final rootfs
+        "lib/modules", // Kernel modules for CDROM
     ];
 
     for dir in dirs {
@@ -169,6 +182,55 @@ fn copy_busybox(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Copy CDROM kernel modules to the initramfs.
+///
+/// Rocky kernel has CDROM support as modules (sr_mod, cdrom, isofs).
+/// We need these for the init script to mount the ISO.
+fn copy_cdrom_modules(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
+    println!("Copying CDROM kernel modules...");
+
+    let rootfs = base_dir.join("downloads/rootfs");
+
+    // Find the kernel modules directory
+    let modules_dir = rootfs.join("usr/lib/modules");
+    if !modules_dir.exists() {
+        println!("  Warning: No kernel modules found, CDROM support may not work");
+        return Ok(());
+    }
+
+    // Find the kernel version directory (e.g., 6.12.0-124.8.1.el10_1.x86_64)
+    let kernel_version = fs::read_dir(&modules_dir)?
+        .filter_map(|e| e.ok())
+        .find(|e| e.path().is_dir())
+        .map(|e| e.file_name().to_string_lossy().to_string());
+
+    let Some(kver) = kernel_version else {
+        println!("  Warning: No kernel version directory found");
+        return Ok(());
+    };
+
+    let kmod_src = modules_dir.join(&kver);
+    let kmod_dst = initramfs_root.join("lib/modules").join(&kver);
+    fs::create_dir_all(&kmod_dst)?;
+
+    // Copy each CDROM module
+    let mut copied = 0;
+    for module in CDROM_MODULES {
+        let src = kmod_src.join(module);
+        if src.exists() {
+            let dst = kmod_dst.join(module);
+            fs::create_dir_all(dst.parent().unwrap())?;
+            fs::copy(&src, &dst)?;
+            copied += 1;
+        } else {
+            println!("  Warning: Module not found: {}", module);
+        }
+    }
+
+    println!("  Copied {}/{} CDROM modules", copied, CDROM_MODULES.len());
+    Ok(())
+}
+
 /// Create the init script.
 fn create_init_script(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
     println!("Creating init script...");
@@ -213,6 +275,29 @@ busybox mount -t proc proc /proc
 busybox mount -t sysfs sysfs /sys
 busybox mount -t devtmpfs devtmpfs /dev
 
+# Load CDROM kernel modules (Rocky kernel has these as modules, not built-in)
+# Modules are compressed with xz, so we decompress then insmod
+busybox echo "Loading CDROM kernel modules..."
+KVER=$(busybox ls /lib/modules 2>/dev/null | busybox head -1)
+if [ -n "$KVER" ]; then
+    for mod in cdrom sr_mod isofs; do
+        modpath="/lib/modules/$KVER/kernel"
+        case "$mod" in
+            cdrom)  modfile="$modpath/drivers/cdrom/cdrom.ko.xz" ;;
+            sr_mod) modfile="$modpath/drivers/scsi/sr_mod.ko.xz" ;;
+            isofs)  modfile="$modpath/fs/isofs/isofs.ko.xz" ;;
+        esac
+        if [ -f "$modfile" ]; then
+            busybox xz -d -c "$modfile" > /tmp/$mod.ko 2>/dev/null
+            busybox insmod /tmp/$mod.ko 2>/dev/null && busybox echo "  Loaded $mod" || true
+            busybox rm -f /tmp/$mod.ko
+        fi
+    done
+fi
+
+# Wait for devices to settle after module load
+busybox sleep 1
+
 # Parse cmdline for root= parameter
 CMDLINE=$(busybox cat /proc/cmdline)
 ROOT_LABEL=""
@@ -228,9 +313,6 @@ done
 [ -z "$ROOT_LABEL" ] && ROOT_LABEL="LEVITATEOS"
 
 busybox echo "LevitateOS: Searching for boot device with label '$ROOT_LABEL'..."
-
-# Wait for devices (USB/SATA may be slow)
-busybox sleep 1
 
 # Find device by label - check common device names
 BOOT_DEV=""

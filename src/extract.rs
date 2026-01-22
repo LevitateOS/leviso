@@ -43,6 +43,21 @@ const SUPPLEMENTARY_RPMS: &[&str] = &[
 
     // === UDEV ===
     // udevadm should be in systemd-udev which is in the installer
+
+    // === DRACUT (initramfs generator) ===
+    // Required for generating initramfs during installation
+    "dracut",
+    "dracut-config-generic",  // Generic dracut config (no host-only)
+    "dracut-network",         // Network support in initramfs
+
+    // === GLIBC EXTRAS ===
+    "glibc-common",           // getent command (needed for user/group lookup)
+
+    // === KMOD (module tools) ===
+    "kmod",                   // modprobe, lsmod, etc. (dracut dependency)
+
+    // === SQUASHFS-TOOLS (for installation) ===
+    "squashfs-tools",         // unsquashfs for extracting squashfs to disk
 ];
 
 pub fn extract_rocky(base_dir: &Path) -> Result<()> {

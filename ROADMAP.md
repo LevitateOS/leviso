@@ -1,5 +1,8 @@
 # LevitateOS Daily Driver Specification
 
+> **DOCUMENTATION NOTE:** This roadmap will be used to create the installation guide
+> and user documentation. Keep descriptions clear, complete, and user-facing.
+
 **Version:** 1.0
 **Last Updated:** 2026-01-21
 **Goal:** Everything a user needs to use LevitateOS as their primary operating system, competing directly with Arch Linux.
@@ -21,29 +24,123 @@ Each item should have:
 
 ## Architecture
 
-The ISO boots directly into an initramfs-based live environment (no squashfs):
+The ISO uses a squashfs-based live environment (like Arch, Ubuntu, Fedora):
 
 ```
 ISO
 ├── boot/
 │   ├── vmlinuz           # Kernel
-│   └── initramfs.img     # Complete live environment
-├── levitateos-base.tar.xz # Base system tarball
+│   └── initramfs.img     # Tiny (~10MB) - mounts squashfs
+├── live/
+│   └── filesystem.squashfs  # COMPLETE system (~350MB compressed)
 └── EFI/...               # Bootloader
 ```
 
 **Boot flow:**
-1. Kernel + initramfs boot
-2. Initramfs IS the live environment (no switch_root needed)
-3. Systemd starts, user gets shell
+1. Kernel + tiny initramfs boot
+2. Initramfs mounts filesystem.squashfs (read-only)
+3. Initramfs mounts overlay (tmpfs for writes)
+4. switch_root to squashfs
+5. User has FULL daily driver system
 
 **Installation flow:**
-1. Boot ISO → live environment (initramfs)
-2. Partition and format target disk
-3. Mount target to `/mnt`
-4. Extract base tarball OR `recipe bootstrap /mnt`
-5. Configure (fstab, bootloader, users)
-6. Reboot into installed system
+1. Boot ISO → live environment (from squashfs)
+2. Run: `recstrap /dev/vda`
+3. Reboot into installed system
+
+**Key insight:** The squashfs IS the complete system. Live = Installed.
+
+---
+
+## Smart Installer: `recstrap`
+
+> **NOTE:** This section documents the recstrap installer architecture.
+> It will be used to create the installation guide documentation.
+
+### Why squashfs + recstrap?
+
+Like Arch's `pacstrap`, LevitateOS uses `recstrap` (recipe + strap) for installation.
+
+**Problems with cpio initramfs + tarball:**
+- ~400MB RAM usage just for live environment
+- Two sources of truth (initramfs + tarball have different content)
+- Need complex logic to copy networking from initramfs to installed system
+
+**Solution - squashfs architecture:**
+- Single source of truth: filesystem.squashfs has EVERYTHING
+- Less RAM: squashfs reads from disk, not all in RAM
+- Simple installation: just unsquash to disk
+- **Live = Installed:** exact same files
+
+### What recstrap does
+
+```bash
+recstrap /dev/vda
+```
+
+1. **Partitions disk** (GPT: 512MB EFI + rest as root)
+2. **Formats partitions** (FAT32 for EFI, ext4 for root)
+3. **Mounts to /mnt**
+4. **Unsquashes filesystem.squashfs → /mnt** (the entire system!)
+5. **Generates /mnt/etc/fstab** with UUIDs
+6. **Installs bootloader** (bootctl)
+7. **Sets root password**
+8. **Done** - user reboots into full daily driver
+
+### Squashfs architecture
+
+```
+ISO (~400MB):
+├── initramfs.img (~10MB) - tiny, just mounts squashfs
+└── live/filesystem.squashfs (~350MB compressed)
+    ├── All binaries (bash, coreutils, systemd...)
+    ├── NetworkManager + wpa_supplicant
+    ├── ALL firmware (WiFi, GPU, sound, BT)
+    ├── recipe package manager
+    └── recstrap binary
+
+Live boot: squashfs mounted + overlay for writes
+Installation: unsquash squashfs to /mnt
+Result: Live = Installed (same files!)
+```
+
+### Options
+
+```bash
+recstrap /dev/vda                    # Standard install
+recstrap /dev/vda --no-format        # Use existing partitions
+recstrap /dev/vda --efi-size 1G      # Larger EFI partition
+recstrap /dev/vda --skip-bootloader  # Don't install bootloader
+```
+
+### Implementation status
+
+**Squashfs builder:**
+- [ ] Create `src/squashfs/mod.rs` - build complete system
+- [ ] Include ALL binaries (combine rootfs + initramfs content)
+- [ ] Include NetworkManager, wpa_supplicant
+- [ ] Include ALL firmware (~350MB)
+- [ ] Generate filesystem.squashfs with mksquashfs
+
+**Tiny initramfs:**
+- [ ] Create `src/initramfs_tiny/mod.rs` - minimal boot initramfs
+- [ ] Mount squashfs read-only
+- [ ] Mount overlay (tmpfs) for writes
+- [ ] switch_root to live system
+
+**recstrap installer (git submodule: github.com/LevitateOS/recstrap):**
+- [ ] Disk partitioning (GPT + EFI + root)
+- [ ] Partition formatting (FAT32 + ext4)
+- [ ] Mount/unmount operations
+- [ ] Unsquash filesystem.squashfs to /mnt
+- [ ] Generate fstab with UUIDs
+- [ ] Install bootloader (bootctl)
+- [ ] Set root password
+
+**Integration:**
+- [ ] Update ISO builder for new layout
+- [ ] Include recstrap in squashfs
+- [ ] Update welcome message to show `recstrap` command
 
 ---
 

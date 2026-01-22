@@ -53,8 +53,8 @@ impl TestEnv {
     }
 
     /// Create the build context for testing.
-    pub fn build_context(&self) -> leviso::initramfs::context::BuildContext {
-        leviso::initramfs::context::BuildContext::new(
+    pub fn build_context(&self) -> leviso::initramfs_depr::context::BuildContext {
+        leviso::initramfs_depr::context::BuildContext::new(
             self.rootfs.clone(),
             self.initramfs.clone(),
             self.base_dir.clone(),

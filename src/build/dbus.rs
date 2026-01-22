@@ -6,6 +6,7 @@ use std::os::unix::fs::PermissionsExt;
 
 use super::binary::{copy_library, get_all_dependencies};
 use super::context::BuildContext;
+use super::users;
 
 /// D-Bus binaries to copy.
 const DBUS_BINARIES: &[&str] = &[
@@ -42,10 +43,10 @@ pub fn setup_dbus(ctx: &BuildContext) -> Result<()> {
     println!("Setting up D-Bus...");
 
     // Create D-Bus directories
-    fs::create_dir_all(ctx.initramfs.join("usr/share/dbus-1"))?;
-    fs::create_dir_all(ctx.initramfs.join("etc/dbus-1"))?;
-    fs::create_dir_all(ctx.initramfs.join("run/dbus"))?;
-    fs::create_dir_all(ctx.initramfs.join("usr/bin"))?;
+    fs::create_dir_all(ctx.staging.join("usr/share/dbus-1"))?;
+    fs::create_dir_all(ctx.staging.join("etc/dbus-1"))?;
+    fs::create_dir_all(ctx.staging.join("run/dbus"))?;
+    fs::create_dir_all(ctx.staging.join("usr/bin"))?;
 
     // Copy D-Bus binaries
     copy_dbus_binaries(ctx)?;
@@ -73,9 +74,9 @@ pub fn setup_dbus(ctx: &BuildContext) -> Result<()> {
 /// Copy D-Bus binaries and their libraries.
 fn copy_dbus_binaries(ctx: &BuildContext) -> Result<()> {
     for binary in DBUS_BINARIES {
-        let src = ctx.rootfs.join("usr/bin").join(binary);
+        let src = ctx.source.join("usr/bin").join(binary);
         if src.exists() {
-            let dst = ctx.initramfs.join("usr/bin").join(binary);
+            let dst = ctx.staging.join("usr/bin").join(binary);
             fs::copy(&src, &dst)?;
             let mut perms = fs::metadata(&dst)?.permissions();
             perms.set_mode(0o755);
@@ -83,9 +84,9 @@ fn copy_dbus_binaries(ctx: &BuildContext) -> Result<()> {
             println!("  Copied {}", binary);
 
             // Get library dependencies using readelf (cross-compilation safe)
-            let libs = get_all_dependencies(&ctx.rootfs, &src)?;
+            let libs = get_all_dependencies(&ctx.source, &src, &[])?;
             for lib_name in &libs {
-                if let Err(e) = copy_library(&ctx.rootfs, lib_name, &ctx.initramfs) {
+                if let Err(e) = copy_library(ctx, lib_name) {
                     println!("  Warning: Failed to copy library {}: {}", lib_name, e);
                 }
             }
@@ -97,8 +98,8 @@ fn copy_dbus_binaries(ctx: &BuildContext) -> Result<()> {
 
 /// Copy D-Bus configuration files.
 fn copy_dbus_configs(ctx: &BuildContext) -> Result<()> {
-    let dbus_conf_src = ctx.rootfs.join("usr/share/dbus-1");
-    let dbus_conf_dst = ctx.initramfs.join("usr/share/dbus-1");
+    let dbus_conf_src = ctx.source.join("usr/share/dbus-1");
+    let dbus_conf_dst = ctx.staging.join("usr/share/dbus-1");
 
     // Copy system.conf
     if dbus_conf_src.join("system.conf").exists() {
@@ -141,8 +142,8 @@ fn copy_dbus_configs(ctx: &BuildContext) -> Result<()> {
 
 /// Copy D-Bus systemd unit files.
 fn copy_dbus_units(ctx: &BuildContext) -> Result<()> {
-    let unit_src = ctx.rootfs.join("usr/lib/systemd/system");
-    let unit_dst = ctx.initramfs.join("usr/lib/systemd/system");
+    let unit_src = ctx.source.join("usr/lib/systemd/system");
+    let unit_dst = ctx.staging.join("usr/lib/systemd/system");
 
     for unit in DBUS_UNITS {
         let src = unit_src.join(unit);
@@ -165,7 +166,7 @@ fn copy_dbus_units(ctx: &BuildContext) -> Result<()> {
 /// Enable D-Bus socket in sockets.target.wants.
 fn enable_dbus_socket(ctx: &BuildContext) -> Result<()> {
     let sockets_wants = ctx
-        .initramfs
+        .staging
         .join("etc/systemd/system/sockets.target.wants");
     fs::create_dir_all(&sockets_wants)?;
 
@@ -180,7 +181,7 @@ fn enable_dbus_socket(ctx: &BuildContext) -> Result<()> {
 /// Enable journald sockets (fixes "Failed to connect stdout to the journal socket").
 fn enable_journald_sockets(ctx: &BuildContext) -> Result<()> {
     let sockets_wants = ctx
-        .initramfs
+        .staging
         .join("etc/systemd/system/sockets.target.wants");
 
     let journald_socket_link = sockets_wants.join("systemd-journald.socket");
@@ -204,15 +205,15 @@ fn enable_journald_sockets(ctx: &BuildContext) -> Result<()> {
 
 /// Ensure dbus user and group exist.
 fn ensure_dbus_user(ctx: &BuildContext) -> Result<()> {
-    super::users::ensure_user(
-        &ctx.rootfs,
-        &ctx.initramfs,
+    users::ensure_user(
+        &ctx.source,
+        &ctx.staging,
         "dbus",
         81,
         81,
         "/",
         "/sbin/nologin",
     )?;
-    super::users::ensure_group(&ctx.rootfs, &ctx.initramfs, "dbus", 81)?;
+    users::ensure_group(&ctx.source, &ctx.staging, "dbus", 81)?;
     Ok(())
 }

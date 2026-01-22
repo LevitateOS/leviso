@@ -1,13 +1,15 @@
-//! Filesystem structure creation for installed system.
+//! Filesystem structure creation.
 //!
-//! Creates the full FHS directory structure needed for a disk-based
-//! installed system (more complete than the live initramfs).
+//! Creates the full FHS directory structure and symlinks for merged /usr.
 
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 
-/// Create full FHS directory structure for installed system.
+// Re-export copy_dir_recursive
+pub use crate::common::binary::copy_dir_recursive;
+
+/// Create full FHS directory structure.
 pub fn create_fhs_structure(staging: &Path) -> Result<()> {
     println!("Creating FHS directory structure...");
 
@@ -37,7 +39,7 @@ pub fn create_fhs_structure(staging: &Path) -> Result<()> {
         "etc/pam.d",
         "etc/security",
         "etc/profile.d",
-        // XDG Base Directory spec - system-wide
+        // XDG Base Directory spec
         "etc/xdg",
         "etc/xdg/autostart",
         // User skeleton with XDG structure
@@ -159,33 +161,10 @@ pub fn create_symlinks(staging: &Path) -> Result<()> {
     // /usr/bin/sh -> bash
     let sh_link = staging.join("usr/bin/sh");
     if !sh_link.exists() && !sh_link.is_symlink() {
-        std::os::unix::fs::symlink("bash", &sh_link).context("Failed to create /usr/bin/sh symlink")?;
+        std::os::unix::fs::symlink("bash", &sh_link)
+            .context("Failed to create /usr/bin/sh symlink")?;
     }
 
     println!("  Created essential symlinks");
-    Ok(())
-}
-
-/// Copy a directory recursively.
-pub fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
-    fs::create_dir_all(dst)?;
-
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let path = entry.path();
-        let dest_path = dst.join(entry.file_name());
-
-        if path.is_dir() {
-            copy_dir_recursive(&path, &dest_path)?;
-        } else if path.is_symlink() {
-            let target = fs::read_link(&path)?;
-            if !dest_path.exists() {
-                std::os::unix::fs::symlink(&target, &dest_path)?;
-            }
-        } else {
-            fs::copy(&path, &dest_path)?;
-        }
-    }
-
     Ok(())
 }

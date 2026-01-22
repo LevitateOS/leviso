@@ -83,8 +83,10 @@ impl QemuBuilder {
     fn build(self) -> Command {
         let mut cmd = Command::new("qemu-system-x86_64");
 
-        // CPU (default: Skylake-Client for x86-64-v3 support required by Rocky 10)
-        let cpu = self.cpu.as_deref().unwrap_or("Skylake-Client");
+        // CPU: Use "max" to get all features TCG supports without warnings.
+        // Skylake-Client causes TCG warnings about unsupported features (pcid, hle, rtm, etc.)
+        // "max" provides x86-64-v3+ features that Rocky 10 needs, without the noise.
+        let cpu = self.cpu.as_deref().unwrap_or("max");
         cmd.args(["-cpu", cpu]);
 
         // Memory (default: 4G - LevitateOS is a daily driver OS, not a toy)
@@ -139,6 +141,9 @@ impl QemuBuilder {
             cmd.args(["-nographic", "-serial", "mon:stdio"]);
         } else if let Some(vga) = &self.vga {
             cmd.args(["-vga", vga]);
+            // Add serial port even in GUI mode so kernel messages are captured
+            // Kernel cmdline has console=ttyS0 which needs a serial device
+            cmd.args(["-serial", "file:/tmp/levitateos-serial.log"]);
         }
 
         // Reboot behavior
@@ -386,7 +391,12 @@ pub fn run_iso(base_dir: &Path, disk_size: Option<String>) -> Result<()> {
     println!("Running ISO in QEMU GUI...");
     println!("  ISO: {}", iso_path.display());
 
-    let mut builder = QemuBuilder::new().cdrom(iso_path).vga("std");
+    // Use virtio-gpu - kernel has CONFIG_DRM_VIRTIO_GPU=y
+    // Note: "std" VGA requires efifb/simpledrm for UEFI boot which the kernel lacks
+    let mut builder = QemuBuilder::new().cdrom(iso_path.clone()).vga("virtio");
+
+    // Also add serial port so we can see kernel messages even in GUI mode
+    // The kernel cmdline in grub.cfg has console=ttyS0 which needs a serial port
 
     // Always include a virtual disk (default 20GB, like a real system)
     let size = disk_size.unwrap_or_else(|| "20G".to_string());

@@ -10,7 +10,7 @@ use helpers::{
     assert_dir_exists, assert_file_contains, assert_file_exists, assert_symlink,
     create_mock_binary, create_mock_rootfs, TestEnv,
 };
-use leviso::initramfs::{binary, filesystem, users};
+use leviso::initramfs_depr::{binary, filesystem, users};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 

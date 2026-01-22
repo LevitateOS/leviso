@@ -87,29 +87,36 @@ pub fn clean_iso(base_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Clean rootfs tarball only.
-pub fn clean_rootfs(base_dir: &Path) -> Result<()> {
-    let tarball = base_dir.join("output/levitateos-base.tar.xz");
-    let rootfs_dir = base_dir.join("output/rootfs");
+/// Clean squashfs only.
+pub fn clean_squashfs(base_dir: &Path) -> Result<()> {
+    let squashfs = base_dir.join("output/filesystem.squashfs");
+    let squashfs_root = base_dir.join("output/squashfs-root");
+    let squashfs_extracted = base_dir.join("output/squashfs-extracted");
 
     let mut cleaned = false;
 
-    if tarball.exists() {
-        println!("Removing rootfs tarball...");
-        fs::remove_file(&tarball)?;
+    if squashfs.exists() {
+        println!("Removing squashfs...");
+        fs::remove_file(&squashfs)?;
         cleaned = true;
     }
 
-    if rootfs_dir.exists() {
-        println!("Removing extracted rootfs...");
-        fs::remove_dir_all(&rootfs_dir)?;
+    if squashfs_root.exists() {
+        println!("Removing squashfs-root staging...");
+        fs::remove_dir_all(&squashfs_root)?;
+        cleaned = true;
+    }
+
+    if squashfs_extracted.exists() {
+        println!("Removing extracted squashfs...");
+        fs::remove_dir_all(&squashfs_extracted)?;
         cleaned = true;
     }
 
     if cleaned {
-        println!("Rootfs artifacts cleaned.");
+        println!("Squashfs artifacts cleaned.");
     } else {
-        println!("No rootfs artifacts to clean.");
+        println!("No squashfs artifacts to clean.");
     }
 
     Ok(())

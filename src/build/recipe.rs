@@ -1,14 +1,14 @@
 //! Recipe package manager integration.
 //!
-//! Copies the recipe binary into the stage3 tarball.
+//! Copies the recipe binary into the squashfs.
 
 use anyhow::{Context, Result};
 use std::fs;
 
-use crate::rootfs::binary::make_executable;
-use crate::rootfs::context::BuildContext;
+use super::binary::make_executable;
+use super::context::BuildContext;
 
-/// Copy recipe binary to the stage3.
+/// Copy recipe binary to the staging directory.
 pub fn copy_recipe(ctx: &BuildContext) -> Result<()> {
     println!("Copying recipe package manager...");
 
@@ -40,7 +40,7 @@ pub fn copy_recipe(ctx: &BuildContext) -> Result<()> {
                     for path in &search_paths {
                         println!("    - {}", path.display());
                     }
-                    println!("  Stage3 will not include the package manager.");
+                    println!("  Squashfs will not include the package manager.");
                     println!("  To include it, build recipe first: cd recipe && cargo build --release");
                     return Ok(());
                 }

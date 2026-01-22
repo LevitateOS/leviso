@@ -1,31 +1,30 @@
-//! Leviso - LevitateOS ISO and rootfs builder.
+//! Leviso - LevitateOS ISO builder.
 //!
-//! # STOP. READ. THEN ACT.
-//!
-//! Before modifying this crate:
-//! 1. Read the module you're about to change
-//! 2. E2E installation tests go in `install-tests/`, NOT in `leviso/tests/`
-//! 3. See `tests/README.md` for what tests belong where
+//! Builds LevitateOS using squashfs architecture:
+//! - Squashfs system image (complete live system, ~400MB)
+//! - Tiny initramfs (mounts squashfs, ~5MB)
+//! - Bootable ISO
 
+mod build;
 mod clean;
+mod common;
 mod config;
 mod download;
 mod extract;
 mod initramfs;
 mod iso;
 mod qemu;
-mod rootfs;
+mod squashfs;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 use config::Config;
-use rootfs::RootfsBuilder;
 
 #[derive(Parser)]
 #[command(name = "leviso")]
-#[command(about = "LevitateOS ISO and rootfs builder")]
+#[command(about = "LevitateOS ISO builder")]
 #[command(after_help = "QUICK START:\n  leviso build      Build everything\n  leviso run        Boot in QEMU\n  leviso clean      Remove build artifacts")]
 struct Cli {
     #[command(subcommand)]
@@ -50,7 +49,7 @@ enum Commands {
         disk_size: String,
     },
 
-    /// Quick test in terminal (direct kernel boot, for debugging)
+    /// Quick test in terminal (direct kernel boot with squashfs)
     Test {
         /// Command to run after boot, then exit
         #[arg(short, long)]
@@ -67,12 +66,6 @@ enum Commands {
     Show {
         #[command(subcommand)]
         what: ShowTarget,
-    },
-
-    /// Verify build outputs
-    Verify {
-        #[command(subcommand)]
-        what: Option<VerifyTarget>,
     },
 
     /// Download dependencies (usually automatic)
@@ -96,36 +89,20 @@ enum BuildTarget {
         #[arg(long)]
         clean: bool,
     },
-    /// Build only the rootfs tarball
-    Rootfs {
-        /// Path to recipe binary (optional)
-        #[arg(long)]
-        recipe: Option<PathBuf>,
-    },
+    /// Build squashfs system image (complete live system)
+    Squashfs,
+    /// Build tiny initramfs (mounts squashfs, ~5MB)
+    Initramfs,
     /// Build only the ISO image
     Iso,
-    /// Build only the initramfs (for live boot)
-    Initramfs,
 }
 
 #[derive(Subcommand)]
 enum ShowTarget {
     /// Show current configuration
     Config,
-    /// List tarball contents
-    Tarball {
-        /// Path to tarball (default: output/levitateos-base.tar.xz)
-        path: Option<PathBuf>,
-    },
-}
-
-#[derive(Subcommand)]
-enum VerifyTarget {
-    /// Verify tarball contains all required files
-    Tarball {
-        /// Path to tarball (default: output/levitateos-base.tar.xz)
-        path: Option<PathBuf>,
-    },
+    /// Show squashfs contents
+    Squashfs,
 }
 
 #[derive(Subcommand)]
@@ -134,8 +111,8 @@ enum CleanTarget {
     Kernel,
     /// Clean ISO and initramfs only
     Iso,
-    /// Clean rootfs tarball only
-    Rootfs,
+    /// Clean squashfs only
+    Squashfs,
     /// Clean downloaded sources (Rocky ISO, Linux source)
     Downloads,
     /// Clean everything (downloads + outputs)
@@ -158,12 +135,9 @@ enum DownloadTarget {
 enum ExtractTarget {
     /// Extract Rocky ISO contents
     Rocky,
-    /// Extract rootfs tarball for inspection
-    Tarball {
-        /// Path to tarball (default: output/levitateos-base.tar.xz)
-        #[arg(short, long)]
-        tarball: Option<PathBuf>,
-        /// Output directory (default: output/rootfs)
+    /// Extract squashfs for inspection
+    Squashfs {
+        /// Output directory (default: output/squashfs-extracted)
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
@@ -179,7 +153,7 @@ fn main() -> Result<()> {
         Commands::Build { target } => {
             match target {
                 None => {
-                    // Full build: download deps, build kernel (if source available), rootfs, iso
+                    // Full build: squashfs + tiny initramfs + ISO
                     println!("=== Full LevitateOS Build ===\n");
 
                     // 1. Download Rocky if needed
@@ -199,20 +173,21 @@ fn main() -> Result<()> {
                     println!("\nBuilding kernel...");
                     build_kernel(&base_dir, &config, false)?;
 
-                    // 4. Build rootfs
-                    println!("\nBuilding rootfs tarball...");
-                    build_rootfs(&base_dir, None)?;
+                    // 4. Build squashfs (complete system image)
+                    println!("\nBuilding squashfs system image...");
+                    squashfs::build_squashfs(&base_dir)?;
 
-                    // 5. Build initramfs and ISO
-                    println!("\nBuilding initramfs...");
-                    initramfs::build_initramfs(&base_dir)?;
+                    // 5. Build tiny initramfs
+                    println!("\nBuilding tiny initramfs...");
+                    initramfs::build_tiny_initramfs(&base_dir)?;
 
+                    // 6. Build ISO
                     println!("\nBuilding ISO...");
-                    iso::create_iso(&base_dir)?;
+                    iso::create_squashfs_iso(&base_dir)?;
 
                     println!("\n=== Build Complete ===");
                     println!("  ISO: output/levitateos.iso");
-                    println!("  Tarball: output/levitateos-base.tar.xz");
+                    println!("  Squashfs: output/filesystem.squashfs");
                     println!("\nNext: leviso run");
                 }
                 Some(BuildTarget::Kernel { clean }) => {
@@ -225,15 +200,25 @@ fn main() -> Result<()> {
                     }
                     build_kernel(&base_dir, &config, clean)?;
                 }
-                Some(BuildTarget::Rootfs { recipe }) => {
-                    build_rootfs(&base_dir, recipe)?;
-                }
-                Some(BuildTarget::Iso) => {
-                    initramfs::build_initramfs(&base_dir)?;
-                    iso::create_iso(&base_dir)?;
+                Some(BuildTarget::Squashfs) => {
+                    squashfs::build_squashfs(&base_dir)?;
                 }
                 Some(BuildTarget::Initramfs) => {
-                    initramfs::build_initramfs(&base_dir)?;
+                    initramfs::build_tiny_initramfs(&base_dir)?;
+                }
+                Some(BuildTarget::Iso) => {
+                    let squashfs_path = base_dir.join("output/filesystem.squashfs");
+                    let initramfs_path = base_dir.join("output/initramfs-tiny.cpio.gz");
+
+                    if !squashfs_path.exists() {
+                        println!("Squashfs not found, building...");
+                        squashfs::build_squashfs(&base_dir)?;
+                    }
+                    if !initramfs_path.exists() {
+                        println!("Tiny initramfs not found, building...");
+                        initramfs::build_tiny_initramfs(&base_dir)?;
+                    }
+                    iso::create_squashfs_iso(&base_dir)?;
                 }
             }
         }
@@ -244,15 +229,34 @@ fn main() -> Result<()> {
             let iso_path = base_dir.join("output/levitateos.iso");
             if !iso_path.exists() {
                 println!("ISO not found, building...\n");
-                initramfs::build_initramfs(&base_dir)?;
-                iso::create_iso(&base_dir)?;
+                let squashfs_path = base_dir.join("output/filesystem.squashfs");
+                let initramfs_path = base_dir.join("output/initramfs-tiny.cpio.gz");
+
+                if !squashfs_path.exists() {
+                    squashfs::build_squashfs(&base_dir)?;
+                }
+                if !initramfs_path.exists() {
+                    initramfs::build_tiny_initramfs(&base_dir)?;
+                }
+                iso::create_squashfs_iso(&base_dir)?;
             }
             let disk = if no_disk { None } else { Some(disk_size) };
             qemu::run_iso(&base_dir, disk)?;
         }
 
         Commands::Test { cmd } => {
-            initramfs::build_initramfs(&base_dir)?;
+            // Quick test: direct kernel boot with squashfs
+            let squashfs_path = base_dir.join("output/filesystem.squashfs");
+            let initramfs_path = base_dir.join("output/initramfs-tiny.cpio.gz");
+
+            if !squashfs_path.exists() {
+                println!("Squashfs not found, building...");
+                squashfs::build_squashfs(&base_dir)?;
+            }
+            if !initramfs_path.exists() {
+                println!("Tiny initramfs not found, building...");
+                initramfs::build_tiny_initramfs(&base_dir)?;
+            }
             qemu::test_direct(&base_dir, cmd)?;
         }
 
@@ -269,8 +273,8 @@ fn main() -> Result<()> {
                 Some(CleanTarget::Iso) => {
                     clean::clean_iso(&base_dir)?;
                 }
-                Some(CleanTarget::Rootfs) => {
-                    clean::clean_rootfs(&base_dir)?;
+                Some(CleanTarget::Squashfs) => {
+                    clean::clean_squashfs(&base_dir)?;
                 }
                 Some(CleanTarget::Downloads) => {
                     clean::clean_downloads(&base_dir)?;
@@ -287,22 +291,18 @@ fn main() -> Result<()> {
                 ShowTarget::Config => {
                     config.print();
                 }
-                ShowTarget::Tarball { path } => {
-                    let tarball = path.unwrap_or_else(|| base_dir.join("output/levitateos-base.tar.xz"));
-                    rootfs::builder::list_tarball(&tarball)?;
-                }
-            }
-        }
-
-        // ===== VERIFY =====
-        Commands::Verify { what } => {
-            match what {
-                None | Some(VerifyTarget::Tarball { path: None }) => {
-                    let tarball = base_dir.join("output/levitateos-base.tar.xz");
-                    rootfs::builder::verify_tarball(&tarball)?;
-                }
-                Some(VerifyTarget::Tarball { path: Some(p) }) => {
-                    rootfs::builder::verify_tarball(&p)?;
+                ShowTarget::Squashfs => {
+                    let squashfs = base_dir.join("output/filesystem.squashfs");
+                    if !squashfs.exists() {
+                        anyhow::bail!("Squashfs not found. Run 'leviso build squashfs' first.");
+                    }
+                    // Use unsquashfs -l to list contents
+                    let status = std::process::Command::new("unsquashfs")
+                        .args(["-l", squashfs.to_str().unwrap()])
+                        .status()?;
+                    if !status.success() {
+                        anyhow::bail!("unsquashfs failed");
+                    }
                 }
             }
         }
@@ -340,14 +340,20 @@ fn main() -> Result<()> {
                 ExtractTarget::Rocky => {
                     extract::extract_rocky(&base_dir)?;
                 }
-                ExtractTarget::Tarball { tarball, output } => {
-                    let tarball_path = tarball.unwrap_or_else(|| {
-                        base_dir.join("output/levitateos-base.tar.xz")
-                    });
-                    let output_dir = output.unwrap_or_else(|| {
-                        base_dir.join("output/rootfs")
-                    });
-                    rootfs::builder::extract_tarball(&tarball_path, &output_dir)?;
+                ExtractTarget::Squashfs { output } => {
+                    let squashfs = base_dir.join("output/filesystem.squashfs");
+                    if !squashfs.exists() {
+                        anyhow::bail!("Squashfs not found. Run 'leviso build squashfs' first.");
+                    }
+                    let output_dir = output.unwrap_or_else(|| base_dir.join("output/squashfs-extracted"));
+                    println!("Extracting squashfs to {}...", output_dir.display());
+                    let status = std::process::Command::new("unsquashfs")
+                        .args(["-d", output_dir.to_str().unwrap(), "-f", squashfs.to_str().unwrap()])
+                        .status()?;
+                    if !status.success() {
+                        anyhow::bail!("unsquashfs failed");
+                    }
+                    println!("Extracted to: {}", output_dir.display());
                 }
             }
         }
@@ -362,7 +368,6 @@ fn download_linux(config: &Config, shallow: bool) -> Result<()> {
     println!("  URL: {}", config.linux_git_url);
     println!("  Destination: {}", config.linux_source.display());
 
-    // Ensure parent directory exists
     if let Some(parent) = config.linux_source.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -396,12 +401,9 @@ fn build_kernel(base_dir: &PathBuf, config: &Config, clean: bool) -> Result<()> 
         }
     }
 
-    let version = rootfs::parts::kernel::build_kernel(
-        &config.linux_source,
-        &output_dir,
-    )?;
+    let version = build::kernel::build_kernel(&config.linux_source, &output_dir)?;
 
-    rootfs::parts::kernel::install_kernel(
+    build::kernel::install_kernel(
         &config.linux_source,
         &output_dir,
         &output_dir.join("staging"),
@@ -411,35 +413,6 @@ fn build_kernel(base_dir: &PathBuf, config: &Config, clean: bool) -> Result<()> 
     println!("  Version: {}", version);
     println!("  Kernel:  output/staging/boot/vmlinuz");
     println!("  Modules: output/staging/usr/lib/modules/{}/", version);
-
-    Ok(())
-}
-
-/// Build the rootfs tarball.
-fn build_rootfs(base_dir: &PathBuf, recipe: Option<PathBuf>) -> Result<()> {
-    let iso_contents = base_dir.join("downloads/iso-contents");
-    let rocky_rootfs = base_dir.join("downloads/rootfs");
-    let output = base_dir.join("output");
-
-    let mut builder = RootfsBuilder::new(&rocky_rootfs, &output);
-
-    if iso_contents.join("BaseOS/Packages").exists() {
-        builder = builder.with_iso_contents(&iso_contents);
-    } else if rocky_rootfs.exists() {
-        println!("Warning: Using extracted rootfs (may be incomplete)");
-    } else {
-        anyhow::bail!(
-            "Rocky packages not found.\n\
-             Run 'leviso download rocky' and 'leviso extract rocky' first."
-        );
-    }
-
-    if let Some(recipe_path) = recipe {
-        builder = builder.with_recipe(recipe_path);
-    }
-
-    let tarball = builder.build()?;
-    println!("\nTarball created: {}", tarball.display());
 
     Ok(())
 }

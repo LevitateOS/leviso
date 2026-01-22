@@ -6,7 +6,8 @@
 use anyhow::Result;
 use std::fs;
 
-use crate::rootfs::context::BuildContext;
+use super::context::BuildContext;
+use super::filesystem::copy_dir_recursive;
 
 /// Create all /etc configuration files.
 pub fn create_etc_files(ctx: &BuildContext) -> Result<()> {
@@ -379,6 +380,14 @@ unset script
 # Interactive shell settings
 if [ -n "$PS1" ]; then
     PS1='[\u@\h \W]\$ '
+
+    # Power management aliases (live environment doesn't have full polkit)
+    alias poweroff='systemctl poweroff --force'
+    alias reboot='systemctl reboot --force'
+    alias halt='systemctl halt --force'
+
+    # Show welcome message on login
+    [ -f /etc/motd ] && cat /etc/motd
 fi
 "#,
     )?;
@@ -407,14 +416,13 @@ fi
 "#,
     )?;
 
-    // /etc/bashrc
+    // /etc/bashrc - for non-login interactive shells
+    // NOTE: Do NOT source /etc/profile here! Login shells already do that.
+    // Sourcing it here causes double-execution (motd shown twice, etc.)
     fs::write(
         etc.join("bashrc"),
-        r#"# System-wide bashrc
-# Source global profile
-[ -f /etc/profile ] && . /etc/profile
-
-# Interactive shell
+        r#"# System-wide bashrc (non-login interactive shells)
+# Interactive shell settings
 if [ -n "$PS1" ]; then
     # History settings
     HISTSIZE=1000
@@ -504,21 +512,10 @@ pub fn copy_timezone_data(ctx: &BuildContext) -> Result<()> {
     fs::create_dir_all(&dst)?;
 
     if src.exists() {
-        // Copy essential zones only (full zoneinfo is large)
-        let zones = ["UTC", "America", "Europe", "Asia", "Etc"];
-        for zone in zones {
-            let zone_src = src.join(zone);
-            let zone_dst = dst.join(zone);
-            if zone_src.exists() {
-                if zone_src.is_dir() {
-                    super::filesystem::copy_dir_recursive(&zone_src, &zone_dst)?;
-                } else {
-                    // Single file (like UTC)
-                    fs::copy(&zone_src, &zone_dst)?;
-                }
-            }
-        }
-        println!("  Copied timezone data");
+        // Copy ALL timezone data - users need their local timezone
+        // This is a daily driver OS, not an embedded system
+        copy_dir_recursive(&src, &dst)?;
+        println!("  Copied all timezone data");
     }
 
     Ok(())

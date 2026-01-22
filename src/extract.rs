@@ -7,8 +7,42 @@ use std::process::Command;
 /// The install.img (Anaconda installer) is missing utilities that users expect.
 /// These RPMs supplement the installer rootfs with essential utilities.
 const SUPPLEMENTARY_RPMS: &[&str] = &[
-    // procps-ng: free, vmstat, uptime, w, watch (installer only has ps, top, pidof)
+    // === COREUTILS (many binaries missing from installer) ===
+    // Provides: printf, printenv, whoami, groups, nice, nohup, test, yes, stty, etc.
+    "coreutils",
+    "coreutils-common",
+
+    // === PROCPS-NG ===
+    // Provides: free, vmstat, uptime, w, watch, ps, top, pgrep, pkill
     "procps-ng",
+
+    // === UTILITIES ===
+    "which",       // which command
+    "file",        // file command
+    "file-libs",   // libmagic for file
+    "diffutils",   // diff, cmp
+    "ncurses",     // clear, tput
+    "ncurses-libs",
+
+    // === AUTH ===
+    "sudo",           // sudo, sudoedit, sudoreplay
+    "util-linux",     // su, login, etc.
+    "util-linux-core", // sulogin, agetty core
+    "shadow-utils",   // useradd, userdel, usermod, groupadd, groupdel, groupmod, passwd, chpasswd
+
+    // === NETWORK ===
+    "iproute",      // ip, ss, bridge
+    "iproute-tc",   // tc (traffic control)
+
+    // === DISK ===
+    "parted",       // parted partitioner
+
+    // === KEYBOARD/LOCALE ===
+    "kbd",          // loadkeys, setfont
+    "kbd-misc",     // keymaps
+
+    // === UDEV ===
+    // udevadm should be in systemd-udev which is in the installer
 ];
 
 pub fn extract_rocky(base_dir: &Path) -> Result<()> {

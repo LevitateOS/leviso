@@ -19,7 +19,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use super::super::context::BuildContext;
+use super::context::BuildContext;
 
 /// Kernel configuration options for a desktop/workstation system.
 ///
@@ -241,7 +241,7 @@ pub fn build_kernel(kernel_source: &Path, output_dir: &Path) -> Result<String> {
 
     // Apply our custom options using scripts/config
     println!("  Applying LevitateOS kernel config...");
-    apply_kernel_config(&config_path, kernel_source)?;
+    apply_kernel_config(&config_path)?;
 
     // Run olddefconfig to resolve dependencies
     println!("  Resolving config dependencies...");
@@ -305,7 +305,7 @@ pub fn build_kernel(kernel_source: &Path, output_dir: &Path) -> Result<String> {
 }
 
 /// Apply our kernel configuration options.
-fn apply_kernel_config(config_path: &Path, _kernel_source: &Path) -> Result<()> {
+fn apply_kernel_config(config_path: &Path) -> Result<()> {
     // Read current config
     let mut config = fs::read_to_string(config_path).unwrap_or_default();
 

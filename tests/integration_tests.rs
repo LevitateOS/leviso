@@ -10,7 +10,7 @@ use helpers::{
     assert_file_contains, assert_file_exists, assert_symlink,
     create_mock_rootfs, TestEnv,
 };
-use leviso::initramfs::{filesystem, users};
+use leviso::initramfs_depr::{filesystem, users};
 use std::fs;
 
 // =============================================================================

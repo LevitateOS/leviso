@@ -6,7 +6,7 @@
 use anyhow::Result;
 use std::fs;
 
-use crate::rootfs::context::BuildContext;
+use super::context::BuildContext;
 
 /// Set up PAM configuration for installed system.
 pub fn setup_pam(ctx: &BuildContext) -> Result<()> {

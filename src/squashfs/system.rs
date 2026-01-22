@@ -348,21 +348,42 @@ LevitateOS Live - \l
 }
 
 /// Copy recstrap installer to the system.
+/// Copy recstrap to the system.
+///
+/// # FAIL FAST - NO WARNINGS FOR REQUIRED COMPONENTS
+///
+/// recstrap is REQUIRED. Without it, the ISO cannot install itself.
+/// A warning that scrolls by and gets ignored is WORTHLESS.
+/// If recstrap is missing, the build MUST FAIL immediately.
+///
+/// DO NOT change this to a warning. DO NOT make it optional.
+/// If you think it should be optional, you are WRONG.
 fn copy_recstrap(ctx: &BuildContext) -> Result<()> {
-    // recstrap is built in the sibling recstrap/ directory
+    use anyhow::bail;
+    use std::os::unix::fs::PermissionsExt;
+
     let recstrap_src = ctx.base_dir.join("../recstrap/target/release/recstrap");
     let recstrap_dst = ctx.staging.join("usr/bin/recstrap");
 
-    if recstrap_src.exists() {
-        fs::copy(&recstrap_src, &recstrap_dst)?;
-        // Make executable
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&recstrap_dst, fs::Permissions::from_mode(0o755))?;
-        println!("  Copied recstrap installer to /usr/bin/recstrap");
-    } else {
-        println!("  Warning: recstrap not found at {}", recstrap_src.display());
-        println!("    Build it with: cd ../recstrap && cargo build --release");
+    // FAIL FAST. No warning. No "optional". FAIL.
+    if !recstrap_src.exists() {
+        bail!(
+            "recstrap not found at {}\n\
+             \n\
+             recstrap is REQUIRED - the ISO cannot install itself without it.\n\
+             \n\
+             Build it first:\n\
+             \n\
+             cd ../recstrap && cargo build --release\n\
+             \n\
+             DO NOT make this a warning. DO NOT skip this. FAIL FAST.",
+            recstrap_src.display()
+        );
     }
+
+    fs::copy(&recstrap_src, &recstrap_dst)?;
+    fs::set_permissions(&recstrap_dst, fs::Permissions::from_mode(0o755))?;
+    println!("  Copied recstrap to /usr/bin/recstrap");
 
     Ok(())
 }

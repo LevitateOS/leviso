@@ -22,6 +22,18 @@ use std::path::{Path, PathBuf};
 
 use config::Config;
 
+/// Check if source file is newer than target (or target doesn't exist).
+fn needs_rebuild(source: &Path, target: &Path) -> bool {
+    if !target.exists() {
+        return true;
+    }
+    let Ok(src_meta) = source.metadata() else { return true };
+    let Ok(tgt_meta) = target.metadata() else { return true };
+    let Ok(src_time) = src_meta.modified() else { return true };
+    let Ok(tgt_time) = tgt_meta.modified() else { return true };
+    src_time > tgt_time
+}
+
 #[derive(Parser)]
 #[command(name = "leviso")]
 #[command(about = "LevitateOS ISO builder")]
@@ -47,13 +59,6 @@ enum Commands {
         /// Virtual disk size (default: 8G)
         #[arg(long, default_value = "8G")]
         disk_size: String,
-    },
-
-    /// Quick test in terminal (direct kernel boot with squashfs)
-    Test {
-        /// Command to run after boot, then exit
-        #[arg(short, long)]
-        cmd: Option<String>,
     },
 
     /// Clean build artifacts (default: preserves downloads)
@@ -154,6 +159,7 @@ fn main() -> Result<()> {
             match target {
                 None => {
                     // Full build: squashfs + tiny initramfs + ISO
+                    // SKIP anything already built, rebuild only on changes
                     println!("=== Full LevitateOS Build ===\n");
 
                     // 1. Download Rocky if needed
@@ -169,21 +175,46 @@ fn main() -> Result<()> {
                         download_linux(&config, true)?;
                     }
 
-                    // 3. Build kernel
-                    println!("\nBuilding kernel...");
-                    build_kernel(&base_dir, &config, false)?;
+                    // 3. Build kernel (skip if built and kconfig unchanged)
+                    let vmlinuz = base_dir.join("output/staging/boot/vmlinuz");
+                    let kconfig = base_dir.join("kconfig");
+                    if needs_rebuild(&kconfig, &vmlinuz) {
+                        println!("\nBuilding kernel...");
+                        build_kernel(&base_dir, &config, false)?;
+                    } else {
+                        println!("\n[SKIP] Kernel already built");
+                    }
 
-                    // 4. Build squashfs (complete system image)
-                    println!("\nBuilding squashfs system image...");
-                    squashfs::build_squashfs(&base_dir)?;
+                    // 4. Build squashfs (skip if exists and newer than staging)
+                    let squashfs_path = base_dir.join("output/filesystem.squashfs");
+                    let staging_dir = base_dir.join("output/staging");
+                    if needs_rebuild(&staging_dir, &squashfs_path) || needs_rebuild(&vmlinuz, &squashfs_path) {
+                        println!("\nBuilding squashfs system image...");
+                        squashfs::build_squashfs(&base_dir)?;
+                    } else {
+                        println!("\n[SKIP] Squashfs already built");
+                    }
 
-                    // 5. Build tiny initramfs
-                    println!("\nBuilding tiny initramfs...");
-                    initramfs::build_tiny_initramfs(&base_dir)?;
+                    // 5. Build tiny initramfs (skip if exists and newer than source)
+                    let initramfs_path = base_dir.join("output/initramfs-tiny.cpio.gz");
+                    let init_script = base_dir.join("profile/init_tiny");
+                    if needs_rebuild(&init_script, &initramfs_path) || needs_rebuild(&vmlinuz, &initramfs_path) {
+                        println!("\nBuilding tiny initramfs...");
+                        initramfs::build_tiny_initramfs(&base_dir)?;
+                    } else {
+                        println!("\n[SKIP] Initramfs already built");
+                    }
 
-                    // 6. Build ISO
-                    println!("\nBuilding ISO...");
-                    iso::create_squashfs_iso(&base_dir)?;
+                    // 6. Build ISO (skip if exists and newer than components)
+                    let iso_path = base_dir.join("output/levitateos.iso");
+                    if needs_rebuild(&squashfs_path, &iso_path)
+                        || needs_rebuild(&initramfs_path, &iso_path)
+                        || needs_rebuild(&vmlinuz, &iso_path) {
+                        println!("\nBuilding ISO...");
+                        iso::create_squashfs_iso(&base_dir)?;
+                    } else {
+                        println!("\n[SKIP] ISO already built");
+                    }
 
                     println!("\n=== Build Complete ===");
                     println!("  ISO: output/levitateos.iso");
@@ -242,22 +273,6 @@ fn main() -> Result<()> {
             }
             let disk = if no_disk { None } else { Some(disk_size) };
             qemu::run_iso(&base_dir, disk)?;
-        }
-
-        Commands::Test { cmd } => {
-            // Quick test: direct kernel boot with squashfs
-            let squashfs_path = base_dir.join("output/filesystem.squashfs");
-            let initramfs_path = base_dir.join("output/initramfs-tiny.cpio.gz");
-
-            if !squashfs_path.exists() {
-                println!("Squashfs not found, building...");
-                squashfs::build_squashfs(&base_dir)?;
-            }
-            if !initramfs_path.exists() {
-                println!("Tiny initramfs not found, building...");
-                initramfs::build_tiny_initramfs(&base_dir)?;
-            }
-            qemu::test_direct(&base_dir, cmd)?;
         }
 
         // ===== CLEAN =====
@@ -401,7 +416,7 @@ fn build_kernel(base_dir: &Path, config: &Config, clean: bool) -> Result<()> {
         }
     }
 
-    let version = build::kernel::build_kernel(&config.linux_source, &output_dir)?;
+    let version = build::kernel::build_kernel(&config.linux_source, &output_dir, base_dir)?;
 
     build::kernel::install_kernel(
         &config.linux_source,

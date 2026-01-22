@@ -3,6 +3,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::build;
+use crate::common::binary::copy_dir_recursive;
+
 /// ISO volume label - used for boot device detection.
 const ISO_LABEL: &str = "LEVITATEOS";
 
@@ -35,9 +38,19 @@ impl IsoPaths {
 ///
 /// This creates an ISO with:
 /// - Tiny initramfs (~5MB) - mounts squashfs + overlay
-/// - Squashfs image (~350MB) - complete system
+/// - Squashfs image (~350MB) - complete base system
+/// - Live overlay - live-specific configs (autologin, serial console, empty root password)
 ///
-/// Boot flow: kernel -> tiny initramfs -> mount squashfs -> overlay -> switch_root -> systemd
+/// Boot flow:
+/// 1. kernel -> tiny initramfs
+/// 2. init_tiny mounts squashfs as lower layer
+/// 3. init_tiny mounts /live/overlay from ISO as middle layer
+/// 4. init_tiny mounts tmpfs as upper layer (for writes)
+/// 5. switch_root -> systemd
+///
+/// This architecture ensures:
+/// - Live ISO has autologin and empty root password (via overlay)
+/// - Installed systems (via recstrap) have proper security (squashfs only)
 pub fn create_squashfs_iso(base_dir: &Path) -> Result<()> {
     let paths = IsoPaths::new(base_dir);
 
@@ -45,16 +58,20 @@ pub fn create_squashfs_iso(base_dir: &Path) -> Result<()> {
     validate_iso_inputs(&paths)?;
     let kernel_path = find_kernel(&paths)?;
 
-    // Stage 2: Set up ISO directory structure
+    // Stage 2: Create live overlay (autologin, serial console, empty root password)
+    // This is ONLY applied during live boot, NOT extracted to installed systems
+    build::systemd::create_live_overlay(&paths.output_dir)?;
+
+    // Stage 3: Set up ISO directory structure
     setup_iso_structure(&paths)?;
 
-    // Stage 3: Copy boot files and artifacts
+    // Stage 4: Copy boot files and artifacts (including live overlay)
     copy_iso_artifacts(&paths, &kernel_path)?;
 
-    // Stage 4: Set up UEFI boot
+    // Stage 5: Set up UEFI boot
     setup_uefi_boot(&paths)?;
 
-    // Stage 5: Create the ISO
+    // Stage 6: Create the ISO
     run_xorriso(&paths)?;
 
     print_iso_summary(&paths.iso_output);
@@ -103,7 +120,7 @@ fn find_kernel(paths: &IsoPaths) -> Result<PathBuf> {
     );
 }
 
-/// Stage 2: Create ISO directory structure.
+/// Stage 3: Create ISO directory structure.
 fn setup_iso_structure(paths: &IsoPaths) -> Result<()> {
     if paths.iso_root.exists() {
         fs::remove_dir_all(&paths.iso_root)?;
@@ -116,7 +133,7 @@ fn setup_iso_structure(paths: &IsoPaths) -> Result<()> {
     Ok(())
 }
 
-/// Stage 3: Copy kernel, initramfs, squashfs, and tarball to ISO.
+/// Stage 4: Copy kernel, initramfs, squashfs, and live overlay to ISO.
 fn copy_iso_artifacts(paths: &IsoPaths, kernel_path: &Path) -> Result<()> {
     // Copy kernel and initramfs
     fs::copy(kernel_path, paths.iso_root.join("boot/vmlinuz"))?;
@@ -125,6 +142,22 @@ fn copy_iso_artifacts(paths: &IsoPaths, kernel_path: &Path) -> Result<()> {
     // Copy squashfs to /live/
     println!("Copying squashfs to ISO...");
     fs::copy(&paths.squashfs, paths.iso_root.join("live/filesystem.squashfs"))?;
+
+    // Copy live overlay to /live/overlay/
+    // This contains live-specific configs (autologin, serial console, empty root password)
+    // that are layered on top of squashfs during live boot only
+    let live_overlay_src = paths.output_dir.join("live-overlay");
+    let live_overlay_dst = paths.iso_root.join("live/overlay");
+    if live_overlay_src.exists() {
+        println!("Copying live overlay to ISO...");
+        copy_dir_recursive(&live_overlay_src, &live_overlay_dst)?;
+    } else {
+        bail!(
+            "Live overlay not found at {}.\n\
+             This should have been created by create_live_overlay().",
+            live_overlay_src.display()
+        );
+    }
 
     // Copy tarball for installation
     // NOTE: This is for the old tarball-based installation method.
@@ -141,7 +174,7 @@ fn copy_iso_artifacts(paths: &IsoPaths, kernel_path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Stage 4: Set up UEFI boot files and GRUB config.
+/// Stage 5: Set up UEFI boot files and GRUB config.
 fn setup_uefi_boot(paths: &IsoPaths) -> Result<()> {
     let efi_src = paths.iso_contents.join("EFI/BOOT");
     if !efi_src.exists() {
@@ -194,7 +227,7 @@ menuentry 'LevitateOS (Debug)' {{
     Ok(())
 }
 
-/// Stage 5: Run xorriso to create the final ISO.
+/// Stage 6: Run xorriso to create the final ISO.
 fn run_xorriso(paths: &IsoPaths) -> Result<()> {
     println!("Creating UEFI bootable ISO with xorriso...");
     let status = Command::new("xorriso")

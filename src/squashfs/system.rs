@@ -55,8 +55,9 @@ fn build_systemd_and_services(ctx: &BuildContext) -> Result<()> {
     build::systemd::copy_systemd_units(ctx)?;
     build::systemd::copy_dbus_symlinks(ctx)?;
     build::systemd::setup_getty(ctx)?;
-    build::systemd::setup_autologin(&ctx.staging)?; // Like archiso - live ISO boots to root shell
-    build::systemd::setup_serial_console(ctx)?;
+    // NOTE: Autologin and serial-console are NOT in squashfs
+    // They're in the live overlay (/live/overlay on ISO) and applied only during live boot
+    // This ensures installed systems have proper security (login required)
     build::systemd::set_default_target(ctx)?; // multi-user.target
     build::systemd::copy_dbus_configs(ctx)?;
     build::systemd::copy_udev_rules(ctx)?;
@@ -112,6 +113,7 @@ fn build_packages_and_firmware(ctx: &BuildContext) -> Result<()> {
 
     // Dracut (initramfs generator for installation)
     copy_dracut_modules(ctx)?;
+    build::etc::create_dracut_config(ctx)?;
 
     // systemd-boot EFI files (bootloader for installation)
     copy_systemd_boot_efi(ctx)?;
@@ -122,13 +124,15 @@ fn build_packages_and_firmware(ctx: &BuildContext) -> Result<()> {
     // Keymaps (for loadkeys command)
     copy_keymaps(ctx)?;
 
-    // Kernel
-    copy_kernel(ctx)?;
+    // NOTE: Kernel is NOT included in squashfs
+    // - Live boot: kernel is on ISO at /boot/vmlinuz, loaded by GRUB
+    // - Installed system: kernel is copied from ISO to ESP during installation
+    // This avoids duplication and FAT32 ownership errors when extracting squashfs
 
     Ok(())
 }
 
-/// Phase 13-17: Final setup (init symlink, root access, welcome, recstrap).
+/// Phase 13-17: Final setup (init symlink, welcome, recstrap).
 fn build_final_setup(ctx: &BuildContext) -> Result<()> {
     // Create /sbin/init symlink
     let init_link = ctx.staging.join("usr/sbin/init");
@@ -138,10 +142,11 @@ fn build_final_setup(ctx: &BuildContext) -> Result<()> {
     // Note: /sbin/init exists via merged /usr (/sbin -> /usr/sbin)
     // The symlink chain: /sbin/init -> /usr/sbin/init -> /usr/lib/systemd/systemd
 
-    // Create root user (for live boot)
-    // Note: etc files already set up root user in /etc/passwd
-    // For live boot, we want passwordless root access
-    setup_live_root_access(ctx)?;
+    // NOTE: Root password is NOT set to empty here
+    // - Base system (squashfs): root:! (locked, no login possible)
+    // - Live overlay: root:: (empty password, autologin works)
+    // - Installed system: root password set by user during installation (chpasswd)
+    // The live overlay is applied by init_tiny, NOT baked into squashfs
 
     // Note: For squashfs, we use switch_root instead of rdinit
     // The tiny initramfs handles mounting squashfs, then switch_root to /sbin/init
@@ -351,43 +356,6 @@ fn copy_all_firmware(ctx: &BuildContext) -> Result<()> {
     Ok(())
 }
 
-/// Copy kernel to squashfs (required for installation).
-fn copy_kernel(ctx: &BuildContext) -> Result<()> {
-    let kernel_dst = ctx.staging.join("boot/vmlinuz");
-
-    // Check sources in order of preference
-    let levitate_kernel = ctx.base_dir.join("output/staging/boot/vmlinuz");
-    let rocky_kernel = ctx.base_dir.join("downloads/iso-contents/images/pxeboot/vmlinuz");
-
-    // FAIL FAST - kernel is REQUIRED. No warning. No "return Ok()". FAIL.
-    let kernel_src = if levitate_kernel.exists() {
-        println!("Using LevitateOS kernel");
-        levitate_kernel
-    } else if rocky_kernel.exists() {
-        println!("Using Rocky kernel (fallback)");
-        rocky_kernel
-    } else {
-        bail!(
-            "No kernel found for squashfs.\n\
-             \n\
-             Checked:\n\
-             - {}\n\
-             - {}\n\
-             \n\
-             The kernel is REQUIRED. The ISO cannot boot without it.\n\
-             DO NOT change this to a warning. FAIL FAST.",
-            levitate_kernel.display(),
-            rocky_kernel.display()
-        );
-    };
-
-    fs::create_dir_all(ctx.staging.join("boot"))?;
-    fs::copy(&kernel_src, &kernel_dst)?;
-    println!("  Copied kernel to /boot/vmlinuz");
-
-    Ok(())
-}
-
 /// Disable SELinux - we don't ship policies and it causes boot warnings.
 fn disable_selinux(ctx: &BuildContext) -> Result<()> {
     let selinux_dir = ctx.staging.join("etc/selinux");
@@ -401,26 +369,6 @@ fn disable_selinux(ctx: &BuildContext) -> Result<()> {
     )?;
 
     println!("  Disabled SELinux");
-    Ok(())
-}
-
-/// Set up passwordless root access for live boot.
-fn setup_live_root_access(ctx: &BuildContext) -> Result<()> {
-    println!("Setting up live root access...");
-
-    // Update shadow to allow passwordless root login
-    // The '!' in shadow means locked, empty means no password
-    let shadow_path = ctx.staging.join("etc/shadow");
-    if shadow_path.exists() {
-        let content = fs::read_to_string(&shadow_path)?;
-        // Replace "root:!:" with "root::" (empty password)
-        let content = content.replace("root:!:", "root::");
-        fs::write(&shadow_path, content)?;
-    }
-
-    println!("  Root has empty password for live boot");
-    println!("  (Installation will prompt for password)");
-
     Ok(())
 }
 

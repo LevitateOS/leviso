@@ -13,7 +13,7 @@ cargo run -- run      # Test in QEMU
 
 ## What It Builds
 
-- Kernel + initramfs with systemd, PAM, D-Bus
+- Kernel + tiny initramfs (busybox, boots squashfs+overlay)
 - 125+ utilities (coreutils, editors, networking, compression, system tools)
 - Full networking stack: NetworkManager, wpa_supplicant, iproute2
 - Complete WiFi firmware: Intel, Atheros, Realtek, Broadcom, MediaTek
@@ -24,11 +24,14 @@ cargo run -- run      # Test in QEMU
 
 ## Boot Architecture
 
-The live ISO uses dracut's dmsquash-live module:
-1. GRUB/isolinux loads kernel + initramfs
-2. dracut finds `filesystem.squashfs` on the ISO
-3. Sets up device-mapper overlay (squashfs + tmpfs for writes)
-4. Boots into live root filesystem with systemd
+The live ISO uses a custom tiny initramfs (~1MB):
+1. GRUB/isolinux loads kernel + initramfs-tiny.cpio.gz
+2. Busybox init mounts ISO, finds `filesystem.squashfs`
+3. Sets up three-layer overlay:
+   - Lower: squashfs (base system, read-only)
+   - Middle: /live/overlay (live-specific configs like autologin)
+   - Upper: tmpfs (runtime writes)
+4. switch_root to overlay, systemd takes over as PID 1
 
 ## Commands
 
@@ -66,18 +69,17 @@ downloads/           # Downloaded dependencies (gitignored)
 └── syslinux-6.03/   # Syslinux for BIOS boot
 
 output/              # Build outputs (gitignored)
-├── initramfs-root/  # Unpacked initramfs contents
-├── initramfs.cpio.gz    # Full initramfs with systemd/PAM/D-Bus
-├── initramfs-tiny.cpio.gz # Lightweight initramfs for fast boot testing
+├── initramfs-tiny-root/ # Unpacked initramfs contents
+├── initramfs-tiny.cpio.gz # Tiny initramfs (~1MB, busybox + modules)
 ├── filesystem.squashfs  # Live root filesystem (squashfs-compressed)
 ├── levitateos-base.tar.xz # Base system tarball for installation
 ├── efiboot.img      # EFI boot image for ISO
 ├── iso-root/        # ISO contents before packaging
+│   └── live/overlay/    # Live-specific configs (autologin, serial-console)
 └── levitateos.iso   # Final bootable ISO
 
 profile/
-├── init             # Full init script (runs as PID 1)
-└── init_tiny        # Lightweight init for fast boot testing
+└── init_tiny        # Init script (busybox, mounts squashfs + 3-layer overlay)
 ```
 
 ## License

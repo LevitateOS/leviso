@@ -134,53 +134,6 @@ pub fn setup_getty(ctx: &BuildContext) -> Result<()> {
     Ok(())
 }
 
-/// Set up serial console.
-pub fn setup_serial_console(ctx: &BuildContext) -> Result<()> {
-    println!("Setting up serial console...");
-
-    // Create custom serial console service
-    let serial_console = ctx.staging.join("etc/systemd/system/serial-console.service");
-    fs::write(
-        &serial_console,
-        r#"[Unit]
-Description=Serial Console Shell
-After=basic.target
-Conflicts=rescue.service emergency.service
-
-[Service]
-Environment=HOME=/root
-Environment=TERM=vt100
-WorkingDirectory=/root
-ExecStart=/bin/bash --login
-StandardInput=tty
-StandardOutput=tty
-StandardError=tty
-TTYPath=/dev/ttyS0
-TTYReset=yes
-TTYVHangup=yes
-TTYVTDisallocate=no
-Type=idle
-Restart=always
-RestartSec=0
-
-[Install]
-WantedBy=multi-user.target
-"#,
-    )?;
-
-    // Enable serial console
-    let multi_user_wants = ctx.staging.join("etc/systemd/system/multi-user.target.wants");
-    fs::create_dir_all(&multi_user_wants)?;
-
-    let serial_link = multi_user_wants.join("serial-console.service");
-    if !serial_link.exists() {
-        std::os::unix::fs::symlink("/etc/systemd/system/serial-console.service", &serial_link)?;
-    }
-
-    println!("  Enabled serial-console.service");
-    Ok(())
-}
-
 /// Set default.target to multi-user.target.
 pub fn set_default_target(ctx: &BuildContext) -> Result<()> {
     println!("Setting default target...");
@@ -352,11 +305,37 @@ pub fn copy_sysctl(ctx: &BuildContext) -> Result<()> {
     Ok(())
 }
 
-/// Set up autologin for live environment (like archiso).
-pub fn setup_autologin(staging: &Path) -> Result<()> {
-    println!("Setting up autologin (like archiso)...");
+/// Create live overlay directory with live-specific configs.
+///
+/// These configs are ONLY applied during live boot (via init_tiny overlay).
+/// They are NOT extracted to installed systems by recstrap.
+///
+/// Contents:
+/// - console-autologin.service: Root autologin on tty1 (like archiso)
+/// - serial-console.service: Serial console for QEMU testing
+/// - etc/shadow: Root with empty password for live boot
+pub fn create_live_overlay(output_dir: &Path) -> Result<()> {
+    println!("Creating live overlay directory...");
 
-    let console_service = staging.join("etc/systemd/system/console-autologin.service");
+    let overlay_dir = output_dir.join("live-overlay");
+
+    // Clean up previous overlay if it exists
+    if overlay_dir.exists() {
+        fs::remove_dir_all(&overlay_dir)?;
+    }
+
+    let systemd_dir = overlay_dir.join("etc/systemd/system");
+    let getty_wants = systemd_dir.join("getty.target.wants");
+    let multi_user_wants = systemd_dir.join("multi-user.target.wants");
+
+    // Create directory structure
+    fs::create_dir_all(&getty_wants)?;
+    fs::create_dir_all(&multi_user_wants)?;
+    fs::create_dir_all(overlay_dir.join("etc"))?;
+
+    // === Console Autologin Service ===
+    // Like archiso - live ISO boots directly to root shell on tty1
+    let console_service = systemd_dir.join("console-autologin.service");
     fs::write(
         &console_service,
         r#"[Unit]
@@ -385,21 +364,93 @@ WantedBy=getty.target
 "#,
     )?;
 
-    let wants_dir = staging.join("etc/systemd/system/getty.target.wants");
-    fs::create_dir_all(&wants_dir)?;
-
-    // Disable default getty
-    let getty_link = wants_dir.join("getty@tty1.service");
-    if getty_link.exists() || getty_link.is_symlink() {
-        fs::remove_file(&getty_link)?;
-    }
-
-    // Enable autologin
+    // Enable autologin (symlink in getty.target.wants)
     std::os::unix::fs::symlink(
-        "/etc/systemd/system/console-autologin.service",
-        wants_dir.join("console-autologin.service"),
+        "../console-autologin.service",
+        getty_wants.join("console-autologin.service"),
     )?;
 
-    println!("  Configured console autologin on tty1");
+    // Create a drop-in to disable getty@tty1 during live boot
+    // This prevents the normal login prompt from competing with autologin
+    let getty_override_dir = systemd_dir.join("getty@tty1.service.d");
+    fs::create_dir_all(&getty_override_dir)?;
+    fs::write(
+        getty_override_dir.join("live-disable.conf"),
+        r#"# Disable getty@tty1 during live boot - console-autologin.service handles tty1
+# The ! means "condition fails if path exists" - so getty won't start during live boot
+[Unit]
+ConditionPathExists=!/live-boot-marker
+"#,
+    )?;
+
+    // Create a marker file that only exists during live boot
+    // (init_tiny will create /live-boot-marker before switch_root)
+    // This is how we conditionally disable getty@tty1
+
+    // === Serial Console Service ===
+    // For QEMU testing with -serial
+    let serial_service = systemd_dir.join("serial-console.service");
+    fs::write(
+        &serial_service,
+        r#"[Unit]
+Description=Serial Console Shell
+After=basic.target
+Conflicts=rescue.service emergency.service
+
+[Service]
+Environment=HOME=/root
+Environment=TERM=vt100
+WorkingDirectory=/root
+ExecStart=/bin/bash --login
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/ttyS0
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=no
+Type=idle
+Restart=always
+RestartSec=0
+
+[Install]
+WantedBy=multi-user.target
+"#,
+    )?;
+
+    // Enable serial console
+    std::os::unix::fs::symlink(
+        "../serial-console.service",
+        multi_user_wants.join("serial-console.service"),
+    )?;
+
+    // === Shadow file with empty root password ===
+    // During live boot, this overlays the base system's /etc/shadow (which has root:!)
+    // Result: root has empty password, can login without password
+    fs::write(
+        overlay_dir.join("etc/shadow"),
+        r#"root::19000:0:99999:7:::
+bin:*:19000:0:99999:7:::
+daemon:*:19000:0:99999:7:::
+nobody:*:19000:0:99999:7:::
+systemd-network:!*:19000::::::
+systemd-resolve:!*:19000::::::
+systemd-timesync:!*:19000::::::
+systemd-coredump:!*:19000::::::
+dbus:!*:19000::::::
+chrony:!*:19000::::::
+"#,
+    )?;
+
+    // Set proper permissions on shadow
+    let mut perms = fs::metadata(overlay_dir.join("etc/shadow"))?.permissions();
+    perms.set_mode(0o600);
+    fs::set_permissions(overlay_dir.join("etc/shadow"), perms)?;
+
+    println!("  Created live overlay with:");
+    println!("    - console-autologin.service (root autologin on tty1)");
+    println!("    - serial-console.service (serial shell for QEMU)");
+    println!("    - /etc/shadow (root with empty password)");
+
     Ok(())
 }

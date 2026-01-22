@@ -537,3 +537,40 @@ pub fn copy_locales(ctx: &BuildContext) -> Result<()> {
 
     Ok(())
 }
+
+/// Create dracut configuration for initramfs generation during installation.
+///
+/// This config ensures dracut includes common filesystem drivers (ext4, vfat)
+/// that are needed to boot most installed systems. Without this, users would
+/// need to manually specify --add-drivers when running dracut.
+pub fn create_dracut_config(ctx: &BuildContext) -> Result<()> {
+    println!("Creating dracut configuration...");
+
+    let dracut_conf_dir = ctx.staging.join("etc/dracut.conf.d");
+    fs::create_dir_all(&dracut_conf_dir)?;
+
+    fs::write(
+        dracut_conf_dir.join("levitate.conf"),
+        r#"# LevitateOS dracut defaults
+# This config ensures common filesystem drivers are included in initramfs
+
+# Include common filesystem drivers
+# ext4: most common Linux root filesystem
+# vfat: required for EFI System Partition (ESP)
+add_drivers+=" ext4 vfat "
+
+# Don't do host-only mode
+# We're building for any hardware, not just the current machine
+hostonly="no"
+
+# Include these dracut modules
+add_dracutmodules+=" base rootfs-block "
+
+# Compression (xz is smaller, gzip is faster)
+compress="gzip"
+"#,
+    )?;
+
+    println!("  Created /etc/dracut.conf.d/levitate.conf");
+    Ok(())
+}

@@ -69,7 +69,9 @@ pub fn create_fhs_structure(staging: &Path) -> Result<()> {
         // Mount points
         "mnt",
         "media",
-        "boot",
+        // NOTE: /boot is NOT created here - it's the ESP mount point (FAT32)
+        // Creating it in squashfs would cause unsquashfs to fail with
+        // "failed to change uid and gids on /mnt/boot" when ESP is mounted
         // User directories
         "root",
         "home",

@@ -281,160 +281,42 @@ fn copy_boot_modules(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
 }
 
 /// Create the init script.
+///
+/// FAIL FAST: profile/init_tiny is REQUIRED.
+/// We do not maintain a fallback because:
+/// 1. The init script has critical three-layer overlay logic
+/// 2. The fallback would quickly become out of sync
+/// 3. A silent fallback to a broken init is worse than failing
 fn create_init_script(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
     println!("Creating init script...");
 
     let init_src = base_dir.join("profile/init_tiny");
     let init_dst = initramfs_root.join("init");
 
-    if init_src.exists() {
-        // Use custom init script from profile/
-        fs::copy(&init_src, &init_dst)?;
-    } else {
-        // Create default init script
-        create_default_init_script(&init_dst)?;
+    // FAIL FAST - init_tiny is required
+    if !init_src.exists() {
+        bail!(
+            "Init script not found at {}.\n\
+             \n\
+             profile/init_tiny is REQUIRED - it contains the three-layer overlay logic\n\
+             for separating live-specific configs from the base system.\n\
+             \n\
+             DO NOT create a fallback. The init script is critical and must be maintained\n\
+             in one place (profile/init_tiny), not duplicated in code.\n\
+             \n\
+             Restore profile/init_tiny from git:\n\
+             git checkout profile/init_tiny",
+            init_src.display()
+        );
     }
+
+    fs::copy(&init_src, &init_dst)?;
 
     // Make executable
     let mut perms = fs::metadata(&init_dst)?.permissions();
     perms.set_mode(0o755);
     fs::set_permissions(&init_dst, perms)?;
 
-    Ok(())
-}
-
-/// Create the default init script if profile/init_tiny doesn't exist.
-fn create_default_init_script(path: &Path) -> Result<()> {
-    let script = r#"#!/bin/busybox sh
-# LevitateOS Tiny Initramfs
-# Mounts squashfs + overlay, then switch_root to live system
-#
-# REQUIREMENTS:
-# - Kernel built with CONFIG_SQUASHFS=y, CONFIG_BLK_DEV_LOOP=y, CONFIG_OVERLAY_FS=y
-# - ISO labeled "LEVITATEOS" (set by xorriso -V)
-# - Kernel cmdline: root=LABEL=LEVITATEOS
-
-set -e
-
-# Minimal PATH
-export PATH=/bin
-
-# Mount essential virtual filesystems
-busybox mount -t proc proc /proc
-busybox mount -t sysfs sysfs /sys
-busybox mount -t devtmpfs devtmpfs /dev
-
-# Load CDROM kernel modules (Rocky kernel has these as modules, not built-in)
-# Modules are compressed with xz, so we decompress then insmod
-busybox echo "Loading CDROM kernel modules..."
-KVER=$(busybox ls /lib/modules 2>/dev/null | busybox head -1)
-if [ -n "$KVER" ]; then
-    for mod in cdrom sr_mod isofs; do
-        modpath="/lib/modules/$KVER/kernel"
-        case "$mod" in
-            cdrom)  modfile="$modpath/drivers/cdrom/cdrom.ko.xz" ;;
-            sr_mod) modfile="$modpath/drivers/scsi/sr_mod.ko.xz" ;;
-            isofs)  modfile="$modpath/fs/isofs/isofs.ko.xz" ;;
-        esac
-        if [ -f "$modfile" ]; then
-            busybox xz -d -c "$modfile" > /tmp/$mod.ko 2>/dev/null
-            busybox insmod /tmp/$mod.ko 2>/dev/null && busybox echo "  Loaded $mod" || true
-            busybox rm -f /tmp/$mod.ko
-        fi
-    done
-fi
-
-# Wait for devices to settle after module load
-busybox sleep 1
-
-# Parse cmdline for root= parameter
-CMDLINE=$(busybox cat /proc/cmdline)
-ROOT_LABEL=""
-EMERGENCY=""
-for param in $CMDLINE; do
-    case "$param" in
-        root=LABEL=*) ROOT_LABEL="${param#root=LABEL=}" ;;
-        emergency) EMERGENCY=1 ;;
-    esac
-done
-
-# Default label if not specified
-[ -z "$ROOT_LABEL" ] && ROOT_LABEL="LEVITATEOS"
-
-busybox echo "LevitateOS: Searching for boot device with label '$ROOT_LABEL'..."
-
-# Find device by label - check common device names
-BOOT_DEV=""
-for dev in /dev/sr0 /dev/sda /dev/sda1 /dev/sdb /dev/sdb1 /dev/vda /dev/vda1 /dev/nvme0n1p1 /dev/loop0; do
-    [ -b "$dev" ] || continue
-    # Try mounting to check for squashfs
-    busybox mount -o ro "$dev" /mnt 2>/dev/null || continue
-
-    # Check if this has our squashfs
-    if [ -f /mnt/live/filesystem.squashfs ]; then
-        BOOT_DEV="$dev"
-        busybox echo "Found boot device: $dev"
-        break
-    fi
-    busybox umount /mnt 2>/dev/null
-done
-
-if [ -z "$BOOT_DEV" ]; then
-    busybox echo "ERROR: Could not find boot device with filesystem.squashfs"
-    busybox echo "Kernel cmdline: $CMDLINE"
-    busybox echo "Available block devices:"
-    busybox ls -la /dev/sd* /dev/sr* /dev/vd* /dev/nvme* 2>/dev/null || true
-    busybox echo ""
-    busybox echo "Dropping to emergency shell..."
-    exec busybox sh
-fi
-
-# Emergency shell before continuing?
-if [ -n "$EMERGENCY" ]; then
-    busybox echo "Emergency shell requested. Type 'exit' to continue boot."
-    busybox sh
-fi
-
-# Create mount points
-busybox mkdir -p /squashfs /overlay /overlay/upper /overlay/work /newroot
-
-# Mount squashfs read-only (via loop - kernel handles this automatically)
-busybox echo "Mounting squashfs..."
-busybox mount -t squashfs -o ro,loop /mnt/live/filesystem.squashfs /squashfs
-
-# Create overlay: squashfs (read-only lower) + tmpfs (writable upper)
-busybox echo "Creating overlay filesystem..."
-busybox mount -t tmpfs -o size=50% tmpfs /overlay
-busybox mkdir -p /overlay/upper /overlay/work
-
-busybox mount -t overlay overlay \
-    -o lowerdir=/squashfs,upperdir=/overlay/upper,workdir=/overlay/work \
-    /newroot
-
-# Move virtual filesystems to new root
-busybox echo "Preparing switch_root..."
-busybox mount --move /dev /newroot/dev
-busybox mount --move /proc /newroot/proc
-busybox mount --move /sys /newroot/sys
-
-# Keep ISO mounted for recstrap to access squashfs later
-busybox mkdir -p /newroot/media/cdrom
-busybox mount --move /mnt /newroot/media/cdrom
-
-# Verify init exists
-if [ ! -x /newroot/sbin/init ] && [ ! -L /newroot/sbin/init ]; then
-    busybox echo "ERROR: /newroot/sbin/init not found or not executable"
-    busybox echo "Contents of /newroot/sbin:"
-    busybox ls -la /newroot/sbin/
-    exec busybox sh
-fi
-
-# switch_root to the live system
-busybox echo "Switching root to live system..."
-exec busybox switch_root /newroot /sbin/init
-"#;
-
-    fs::write(path, script)?;
     Ok(())
 }
 

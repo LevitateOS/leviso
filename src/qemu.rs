@@ -194,11 +194,11 @@ pub fn test_direct(base_dir: &Path, cmd: Option<String>) -> Result<()> {
         );
     }
 
-    // Find initramfs
-    let initramfs_path = output_dir.join("initramfs.cpio.gz");
+    // Find tiny initramfs (mounts squashfs + live overlay)
+    let initramfs_path = output_dir.join("initramfs-tiny.cpio.gz");
     if !initramfs_path.exists() {
         bail!(
-            "Initramfs not found at {}. Run 'leviso initramfs' first.",
+            "Tiny initramfs not found at {}. Run 'leviso build initramfs' first.",
             initramfs_path.display()
         );
     }

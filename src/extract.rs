@@ -24,6 +24,12 @@ const SUPPLEMENTARY_RPMS: &[&str] = &[
     "ncurses",     // clear, tput
     "ncurses-libs",
 
+    // === MISSING CORE UTILITIES ===
+    // These are expected by users and scripts but missing from install.img
+    "grep",        // grep, egrep, fgrep - pattern matching
+    "findutils",   // find, xargs, locate - file finding
+    "tar",         // tar - archive extraction (needed for package installation)
+
     // === AUTH ===
     "sudo",           // sudo, sudoedit, sudoreplay
     "util-linux",     // su, login, etc.

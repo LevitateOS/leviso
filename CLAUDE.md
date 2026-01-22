@@ -50,7 +50,7 @@ cargo run -- run            # Full test (QEMU GUI, UEFI only)
 leviso/
 ├── downloads/           # Rocky ISO, extracted rootfs (gitignored)
 ├── output/              # initramfs, ISO outputs (gitignored)
-├── profile/init         # Init script (PID 1)
+├── profile/init_tiny    # Init script (busybox, mounts squashfs+overlay)
 └── src/                 # Rust source
 ```
 

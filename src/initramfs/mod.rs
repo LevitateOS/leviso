@@ -43,14 +43,23 @@ const BUSYBOX_URL: &str =
 const BUSYBOX_COMMANDS: &[&str] = &[
     "sh", "mount", "umount", "mkdir", "cat", "ls", "sleep", "switch_root", "echo", "test", "[",
     "grep", "sed", "ln", "rm", "cp", "mv", "chmod", "chown", "mknod", "losetup", "mount.loop",
-    "insmod", "modprobe", "xz",  // For loading CDROM kernel modules
+    "insmod", "modprobe", "xz", "gunzip", "find", "head",  // For module loading
 ];
 
-/// Kernel modules needed for CDROM access (Rocky kernel has these as modules).
-const CDROM_MODULES: &[&str] = &[
+/// Kernel modules needed for boot (Rocky kernel has these as modules).
+/// Order matters for dependencies.
+const BOOT_MODULES: &[&str] = &[
+    // CDROM/SCSI support
     "kernel/drivers/cdrom/cdrom.ko.xz",
     "kernel/drivers/scsi/sr_mod.ko.xz",
+    "kernel/drivers/scsi/virtio_scsi.ko.xz",  // QEMU virtio-scsi controller
     "kernel/fs/isofs/isofs.ko.xz",
+    // Virtio block device (QEMU -drive if=virtio -> /dev/vda)
+    "kernel/drivers/block/virtio_blk.ko.xz",
+    // Loop device and filesystems for squashfs+overlay boot
+    "kernel/drivers/block/loop.ko.xz",
+    "kernel/fs/squashfs/squashfs.ko.xz",
+    "kernel/fs/overlayfs/overlay.ko.xz",
 ];
 
 /// Build the tiny initramfs.
@@ -73,7 +82,7 @@ pub fn build_tiny_initramfs(base_dir: &Path) -> Result<()> {
     copy_busybox(base_dir, &initramfs_root)?;
 
     // Copy CDROM kernel modules (needed for Rocky kernel)
-    copy_cdrom_modules(base_dir, &initramfs_root)?;
+    copy_boot_modules(base_dir, &initramfs_root)?;
 
     // Create init script
     create_init_script(base_dir, &initramfs_root)?;
@@ -182,12 +191,13 @@ fn copy_busybox(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Copy CDROM kernel modules to the initramfs.
+/// Copy boot kernel modules to the initramfs.
 ///
-/// Rocky kernel has CDROM support as modules (sr_mod, cdrom, isofs).
-/// We need these for the init script to mount the ISO.
-fn copy_cdrom_modules(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
-    println!("Copying CDROM kernel modules...");
+/// Rocky kernel has these as modules, not built-in:
+/// - CDROM: sr_mod, cdrom, isofs, virtio_scsi
+/// - Filesystems: loop, squashfs, overlay
+fn copy_boot_modules(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
+    println!("Copying boot kernel modules...");
 
     let rootfs = base_dir.join("downloads/rootfs");
 
@@ -235,10 +245,10 @@ fn copy_cdrom_modules(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
     let kmod_dst = initramfs_root.join("lib/modules").join(&kver);
     fs::create_dir_all(&kmod_dst)?;
 
-    // Copy each CDROM module - ALL are required
+    // Copy each boot module - ALL are required
     let mut copied = 0;
     let mut missing = Vec::new();
-    for module in CDROM_MODULES {
+    for module in BOOT_MODULES {
         let src = kmod_src.join(module);
         if src.exists() {
             let dst = kmod_dst.join(module);
@@ -250,24 +260,23 @@ fn copy_cdrom_modules(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
         }
     }
 
-    // FAIL FAST if any module is missing - ALL are required for CDROM boot
+    // FAIL FAST if any module is missing - ALL are required for boot
     if !missing.is_empty() {
         bail!(
-            "CDROM modules missing: {:?}\n\
+            "Boot modules missing: {:?}\n\
              \n\
              These kernel modules are REQUIRED for the ISO to boot:\n\
-             - cdrom.ko.xz (CDROM driver)\n\
-             - sr_mod.ko.xz (SCSI CDROM driver)\n\
-             - isofs.ko.xz (ISO 9660 filesystem)\n\
+             - cdrom, sr_mod, virtio_scsi, isofs (CDROM access)\n\
+             - loop, squashfs, overlay (squashfs + overlay boot)\n\
              \n\
-             Without ALL of these, QEMU and real hardware cannot mount the ISO.\n\
+             Without ALL of these, the initramfs cannot mount the squashfs.\n\
              \n\
              DO NOT change this to a warning. FAIL FAST.",
             missing
         );
     }
 
-    println!("  Copied {}/{} CDROM modules", copied, CDROM_MODULES.len());
+    println!("  Copied {}/{} boot modules", copied, BOOT_MODULES.len());
     Ok(())
 }
 

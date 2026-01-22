@@ -31,6 +31,7 @@ const BIN: &[&str] = &[
     "ls", "cat", "cp", "mv", "rm", "mkdir", "rmdir", "touch",
     "chmod", "chown", "chgrp", "ln", "readlink", "realpath",
     "stat", "file", "mknod", "mkfifo",
+    "timeout", "sleep", "true", "false", "test", "[",  // Used by dracut/scripts
     // Text processing
     "echo", "head", "tail", "wc", "sort", "cut", "tr", "tee",
     "sed", "awk", "gawk", "printf", "uniq", "seq",
@@ -84,6 +85,7 @@ const SBIN: &[&str] = &[
     // === UTIL-LINUX ===
     "fsck", "blkid", "losetup", "mkswap", "swapon", "swapoff",
     "fdisk", "sfdisk", "wipefs", "blockdev", "pivot_root", "chroot",
+    "switch_root",  // Required by dracut for initramfs
     "parted",
     // === E2FSPROGS ===
     "fsck.ext4", "fsck.ext2", "fsck.ext3", "e2fsck", "mke2fs",

@@ -113,6 +113,9 @@ fn build_packages_and_firmware(ctx: &BuildContext) -> Result<()> {
     // Dracut (initramfs generator for installation)
     copy_dracut_modules(ctx)?;
 
+    // systemd-boot EFI files (bootloader for installation)
+    copy_systemd_boot_efi(ctx)?;
+
     // ALL firmware (daily driver needs everything)
     copy_all_firmware(ctx)?;
 
@@ -209,6 +212,96 @@ fn copy_dracut_modules(ctx: &BuildContext) -> Result<()> {
             dracut_src.display()
         );
     }
+
+    Ok(())
+}
+
+/// Copy systemd-boot EFI files (required for bootloader installation).
+///
+/// These files are in the systemd-boot-unsigned RPM on the Rocky ISO.
+/// bootctl install requires these to create a bootable system.
+fn copy_systemd_boot_efi(ctx: &BuildContext) -> Result<()> {
+    use std::process::Command;
+
+    println!("Copying systemd-boot EFI files...");
+
+    let efi_dst = ctx.staging.join("usr/lib/systemd/boot/efi");
+
+    // Find the systemd-boot-unsigned RPM
+    let rpm_dir = ctx.base_dir.join("downloads/iso-contents/AppStream/Packages/s");
+    let rpm_pattern = "systemd-boot-unsigned";
+
+    let rpm_path = std::fs::read_dir(&rpm_dir)?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .find(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy().contains(rpm_pattern))
+                .unwrap_or(false)
+        });
+
+    let Some(rpm_path) = rpm_path else {
+        // FAIL FAST - systemd-boot EFI files are REQUIRED for installation
+        bail!(
+            "systemd-boot-unsigned RPM not found in {}.\n\
+             \n\
+             The EFI files from this package are REQUIRED for bootctl install.\n\
+             Without them, users cannot install a bootable system.\n\
+             \n\
+             DO NOT change this to a warning. FAIL FAST.",
+            rpm_dir.display()
+        );
+    };
+
+    // Extract to temp directory
+    let temp_dir = ctx.base_dir.join("output/.systemd-boot-extract");
+    if temp_dir.exists() {
+        fs::remove_dir_all(&temp_dir)?;
+    }
+    fs::create_dir_all(&temp_dir)?;
+
+    // Extract using rpm2cpio and cpio
+    let rpm2cpio = Command::new("rpm2cpio")
+        .arg(&rpm_path)
+        .current_dir(&temp_dir)
+        .output()?;
+
+    if !rpm2cpio.status.success() {
+        bail!(
+            "Failed to extract RPM: {}",
+            String::from_utf8_lossy(&rpm2cpio.stderr)
+        );
+    }
+
+    let cpio = Command::new("cpio")
+        .args(["-idm"])
+        .current_dir(&temp_dir)
+        .stdin(std::process::Stdio::piped())
+        .spawn()?;
+
+    let mut cpio_stdin = cpio.stdin.unwrap();
+    std::io::Write::write_all(&mut cpio_stdin, &rpm2cpio.stdout)?;
+    drop(cpio_stdin);
+
+    // Copy EFI files to staging
+    let efi_src = temp_dir.join("usr/lib/systemd/boot/efi");
+    if efi_src.exists() {
+        fs::create_dir_all(efi_dst.parent().unwrap())?;
+        let size = copy_dir_recursive(&efi_src, &efi_dst)?;
+        println!(
+            "  Copied systemd-boot EFI files ({:.1} KB)",
+            size as f64 / 1_000.0
+        );
+    } else {
+        bail!(
+            "EFI files not found in extracted RPM at {}.\n\
+             Expected /usr/lib/systemd/boot/efi directory.",
+            temp_dir.display()
+        );
+    }
+
+    // Cleanup temp directory
+    let _ = fs::remove_dir_all(&temp_dir);
 
     Ok(())
 }

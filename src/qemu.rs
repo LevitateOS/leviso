@@ -300,11 +300,9 @@ fn run_with_command(kernel_path: PathBuf, initramfs_path: PathBuf, command: &str
     let (tx, rx) = std::sync::mpsc::channel();
     let reader_thread = std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
-        for line in reader.lines() {
-            if let Ok(l) = line {
-                if tx.send(l).is_err() {
-                    break;
-                }
+        for l in reader.lines().map_while(Result::ok) {
+            if tx.send(l).is_err() {
+                break;
             }
         }
     });

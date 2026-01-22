@@ -6,6 +6,7 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 /// Shared context for all build operations.
+#[allow(dead_code)] // Fields used by API consumers and tests
 pub struct BuildContext {
     /// Path to the source rootfs (Rocky rootfs with binaries)
     pub source: PathBuf,
@@ -48,8 +49,25 @@ impl BuildContext {
     }
 
     /// Set the recipe binary path.
+    #[allow(dead_code)] // API for future use
     pub fn with_recipe_binary(mut self, path: PathBuf) -> Self {
         self.recipe_binary = Some(path);
         self
+    }
+
+    /// Create a build context for testing with custom source path.
+    ///
+    /// Unlike `new()`, this doesn't require the source to exist.
+    /// This is intended for unit/integration tests only.
+    #[doc(hidden)]
+    #[allow(dead_code)] // Used by integration tests
+    pub fn for_testing(source: &Path, staging: &Path, base_dir: &Path) -> Self {
+        Self {
+            source: source.to_path_buf(),
+            staging: staging.to_path_buf(),
+            base_dir: base_dir.to_path_buf(),
+            output: base_dir.join("output"),
+            recipe_binary: None,
+        }
     }
 }

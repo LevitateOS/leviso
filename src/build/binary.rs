@@ -12,7 +12,7 @@ use crate::common::binary::copy_library_to;
 
 // Re-export commonly used functions
 pub use crate::common::binary::{
-    copy_dir_recursive, find_binary, find_sbin_binary, get_all_dependencies, make_executable,
+    find_binary, find_sbin_binary, get_all_dependencies, make_executable,
 };
 
 /// Extra library paths (includes sudo private libs).

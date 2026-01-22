@@ -39,7 +39,7 @@ pub fn build_system(ctx: &BuildContext) -> Result<()> {
     build::systemd::copy_systemd_units(ctx)?;
     build::systemd::copy_dbus_symlinks(ctx)?;
     build::systemd::setup_getty(ctx)?;
-    setup_autologin(ctx)?; // Like archiso - live ISO boots to root shell
+    build::systemd::setup_autologin(&ctx.staging)?; // Like archiso - live ISO boots to root shell
     build::systemd::setup_serial_console(ctx)?;
     build::systemd::set_default_target(ctx)?; // multi-user.target
     build::systemd::setup_dbus(ctx)?;
@@ -103,13 +103,9 @@ pub fn build_system(ctx: &BuildContext) -> Result<()> {
         std::os::unix::fs::symlink("/usr/lib/systemd/systemd", &init_link)?;
     }
 
-    // Also ensure /sbin/init exists (via merged /usr)
-    let sbin_init = ctx.staging.join("sbin/init");
-    if !sbin_init.exists() && !sbin_init.is_symlink() {
-        // /sbin -> /usr/sbin, so /sbin/init -> /usr/sbin/init -> /usr/lib/systemd/systemd
-        // The symlink chain is already set up by create_symlinks
-        ()
-    }
+    // Note: /sbin/init exists via merged /usr (/sbin -> /usr/sbin)
+    // The symlink chain: /sbin/init -> /usr/sbin/init -> /usr/lib/systemd/systemd
+    // is already set up by create_symlinks
 
     // === PHASE 14: Create root user (for live boot) ===
     // Note: etc files already set up root user in /etc/passwd
@@ -290,64 +286,6 @@ fn copy_recstrap(ctx: &BuildContext) -> Result<()> {
         println!("    Build it with: cd ../recstrap && cargo build --release");
     }
 
-    Ok(())
-}
-
-/// Set up autologin for live ISO (like archiso).
-///
-/// archiso boots directly to a root shell without login prompt.
-/// This is the expected UX for a live installation environment.
-fn setup_autologin(ctx: &BuildContext) -> Result<()> {
-    println!("Setting up autologin (like archiso)...");
-
-    // Create a simple console service that runs bash directly (like serial-console.service)
-    // This is simpler and more reliable than the agetty/login approach
-    let console_service = ctx.staging.join("etc/systemd/system/console-autologin.service");
-    fs::write(
-        &console_service,
-        r#"[Unit]
-Description=Console Autologin
-After=systemd-user-sessions.service getty-pre.target
-Before=getty.target
-
-[Service]
-Environment=HOME=/root
-Environment=TERM=linux
-WorkingDirectory=/root
-ExecStart=/bin/bash --login
-StandardInput=tty
-StandardOutput=tty
-StandardError=tty
-TTYPath=/dev/tty1
-TTYReset=yes
-TTYVHangup=yes
-TTYVTDisallocate=yes
-Type=idle
-Restart=always
-RestartSec=0
-
-[Install]
-WantedBy=getty.target
-"#,
-    )?;
-
-    // Disable the default getty@tty1 and enable our autologin service
-    let wants_dir = ctx.staging.join("etc/systemd/system/getty.target.wants");
-    fs::create_dir_all(&wants_dir)?;
-
-    // Remove default getty@tty1 symlink if it exists
-    let getty_link = wants_dir.join("getty@tty1.service");
-    if getty_link.exists() || getty_link.is_symlink() {
-        fs::remove_file(&getty_link)?;
-    }
-
-    // Enable our autologin service
-    std::os::unix::fs::symlink(
-        "/etc/systemd/system/console-autologin.service",
-        wants_dir.join("console-autologin.service"),
-    )?;
-
-    println!("  Configured console autologin on tty1");
     Ok(())
 }
 

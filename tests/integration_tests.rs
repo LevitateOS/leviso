@@ -10,7 +10,7 @@ use helpers::{
     assert_file_contains, assert_file_exists, assert_symlink,
     create_mock_rootfs, TestEnv,
 };
-use leviso::initramfs_depr::{filesystem, users};
+use leviso::build::{filesystem, users};
 use std::fs;
 
 // =============================================================================
@@ -569,21 +569,21 @@ fn test_full_fhs_setup() {
     let ctx = env.build_context();
 
     // Create FHS structure
-    filesystem::create_fhs_structure(&ctx.initramfs).unwrap();
-    filesystem::create_var_symlinks(&ctx.initramfs).unwrap();
-    filesystem::create_sh_symlink(&ctx.initramfs).unwrap();
-    filesystem::create_shell_config(&ctx.initramfs).unwrap();
+    filesystem::create_fhs_structure(&ctx.staging).unwrap();
+    filesystem::create_var_symlinks(&ctx.staging).unwrap();
+    filesystem::create_sh_symlink(&ctx.staging).unwrap();
+    filesystem::create_shell_config(&ctx.staging).unwrap();
 
     // Create root user
-    users::create_root_user(&ctx.initramfs).unwrap();
+    users::create_root_user(&ctx.staging).unwrap();
 
     // Verify everything is in place
-    assert!(ctx.initramfs.join("bin").is_dir());
-    assert!(ctx.initramfs.join("sbin").is_dir());
-    assert!(ctx.initramfs.join("etc").is_dir());
-    assert_symlink(&ctx.initramfs.join("var/run"), "/run");
-    assert_symlink(&ctx.initramfs.join("bin/sh"), "bash");
-    assert_file_contains(&ctx.initramfs.join("etc/passwd"), "root:x:0:0");
+    assert!(ctx.staging.join("bin").is_dir());
+    assert!(ctx.staging.join("sbin").is_dir());
+    assert!(ctx.staging.join("etc").is_dir());
+    assert_symlink(&ctx.staging.join("var/run"), "/run");
+    assert_symlink(&ctx.staging.join("bin/sh"), "bash");
+    assert_file_contains(&ctx.staging.join("etc/passwd"), "root:x:0:0");
 }
 
 // =============================================================================

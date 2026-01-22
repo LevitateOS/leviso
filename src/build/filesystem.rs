@@ -168,3 +168,90 @@ pub fn create_symlinks(staging: &Path) -> Result<()> {
     println!("  Created essential symlinks");
     Ok(())
 }
+
+/// Create /var symlinks (var/run -> /run, var/lock -> /run/lock).
+///
+/// Note: This is a subset of `create_symlinks`. Use that function for the full build.
+/// This function is kept for testing individual behavior.
+#[allow(dead_code)] // Used by integration tests
+pub fn create_var_symlinks(staging: &Path) -> Result<()> {
+    // /var/run -> /run
+    let var_run = staging.join("var/run");
+    if !var_run.exists() && !var_run.is_symlink() {
+        std::os::unix::fs::symlink("/run", &var_run)
+            .context("Failed to create /var/run symlink")?;
+    }
+
+    // /var/lock -> /run/lock
+    let var_lock = staging.join("var/lock");
+    if !var_lock.exists() && !var_lock.is_symlink() {
+        std::os::unix::fs::symlink("/run/lock", &var_lock)
+            .context("Failed to create /var/lock symlink")?;
+    }
+
+    Ok(())
+}
+
+/// Create /bin/sh -> bash symlink.
+///
+/// Note: This is a subset of `create_symlinks`. Use that function for the full build.
+/// This function is kept for testing individual behavior.
+#[allow(dead_code)] // Used by integration tests
+pub fn create_sh_symlink(staging: &Path) -> Result<()> {
+    // Note: In merged /usr, /bin is a symlink to /usr/bin
+    // We create the symlink relative to where it will be resolved
+    let sh_link = staging.join("bin/sh");
+    if !sh_link.exists() && !sh_link.is_symlink() {
+        std::os::unix::fs::symlink("bash", &sh_link)
+            .context("Failed to create /bin/sh symlink")?;
+    }
+    Ok(())
+}
+
+/// Create shell configuration files (/etc/profile, /root/.bashrc, etc).
+#[allow(dead_code)] // Used by integration tests
+pub fn create_shell_config(staging: &Path) -> Result<()> {
+    // /etc/profile
+    let profile = staging.join("etc/profile");
+    fs::write(
+        &profile,
+        r#"# System-wide shell configuration
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export LANG="en_US.UTF-8"
+export TERM="${TERM:-linux}"
+export PS1='[\u@\h \W]\$ '
+
+# Source any profile.d scripts
+if [ -d /etc/profile.d ]; then
+    for script in /etc/profile.d/*.sh; do
+        [ -r "$script" ] && . "$script"
+    done
+fi
+"#,
+    )
+    .context("Failed to create /etc/profile")?;
+
+    // /root/.bashrc
+    let bashrc = staging.join("root/.bashrc");
+    fs::write(
+        &bashrc,
+        r#"# Root bashrc
+[ -f /etc/profile ] && . /etc/profile
+alias ls='ls --color=auto'
+alias ll='ls -la'
+"#,
+    )
+    .context("Failed to create /root/.bashrc")?;
+
+    // /root/.bash_profile
+    let bash_profile = staging.join("root/.bash_profile");
+    fs::write(
+        &bash_profile,
+        r#"# Root bash_profile
+[ -f ~/.bashrc ] && . ~/.bashrc
+"#,
+    )
+    .context("Failed to create /root/.bash_profile")?;
+
+    Ok(())
+}

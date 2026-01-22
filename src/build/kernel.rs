@@ -19,8 +19,6 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use super::context::BuildContext;
-
 /// Kernel configuration options for a desktop/workstation system.
 ///
 /// Based on x86_64_defconfig with additions for:
@@ -435,41 +433,4 @@ pub fn install_kernel(
     println!("  Installed {} kernel modules", module_count);
 
     Ok(version)
-}
-
-/// Copy kernel and modules to rootfs staging.
-///
-/// Call this from builder.rs after RPM extraction.
-pub fn copy_kernel(ctx: &BuildContext) -> Result<()> {
-    // Check if kernel is already built
-    let kernel_build = ctx.output.join("kernel-build");
-    let vmlinuz = kernel_build.join("arch/x86/boot/bzImage");
-
-    if !vmlinuz.exists() {
-        println!("Kernel not built - skipping kernel installation");
-        println!("  To build: cd ../linux && make x86_64_defconfig && make -j$(nproc)");
-        println!("  Or use 'leviso kernel' command (when implemented)");
-        return Ok(());
-    }
-
-    // Get version and install
-    let version = get_kernel_version(&kernel_build)?;
-    println!("Installing kernel {} to rootfs...", version);
-
-    // Copy kernel to /boot
-    let boot_dir = ctx.staging.join("boot");
-    fs::create_dir_all(&boot_dir)?;
-    fs::copy(&vmlinuz, boot_dir.join("vmlinuz"))?;
-    println!("  /boot/vmlinuz");
-
-    // Modules should already be in staging from install_kernel()
-    // but verify they exist
-    let modules_dir = ctx.staging.join("usr/lib/modules").join(&version);
-    if modules_dir.exists() {
-        println!("  /usr/lib/modules/{}/", version);
-    } else {
-        println!("  Warning: modules not found at {}", modules_dir.display());
-    }
-
-    Ok(())
 }

@@ -18,7 +18,7 @@ mod squashfs;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use config::Config;
 
@@ -390,7 +390,7 @@ fn download_linux(config: &Config, shallow: bool) -> Result<()> {
 }
 
 /// Build the kernel.
-fn build_kernel(base_dir: &PathBuf, config: &Config, clean: bool) -> Result<()> {
+fn build_kernel(base_dir: &Path, config: &Config, clean: bool) -> Result<()> {
     let output_dir = base_dir.join("output");
 
     if clean {

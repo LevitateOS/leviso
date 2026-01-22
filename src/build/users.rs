@@ -80,6 +80,7 @@ pub fn ensure_group(
 }
 
 /// Create initial passwd and group files for root.
+#[allow(dead_code)] // Used by integration tests
 pub fn create_root_user(staging: &Path) -> Result<()> {
     fs::write(
         staging.join("etc/passwd"),

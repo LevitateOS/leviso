@@ -112,18 +112,16 @@ fn copy_network_binaries(ctx: &BuildContext) -> Result<()> {
     };
 
     for (binary, src_dir) in NETWORKMANAGER_BINARIES {
-        if !copy_binary(binary, src_dir)? {
-            if *binary == "NetworkManager" || *binary == "nmcli" {
-                println!("  Warning: Required binary {} not found", binary);
-            }
+        if !copy_binary(binary, src_dir)?
+            && (*binary == "NetworkManager" || *binary == "nmcli")
+        {
+            println!("  Warning: Required binary {} not found", binary);
         }
     }
 
     for (binary, src_dir) in WPA_BINARIES {
-        if !copy_binary(binary, src_dir)? {
-            if *binary == "wpa_supplicant" {
-                println!("  Warning: wpa_supplicant not found");
-            }
+        if !copy_binary(binary, src_dir)? && *binary == "wpa_supplicant" {
+            println!("  Warning: wpa_supplicant not found");
         }
     }
 

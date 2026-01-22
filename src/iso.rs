@@ -336,43 +336,65 @@ fn create_efi_boot_image(iso_root: &Path, efiboot_img: &Path) -> Result<()> {
     // Create EFI/BOOT directory structure using mtools
     let status = Command::new("mmd")
         .args(["-i", efiboot_img.to_str().unwrap(), "::EFI"])
-        .status();
+        .status()
+        .context(
+            "mtools (mmd) not found. Install mtools:\n\
+             - Fedora: sudo dnf install mtools\n\
+             - Ubuntu: sudo apt install mtools\n\
+             - Arch: sudo pacman -S mtools",
+        )?;
 
-    if status.is_err() || !status.unwrap().success() {
-        println!("Note: mtools not fully available, using alternative method");
+    if !status.success() {
+        bail!("mmd failed to create ::EFI directory in efiboot.img");
     }
 
-    let _ = Command::new("mmd")
+    let status = Command::new("mmd")
         .args(["-i", efiboot_img.to_str().unwrap(), "::EFI/BOOT"])
-        .status();
+        .status()?;
 
-    // Copy EFI files
-    let _ = Command::new("mcopy")
+    if !status.success() {
+        bail!("mmd failed to create ::EFI/BOOT directory in efiboot.img");
+    }
+
+    // Copy EFI files - these must succeed for UEFI boot to work
+    let status = Command::new("mcopy")
         .args([
             "-i",
             efiboot_img.to_str().unwrap(),
             iso_root.join("EFI/BOOT/BOOTX64.EFI").to_str().unwrap(),
             "::EFI/BOOT/",
         ])
-        .status();
+        .status()?;
 
-    let _ = Command::new("mcopy")
+    if !status.success() {
+        bail!("mcopy failed to copy BOOTX64.EFI to efiboot.img");
+    }
+
+    let status = Command::new("mcopy")
         .args([
             "-i",
             efiboot_img.to_str().unwrap(),
             iso_root.join("EFI/BOOT/grubx64.efi").to_str().unwrap(),
             "::EFI/BOOT/",
         ])
-        .status();
+        .status()?;
 
-    let _ = Command::new("mcopy")
+    if !status.success() {
+        bail!("mcopy failed to copy grubx64.efi to efiboot.img");
+    }
+
+    let status = Command::new("mcopy")
         .args([
             "-i",
             efiboot_img.to_str().unwrap(),
             iso_root.join("EFI/BOOT/grub.cfg").to_str().unwrap(),
             "::EFI/BOOT/",
         ])
-        .status();
+        .status()?;
+
+    if !status.success() {
+        bail!("mcopy failed to copy grub.cfg to efiboot.img");
+    }
 
     // Copy efiboot.img into iso-root for xorriso
     fs::copy(efiboot_img, iso_root.join("efiboot.img"))?;

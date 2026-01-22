@@ -105,7 +105,9 @@ const SBIN: &[&str] = &[
     "ldconfig", "hwclock", "lspci", "ifconfig", "route",
     "agetty", "login", "sulogin", "nologin", "chronyd",
     // === SQUASHFS-TOOLS (for installation) ===
-    "unsquashfs", "mksquashfs",
+    // unsquashfs is REQUIRED - recstrap uses it to extract squashfs to disk
+    // mksquashfs is NOT included - it's a host tool for building ISOs
+    "unsquashfs",
 ];
 
 /// Systemd helper binaries.

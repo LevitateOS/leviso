@@ -57,7 +57,9 @@ const SUPPLEMENTARY_RPMS: &[&str] = &[
     "kmod",                   // modprobe, lsmod, etc. (dracut dependency)
 
     // === SQUASHFS-TOOLS (for installation) ===
-    "squashfs-tools",         // unsquashfs for extracting squashfs to disk
+    // Provides unsquashfs - REQUIRED by recstrap to extract squashfs to disk
+    // (mksquashfs is also included in the RPM but we only copy unsquashfs to the image)
+    "squashfs-tools",
 ];
 
 pub fn extract_rocky(base_dir: &Path) -> Result<()> {

@@ -3,9 +3,10 @@
 use anyhow::Result;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
 
-use super::binary::{copy_library, get_all_dependencies};
+use crate::common::binary::copy_dir_recursive;
+
+use super::libdeps::{copy_library, get_all_dependencies};
 use super::context::BuildContext;
 
 const NETWORKMANAGER_BINARIES: &[(&str, &str)] = &[
@@ -364,35 +365,3 @@ fn ensure_network_users(ctx: &BuildContext) -> Result<()> {
     Ok(())
 }
 
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<u64> {
-    let mut total_size: u64 = 0;
-
-    if !src.is_dir() {
-        return Ok(0);
-    }
-
-    fs::create_dir_all(dst)?;
-
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let path = entry.path();
-        let filename = path.file_name().unwrap();
-        let dest_path = dst.join(filename);
-
-        if path.is_dir() {
-            total_size += copy_dir_recursive(&path, &dest_path)?;
-        } else if path.is_symlink() {
-            let target = fs::read_link(&path)?;
-            if !dest_path.exists() {
-                std::os::unix::fs::symlink(&target, &dest_path)?;
-            }
-        } else {
-            fs::copy(&path, &dest_path)?;
-            if let Ok(meta) = fs::metadata(&dest_path) {
-                total_size += meta.len();
-            }
-        }
-    }
-
-    Ok(total_size)
-}

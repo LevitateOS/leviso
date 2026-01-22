@@ -11,8 +11,8 @@
 //!
 //! DESIGN: Live = Installed (same content, zero duplication)
 
-pub mod binary;
-pub mod binaries;
+pub mod libdeps;
+pub mod binary_lists;
 pub mod chrony;
 pub mod context;
 pub mod dbus;

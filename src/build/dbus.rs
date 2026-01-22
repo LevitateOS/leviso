@@ -3,8 +3,11 @@
 use anyhow::Result;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 
-use super::binary::{copy_library, get_all_dependencies};
+use crate::common::binary::create_symlink_if_missing;
+
+use super::libdeps::{copy_library, get_all_dependencies};
 use super::context::BuildContext;
 use super::users;
 
@@ -170,10 +173,10 @@ fn enable_dbus_socket(ctx: &BuildContext) -> Result<()> {
         .join("etc/systemd/system/sockets.target.wants");
     fs::create_dir_all(&sockets_wants)?;
 
-    let dbus_socket_link = sockets_wants.join("dbus.socket");
-    if !dbus_socket_link.exists() {
-        std::os::unix::fs::symlink("/usr/lib/systemd/system/dbus.socket", &dbus_socket_link)?;
-    }
+    create_symlink_if_missing(
+        Path::new("/usr/lib/systemd/system/dbus.socket"),
+        &sockets_wants.join("dbus.socket"),
+    )?;
 
     Ok(())
 }
@@ -184,21 +187,15 @@ fn enable_journald_sockets(ctx: &BuildContext) -> Result<()> {
         .staging
         .join("etc/systemd/system/sockets.target.wants");
 
-    let journald_socket_link = sockets_wants.join("systemd-journald.socket");
-    if !journald_socket_link.exists() {
-        std::os::unix::fs::symlink(
-            "/usr/lib/systemd/system/systemd-journald.socket",
-            &journald_socket_link,
-        )?;
-    }
+    create_symlink_if_missing(
+        Path::new("/usr/lib/systemd/system/systemd-journald.socket"),
+        &sockets_wants.join("systemd-journald.socket"),
+    )?;
 
-    let journald_dev_log_link = sockets_wants.join("systemd-journald-dev-log.socket");
-    if !journald_dev_log_link.exists() {
-        std::os::unix::fs::symlink(
-            "/usr/lib/systemd/system/systemd-journald-dev-log.socket",
-            &journald_dev_log_link,
-        )?;
-    }
+    create_symlink_if_missing(
+        Path::new("/usr/lib/systemd/system/systemd-journald-dev-log.socket"),
+        &sockets_wants.join("systemd-journald-dev-log.socket"),
+    )?;
 
     Ok(())
 }

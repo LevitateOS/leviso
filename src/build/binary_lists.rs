@@ -6,7 +6,7 @@
 use anyhow::{bail, Result};
 use std::fs;
 
-use super::binary::{copy_bash, copy_binary_with_libs, copy_sbin_binary_with_libs, make_executable};
+use super::libdeps::{copy_bash, copy_binary_with_libs, copy_sbin_binary_with_libs, make_executable};
 use super::context::BuildContext;
 
 /// Authentication binaries for /usr/bin.
@@ -30,7 +30,7 @@ const BIN: &[&str] = &[
     // === COREUTILS ===
     "ls", "cat", "cp", "mv", "rm", "mkdir", "rmdir", "touch",
     "chmod", "chown", "chgrp", "ln", "readlink", "realpath",
-    "stat", "file",
+    "stat", "file", "mknod", "mkfifo",
     // Text processing
     "echo", "head", "tail", "wc", "sort", "cut", "tr", "tee",
     "sed", "awk", "gawk", "printf", "uniq", "seq",
@@ -38,15 +38,15 @@ const BIN: &[&str] = &[
     "grep", "find", "xargs",
     // System info
     "pwd", "uname", "date", "env", "id", "hostname",
-    "printenv", "whoami", "groups",
+    "printenv", "whoami", "groups", "dmesg",
     // Process control
-    "sleep", "kill", "nice", "nohup",
+    "sleep", "kill", "nice", "nohup", "setsid",
     // Compression
     "gzip", "gunzip", "xz", "unxz", "tar", "bzip2", "bunzip2", "cpio",
     // Shell utilities
-    "true", "false", "expr", "test", "yes",
+    "true", "false", "expr", "test", "yes", "mktemp",
     // Disk info
-    "df", "du", "sync", "mount", "umount", "lsblk", "findmnt",
+    "df", "du", "sync", "mount", "umount", "lsblk", "findmnt", "flock",
     // Path utilities
     "dirname", "basename",
     // Other
@@ -71,6 +71,12 @@ const BIN: &[&str] = &[
     "udevadm",
     // === MISC ===
     "less", "more",
+    // === UTIL-LINUX (command line parsing) ===
+    "getopt",
+    // === DRACUT (initramfs generator) ===
+    "dracut",
+    // === GLIBC UTILITIES ===
+    "getent", "ldd",
 ];
 
 /// Binaries for /usr/sbin.
@@ -98,6 +104,8 @@ const SBIN: &[&str] = &[
     // === OTHER ===
     "ldconfig", "hwclock", "lspci", "ifconfig", "route",
     "agetty", "login", "sulogin", "nologin", "chronyd",
+    // === SQUASHFS-TOOLS (for installation) ===
+    "unsquashfs", "mksquashfs",
 ];
 
 /// Systemd helper binaries.

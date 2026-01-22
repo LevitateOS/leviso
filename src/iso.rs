@@ -1,12 +1,37 @@
 use anyhow::{bail, Context, Result};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// ISO volume label - used for boot device detection.
 const ISO_LABEL: &str = "LEVITATEOS";
 
-/// Create ISO using squashfs-based architecture (new).
+/// Paths used during ISO creation.
+struct IsoPaths {
+    iso_contents: PathBuf,
+    output_dir: PathBuf,
+    squashfs: PathBuf,
+    initramfs: PathBuf,
+    iso_output: PathBuf,
+    iso_root: PathBuf,
+}
+
+impl IsoPaths {
+    fn new(base_dir: &Path) -> Self {
+        let extract_dir = base_dir.join("downloads");
+        let output_dir = base_dir.join("output");
+        Self {
+            iso_contents: extract_dir.join("iso-contents"),
+            output_dir: output_dir.clone(),
+            squashfs: output_dir.join("filesystem.squashfs"),
+            initramfs: output_dir.join("initramfs-tiny.cpio.gz"),
+            iso_output: output_dir.join("levitateos.iso"),
+            iso_root: output_dir.join("iso-root"),
+        }
+    }
+}
+
+/// Create ISO using squashfs-based architecture.
 ///
 /// This creates an ISO with:
 /// - Tiny initramfs (~5MB) - mounts squashfs + overlay
@@ -14,68 +39,109 @@ const ISO_LABEL: &str = "LEVITATEOS";
 ///
 /// Boot flow: kernel -> tiny initramfs -> mount squashfs -> overlay -> switch_root -> systemd
 pub fn create_squashfs_iso(base_dir: &Path) -> Result<()> {
-    let extract_dir = base_dir.join("downloads");
-    let iso_contents = extract_dir.join("iso-contents");
-    let output_dir = base_dir.join("output");
-    let squashfs = output_dir.join("filesystem.squashfs");
-    let initramfs = output_dir.join("initramfs-tiny.cpio.gz");
-    let iso_output = output_dir.join("levitateos.iso");
+    let paths = IsoPaths::new(base_dir);
 
-    // Verify required files exist
-    if !squashfs.exists() {
+    // Stage 1: Validate inputs
+    validate_iso_inputs(&paths)?;
+    let kernel_path = find_kernel(&paths)?;
+
+    // Stage 2: Set up ISO directory structure
+    setup_iso_structure(&paths)?;
+
+    // Stage 3: Copy boot files and artifacts
+    copy_iso_artifacts(&paths, &kernel_path)?;
+
+    // Stage 4: Set up UEFI boot
+    setup_uefi_boot(&paths)?;
+
+    // Stage 5: Create the ISO
+    run_xorriso(&paths)?;
+
+    print_iso_summary(&paths.iso_output);
+    Ok(())
+}
+
+/// Stage 1: Validate that required input files exist.
+fn validate_iso_inputs(paths: &IsoPaths) -> Result<()> {
+    if !paths.squashfs.exists() {
         bail!(
             "Squashfs not found at {}.\n\
              Run 'leviso build squashfs' first.",
-            squashfs.display()
+            paths.squashfs.display()
         );
     }
 
-    if !initramfs.exists() {
+    if !paths.initramfs.exists() {
         bail!(
             "Tiny initramfs not found at {}.\n\
              Run 'leviso build initramfs' first.",
-            initramfs.display()
+            paths.initramfs.display()
         );
     }
 
-    // Find kernel - prefer built LevitateOS kernel, fall back to Rocky
-    let levitate_kernel = output_dir.join("staging/boot/vmlinuz");
-    let kernel_path = if levitate_kernel.exists() {
-        println!("Using LevitateOS kernel: {}", levitate_kernel.display());
-        levitate_kernel
-    } else {
-        let rocky_kernel = iso_contents.join("images/pxeboot/vmlinuz");
-        if !rocky_kernel.exists() {
-            bail!(
-                "No kernel found.\n\
-                 Build LevitateOS kernel: leviso build kernel\n\
-                 Or extract Rocky ISO: leviso extract rocky"
-            );
-        }
-        println!("Using Rocky kernel (fallback): {}", rocky_kernel.display());
-        rocky_kernel
-    };
+    Ok(())
+}
 
-    // Create ISO directory structure
-    let iso_root = output_dir.join("iso-root");
-    if iso_root.exists() {
-        fs::remove_dir_all(&iso_root)?;
+/// Find the kernel to use (LevitateOS or Rocky fallback).
+fn find_kernel(paths: &IsoPaths) -> Result<PathBuf> {
+    let levitate_kernel = paths.output_dir.join("staging/boot/vmlinuz");
+    if levitate_kernel.exists() {
+        println!("Using LevitateOS kernel: {}", levitate_kernel.display());
+        return Ok(levitate_kernel);
     }
 
-    fs::create_dir_all(iso_root.join("boot"))?;
-    fs::create_dir_all(iso_root.join("live"))?; // New: squashfs goes here
-    fs::create_dir_all(iso_root.join("EFI/BOOT"))?;
+    let rocky_kernel = paths.iso_contents.join("images/pxeboot/vmlinuz");
+    if rocky_kernel.exists() {
+        println!("Using Rocky kernel (fallback): {}", rocky_kernel.display());
+        return Ok(rocky_kernel);
+    }
 
+    bail!(
+        "No kernel found.\n\
+         Build LevitateOS kernel: leviso build kernel\n\
+         Or extract Rocky ISO: leviso extract rocky"
+    );
+}
+
+/// Stage 2: Create ISO directory structure.
+fn setup_iso_structure(paths: &IsoPaths) -> Result<()> {
+    if paths.iso_root.exists() {
+        fs::remove_dir_all(&paths.iso_root)?;
+    }
+
+    fs::create_dir_all(paths.iso_root.join("boot"))?;
+    fs::create_dir_all(paths.iso_root.join("live"))?;
+    fs::create_dir_all(paths.iso_root.join("EFI/BOOT"))?;
+
+    Ok(())
+}
+
+/// Stage 3: Copy kernel, initramfs, squashfs, and tarball to ISO.
+fn copy_iso_artifacts(paths: &IsoPaths, kernel_path: &Path) -> Result<()> {
     // Copy kernel and initramfs
-    fs::copy(&kernel_path, iso_root.join("boot/vmlinuz"))?;
-    fs::copy(&initramfs, iso_root.join("boot/initramfs.img"))?;
+    fs::copy(kernel_path, paths.iso_root.join("boot/vmlinuz"))?;
+    fs::copy(&paths.initramfs, paths.iso_root.join("boot/initramfs.img"))?;
 
     // Copy squashfs to /live/
     println!("Copying squashfs to ISO...");
-    fs::copy(&squashfs, iso_root.join("live/filesystem.squashfs"))?;
+    fs::copy(&paths.squashfs, paths.iso_root.join("live/filesystem.squashfs"))?;
 
-    // Set up UEFI boot
-    let efi_src = iso_contents.join("EFI/BOOT");
+    // Copy tarball for installation (if it exists)
+    let base_tarball = paths.output_dir.join("levitateos-base.tar.xz");
+    if base_tarball.exists() {
+        println!("Copying base tarball for installation...");
+        fs::copy(&base_tarball, paths.iso_root.join("levitateos-base.tar.xz"))?;
+    } else {
+        println!("Warning: base tarball not found at {}", base_tarball.display());
+        println!("  Installation to disk will not work without it.");
+    }
+
+    Ok(())
+}
+
+/// Stage 4: Set up UEFI boot files and GRUB config.
+fn setup_uefi_boot(paths: &IsoPaths) -> Result<()> {
+    let efi_src = paths.iso_contents.join("EFI/BOOT");
     if !efi_src.exists() {
         bail!(
             "EFI boot files not found at {}.\n\
@@ -87,11 +153,11 @@ pub fn create_squashfs_iso(base_dir: &Path) -> Result<()> {
     println!("Setting up UEFI boot...");
     fs::copy(
         efi_src.join("BOOTX64.EFI"),
-        iso_root.join("EFI/BOOT/BOOTX64.EFI"),
+        paths.iso_root.join("EFI/BOOT/BOOTX64.EFI"),
     )?;
     fs::copy(
         efi_src.join("grubx64.efi"),
-        iso_root.join("EFI/BOOT/grubx64.efi"),
+        paths.iso_root.join("EFI/BOOT/grubx64.efi"),
     )?;
 
     // Create GRUB config with root=LABEL for device detection
@@ -117,20 +183,24 @@ menuentry 'LevitateOS (Debug)' {{
 "#,
         ISO_LABEL, ISO_LABEL, ISO_LABEL
     );
-    fs::write(iso_root.join("EFI/BOOT/grub.cfg"), grub_cfg)?;
+    fs::write(paths.iso_root.join("EFI/BOOT/grub.cfg"), grub_cfg)?;
 
     // Create EFI boot image
-    let efiboot_img = output_dir.join("efiboot.img");
-    create_efi_boot_image(&iso_root, &efiboot_img)?;
+    let efiboot_img = paths.output_dir.join("efiboot.img");
+    create_efi_boot_image(&paths.iso_root, &efiboot_img)?;
 
-    // Create ISO with volume label
+    Ok(())
+}
+
+/// Stage 5: Run xorriso to create the final ISO.
+fn run_xorriso(paths: &IsoPaths) -> Result<()> {
     println!("Creating UEFI bootable ISO with xorriso...");
     let status = Command::new("xorriso")
         .args([
             "-as",
             "mkisofs",
             "-o",
-            iso_output.to_str().unwrap(),
+            paths.iso_output.to_str().unwrap(),
             "-V",
             ISO_LABEL, // CRITICAL: Volume label for device detection
             "-partition_offset",
@@ -142,7 +212,7 @@ menuentry 'LevitateOS (Debug)' {{
             "efiboot.img",
             "-no-emul-boot",
             "-isohybrid-gpt-basdat",
-            iso_root.to_str().unwrap(),
+            paths.iso_root.to_str().unwrap(),
         ])
         .status()
         .context("Failed to run xorriso. Is xorriso installed?")?;
@@ -151,156 +221,19 @@ menuentry 'LevitateOS (Debug)' {{
         bail!("xorriso failed");
     }
 
+    Ok(())
+}
+
+/// Print summary after ISO creation.
+fn print_iso_summary(iso_output: &Path) {
     println!("\n=== Squashfs ISO Created ===");
     println!("  Output: {}", iso_output.display());
-    if let Ok(meta) = fs::metadata(&iso_output) {
+    if let Ok(meta) = fs::metadata(iso_output) {
         println!("  Size: {} MB", meta.len() / 1024 / 1024);
     }
     println!("  Label: {}", ISO_LABEL);
     println!("\nTo run in QEMU:");
     println!("  cargo run -- run");
-
-    Ok(())
-}
-
-/// Create ISO using initramfs-based architecture (legacy).
-///
-/// This is the original method where the initramfs contains the complete system.
-/// Kept for reference but not actively used - squashfs ISO is the default.
-#[allow(dead_code)]
-pub fn create_iso(base_dir: &Path) -> Result<()> {
-    let extract_dir = base_dir.join("downloads");
-    let iso_contents = extract_dir.join("iso-contents");
-    let output_dir = base_dir.join("output");
-    let initramfs = output_dir.join("initramfs.cpio.gz");
-    let iso_output = output_dir.join("levitateos.iso");
-
-    if !initramfs.exists() {
-        bail!("Initramfs not found. Run 'leviso initramfs' first.");
-    }
-
-    // Find kernel - prefer built LevitateOS kernel, fall back to Rocky
-    let levitate_kernel = output_dir.join("staging/boot/vmlinuz");
-    let kernel_path = if levitate_kernel.exists() {
-        println!("Using LevitateOS kernel: {}", levitate_kernel.display());
-        levitate_kernel
-    } else {
-        // Fall back to Rocky's kernel (only pxeboot path - no isolinux)
-        let rocky_kernel = iso_contents.join("images/pxeboot/vmlinuz");
-
-        if !rocky_kernel.exists() {
-            bail!(
-                "No kernel found.\n\
-                 Build LevitateOS kernel: leviso build kernel\n\
-                 Or extract Rocky ISO: leviso extract rocky"
-            );
-        }
-
-        println!("Using Rocky kernel (fallback): {}", rocky_kernel.display());
-        println!("  Tip: Run 'leviso build kernel' to build LevitateOS kernel");
-        rocky_kernel
-    };
-
-    // Create ISO directory structure (UEFI only - no isolinux)
-    let iso_root = output_dir.join("iso-root");
-    if iso_root.exists() {
-        fs::remove_dir_all(&iso_root)?;
-    }
-
-    fs::create_dir_all(iso_root.join("boot"))?;
-    fs::create_dir_all(iso_root.join("EFI/BOOT"))?;
-
-    // Copy kernel and initramfs
-    fs::copy(&kernel_path, iso_root.join("boot/vmlinuz"))?;
-    fs::copy(&initramfs, iso_root.join("boot/initramfs.img"))?;
-
-    // Copy base tarball if it exists
-    let base_tarball = output_dir.join("levitateos-base.tar.xz");
-
-    if base_tarball.exists() {
-        println!("Copying base tarball from: {}", base_tarball.display());
-        fs::copy(&base_tarball, iso_root.join("levitateos-base.tar.xz"))?;
-        println!("  Copied to ISO root as levitateos-base.tar.xz");
-    } else {
-        println!("Warning: base tarball not found. Installation will not work.");
-        println!("  Build it with: cargo run -- build rootfs");
-    }
-
-    // === UEFI Boot Setup (GRUB EFI) ===
-    let efi_src = iso_contents.join("EFI/BOOT");
-    if !efi_src.exists() {
-        bail!(
-            "EFI boot files not found at {}.\n\
-             LevitateOS requires UEFI boot. Run 'leviso extract rocky' first.",
-            efi_src.display()
-        );
-    }
-
-    println!("Setting up UEFI boot...");
-
-    // Copy GRUB EFI bootloader
-    fs::copy(
-        efi_src.join("BOOTX64.EFI"),
-        iso_root.join("EFI/BOOT/BOOTX64.EFI"),
-    )?;
-    fs::copy(
-        efi_src.join("grubx64.efi"),
-        iso_root.join("EFI/BOOT/grubx64.efi"),
-    )?;
-
-    // Create GRUB config with normal boot and emergency shell options
-    let grub_cfg = r#"set default=0
-set timeout=5
-
-menuentry 'LevitateOS' {
-    linuxefi /boot/vmlinuz console=ttyS0,115200n8 console=tty0 earlyprintk=ttyS0,115200 panic=30 rdinit=/init
-    initrdefi /boot/initramfs.img
-}
-
-menuentry 'LevitateOS (Emergency Shell)' {
-    linuxefi /boot/vmlinuz console=ttyS0,115200n8 console=tty0 earlyprintk=ttyS0,115200 emergency rdinit=/init
-    initrdefi /boot/initramfs.img
-}
-"#;
-    fs::write(iso_root.join("EFI/BOOT/grub.cfg"), grub_cfg)?;
-
-    // Create EFI boot image (efiboot.img)
-    let efiboot_img = output_dir.join("efiboot.img");
-    create_efi_boot_image(&iso_root, &efiboot_img)?;
-
-    // Create UEFI-only bootable ISO with xorriso
-    println!("Creating UEFI bootable ISO with xorriso...");
-    let status = Command::new("xorriso")
-        .args([
-            "-as",
-            "mkisofs",
-            "-o",
-            iso_output.to_str().unwrap(),
-            "-V",
-            ISO_LABEL, // Volume label
-            "-partition_offset",
-            "16",
-            "-full-iso9660-filenames",
-            "-joliet",
-            "-rational-rock",
-            "-e",
-            "efiboot.img",
-            "-no-emul-boot",
-            "-isohybrid-gpt-basdat",
-            iso_root.to_str().unwrap(),
-        ])
-        .status()
-        .context("Failed to run xorriso. Is xorriso installed?")?;
-
-    if !status.success() {
-        bail!("xorriso failed");
-    }
-
-    println!("Created ISO at: {}", iso_output.display());
-    println!("\nTo run in QEMU (UEFI):");
-    println!("  cargo run -- run");
-
-    Ok(())
 }
 
 /// Create a FAT16 image containing EFI boot files

@@ -195,9 +195,12 @@ pub fn set_default_target(ctx: &BuildContext) -> Result<()> {
     Ok(())
 }
 
-/// Set up D-Bus.
-pub fn setup_dbus(ctx: &BuildContext) -> Result<()> {
-    println!("Setting up D-Bus...");
+/// Copy D-Bus configuration files and enable the D-Bus socket.
+///
+/// Note: For full D-Bus setup (binaries, units, users), use `dbus::setup_dbus`.
+/// This function handles the systemd-related D-Bus configuration only.
+pub fn copy_dbus_configs(ctx: &BuildContext) -> Result<()> {
+    println!("Copying D-Bus configs...");
 
     // Copy D-Bus system configuration
     let dbus_src = ctx.source.join("usr/share/dbus-1/system.d");

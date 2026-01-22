@@ -17,60 +17,84 @@ use anyhow::Result;
 use std::fs;
 
 use crate::build::{self, BuildContext};
+use crate::common::binary::copy_dir_recursive;
 
 /// Build the complete system into the staging directory.
 pub fn build_system(ctx: &BuildContext) -> Result<()> {
     println!("Building complete system for squashfs...");
 
-    // === PHASE 1: Filesystem structure ===
+    build_filesystem_and_binaries(ctx)?;
+    build_systemd_and_services(ctx)?;
+    build_network_and_auth(ctx)?;
+    build_packages_and_firmware(ctx)?;
+    build_final_setup(ctx)?;
+
+    println!("System build complete.");
+    Ok(())
+}
+
+/// Phase 1-2: Create filesystem structure and copy all binaries.
+fn build_filesystem_and_binaries(ctx: &BuildContext) -> Result<()> {
+    // Filesystem structure
     build::filesystem::create_fhs_structure(&ctx.staging)?;
     build::filesystem::create_symlinks(&ctx.staging)?;
 
-    // === PHASE 2: Binaries (complete set) ===
-    // 87+ BIN + 38+ SBIN + systemd + sudo + login
-    build::binaries::copy_shell(ctx)?;
-    build::binaries::copy_coreutils(ctx)?;
-    build::binaries::copy_sbin_utils(ctx)?;
-    build::binaries::copy_systemd_binaries(ctx)?;
-    build::binaries::copy_login_binaries(ctx)?;
-    build::binaries::copy_sudo_libs(ctx)?;
+    // Binaries (87+ BIN + 38+ SBIN + systemd + sudo + login)
+    build::binary_lists::copy_shell(ctx)?;
+    build::binary_lists::copy_coreutils(ctx)?;
+    build::binary_lists::copy_sbin_utils(ctx)?;
+    build::binary_lists::copy_systemd_binaries(ctx)?;
+    build::binary_lists::copy_login_binaries(ctx)?;
+    build::binary_lists::copy_sudo_libs(ctx)?;
 
-    // === PHASE 3: Systemd units (full targets) ===
+    Ok(())
+}
+
+/// Phase 3: Set up systemd units, getty, and udev.
+fn build_systemd_and_services(ctx: &BuildContext) -> Result<()> {
     build::systemd::copy_systemd_units(ctx)?;
     build::systemd::copy_dbus_symlinks(ctx)?;
     build::systemd::setup_getty(ctx)?;
     build::systemd::setup_autologin(&ctx.staging)?; // Like archiso - live ISO boots to root shell
     build::systemd::setup_serial_console(ctx)?;
     build::systemd::set_default_target(ctx)?; // multi-user.target
-    build::systemd::setup_dbus(ctx)?;
+    build::systemd::copy_dbus_configs(ctx)?;
     build::systemd::copy_udev_rules(ctx)?;
     build::systemd::copy_tmpfiles(ctx)?;
     build::systemd::copy_sysctl(ctx)?;
 
-    // === PHASE 4: Networking ===
-    // NetworkManager + wpa_supplicant + helpers + WiFi firmware
+    Ok(())
+}
+
+/// Phase 4-8: Set up networking, D-Bus, chrony, kernel modules, and PAM.
+fn build_network_and_auth(ctx: &BuildContext) -> Result<()> {
+    // Networking (NetworkManager + wpa_supplicant + helpers + WiFi firmware)
     build::network::setup_network(ctx)?;
 
-    // === PHASE 5: D-Bus ===
+    // D-Bus
     build::dbus::setup_dbus(ctx)?;
 
-    // === PHASE 6: Chrony NTP ===
+    // Chrony NTP
     build::users::ensure_chrony_user(ctx)?;
     build::chrony::setup_chrony(ctx)?;
 
-    // === PHASE 7: Kernel modules ===
-    // Copy all modules - daily driver needs hardware support
+    // Kernel modules (daily driver needs hardware support)
     let config = crate::config::Config::load(&ctx.base_dir);
     let module_list = config.all_modules();
     build::modules::setup_modules(ctx, &module_list)?;
 
-    // === PHASE 8: PAM (full authentication for installed system) ===
+    // PAM (full authentication for installed system)
     // Note: Live ISO uses autologin (like archiso), installed system uses PAM
     build::pam::setup_pam(ctx)?;
     build::pam::copy_pam_modules(ctx)?;
     build::pam::create_security_config(ctx)?;
 
-    // === PHASE 9: /etc configuration ===
+    Ok(())
+}
+
+/// Phase 9-12: Set up /etc, recipe, dracut, firmware, keymaps, and kernel.
+fn build_packages_and_firmware(ctx: &BuildContext) -> Result<()> {
+    // /etc configuration
     build::etc::create_etc_files(ctx)?;
     build::etc::copy_timezone_data(ctx)?;
     build::etc::copy_locales(ctx)?;
@@ -82,47 +106,49 @@ pub fn build_system(ctx: &BuildContext) -> Result<()> {
     // Disable SELinux - we don't ship policies
     disable_selinux(ctx)?;
 
-    // === PHASE 10: Recipe package manager ===
+    // Recipe package manager
     build::recipe::copy_recipe(ctx)?;
     build::recipe::setup_recipe_config(ctx)?;
 
-    // === PHASE 11: ALL firmware (daily driver needs everything) ===
+    // Dracut (initramfs generator for installation)
+    copy_dracut_modules(ctx)?;
+
+    // ALL firmware (daily driver needs everything)
     copy_all_firmware(ctx)?;
 
-    // === PHASE 11b: Keymaps (for loadkeys command) ===
+    // Keymaps (for loadkeys command)
     copy_keymaps(ctx)?;
 
-    // === PHASE 12: Kernel ===
-    // Copy kernel from output/staging/boot/vmlinuz if built, otherwise skip
-    // (ISO will use kernel separately)
+    // Kernel
     copy_kernel(ctx)?;
 
-    // === PHASE 13: Create /sbin/init symlink ===
+    Ok(())
+}
+
+/// Phase 13-17: Final setup (init symlink, root access, welcome, recstrap).
+fn build_final_setup(ctx: &BuildContext) -> Result<()> {
+    // Create /sbin/init symlink
     let init_link = ctx.staging.join("usr/sbin/init");
     if !init_link.exists() && !init_link.is_symlink() {
         std::os::unix::fs::symlink("/usr/lib/systemd/systemd", &init_link)?;
     }
-
     // Note: /sbin/init exists via merged /usr (/sbin -> /usr/sbin)
     // The symlink chain: /sbin/init -> /usr/sbin/init -> /usr/lib/systemd/systemd
-    // is already set up by create_symlinks
 
-    // === PHASE 14: Create root user (for live boot) ===
+    // Create root user (for live boot)
     // Note: etc files already set up root user in /etc/passwd
     // For live boot, we want passwordless root access
     setup_live_root_access(ctx)?;
 
-    // === PHASE 15: Create init script for live boot ===
     // Note: For squashfs, we use switch_root instead of rdinit
     // The tiny initramfs handles mounting squashfs, then switch_root to /sbin/init
 
-    // === PHASE 16: Create welcome message ===
+    // Create welcome message
     create_welcome_message(ctx)?;
 
-    // === PHASE 17: Copy recstrap installer ===
+    // Copy recstrap installer
     copy_recstrap(ctx)?;
 
-    println!("System build complete.");
     Ok(())
 }
 
@@ -139,6 +165,27 @@ fn copy_keymaps(ctx: &BuildContext) -> Result<()> {
         println!("  Copied keymaps for keyboard layout support");
     } else {
         println!("  Warning: Keymaps not found at {}", keymaps_src.display());
+    }
+
+    Ok(())
+}
+
+/// Copy dracut modules (required for initramfs generation during installation).
+fn copy_dracut_modules(ctx: &BuildContext) -> Result<()> {
+    println!("Copying dracut modules...");
+
+    let dracut_src = ctx.source.join("usr/lib/dracut");
+    let dracut_dst = ctx.staging.join("usr/lib/dracut");
+
+    if dracut_src.exists() {
+        fs::create_dir_all(dracut_dst.parent().unwrap())?;
+        let size = copy_dir_recursive(&dracut_src, &dracut_dst)?;
+        println!(
+            "  Copied dracut modules ({:.1} MB)",
+            size as f64 / 1_000_000.0
+        );
+    } else {
+        println!("  Warning: Dracut modules not found at {}", dracut_src.display());
     }
 
     Ok(())
@@ -173,19 +220,29 @@ fn copy_all_firmware(ctx: &BuildContext) -> Result<()> {
     Ok(())
 }
 
-/// Copy kernel if built.
+/// Copy kernel to squashfs (required for installation).
 fn copy_kernel(ctx: &BuildContext) -> Result<()> {
-    let kernel_src = ctx.base_dir.join("output/staging/boot/vmlinuz");
     let kernel_dst = ctx.staging.join("boot/vmlinuz");
 
-    if kernel_src.exists() {
-        fs::create_dir_all(ctx.staging.join("boot"))?;
-        fs::copy(&kernel_src, &kernel_dst)?;
-        println!("Copied kernel to squashfs");
+    // Check sources in order of preference
+    let levitate_kernel = ctx.base_dir.join("output/staging/boot/vmlinuz");
+    let rocky_kernel = ctx.base_dir.join("downloads/iso-contents/images/pxeboot/vmlinuz");
+
+    let kernel_src = if levitate_kernel.exists() {
+        println!("Using LevitateOS kernel");
+        levitate_kernel
+    } else if rocky_kernel.exists() {
+        println!("Using Rocky kernel (fallback)");
+        rocky_kernel
     } else {
-        println!("Note: Kernel not found at output/staging/boot/vmlinuz");
-        println!("  ISO will use kernel from separate location");
-    }
+        println!("Warning: No kernel found for squashfs");
+        println!("  Installation to disk will not have a kernel");
+        return Ok(());
+    };
+
+    fs::create_dir_all(ctx.staging.join("boot"))?;
+    fs::copy(&kernel_src, &kernel_dst)?;
+    println!("  Copied kernel to /boot/vmlinuz");
 
     Ok(())
 }
@@ -241,17 +298,38 @@ fn create_welcome_message(ctx: &BuildContext) -> Result<()> {
 
  Welcome to LevitateOS Live!
 
- To install to disk:
-   recstrap /dev/vda
+ Installation (manual, like Arch):
+
+   # 1. Partition disk
+   fdisk /dev/vda                   # Create GPT, EFI + root partitions
+
+   # 2. Format partitions
+   mkfs.fat -F32 /dev/vda1          # EFI partition
+   mkfs.ext4 /dev/vda2              # Root partition
+
+   # 3. Mount
+   mount /dev/vda2 /mnt
+   mkdir -p /mnt/boot
+   mount /dev/vda1 /mnt/boot
+
+   # 4. Extract system
+   recstrap /mnt
+
+   # 5. Generate fstab
+   genfstab -U /mnt >> /mnt/etc/fstab
+
+   # 6. Chroot and configure
+   arch-chroot /mnt
+   passwd                           # Set root password
+   bootctl install                  # Install bootloader
+   exit
+
+   # 7. Reboot
+   reboot
 
  For networking:
-   nmcli device status              # Show network devices
    nmcli device wifi list           # List WiFi networks
    nmcli device wifi connect SSID password PASSWORD
-
- Other commands:
-   lsblk                            # List block devices
-   recstrap --help                  # Installation options
 
 "#,
     )?;
@@ -289,37 +367,3 @@ fn copy_recstrap(ctx: &BuildContext) -> Result<()> {
     Ok(())
 }
 
-/// Copy directory recursively and return total size in bytes.
-fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<u64> {
-    let mut total_size: u64 = 0;
-
-    if !src.is_dir() {
-        return Ok(0);
-    }
-
-    fs::create_dir_all(dst)?;
-
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let path = entry.path();
-        let filename = path.file_name().unwrap();
-        let dest_path = dst.join(filename);
-
-        if path.is_dir() {
-            total_size += copy_dir_recursive(&path, &dest_path)?;
-        } else if path.is_symlink() {
-            // Preserve symlinks
-            let target = fs::read_link(&path)?;
-            if !dest_path.exists() && !dest_path.is_symlink() {
-                std::os::unix::fs::symlink(&target, &dest_path)?;
-            }
-        } else {
-            fs::copy(&path, &dest_path)?;
-            if let Ok(meta) = fs::metadata(&dest_path) {
-                total_size += meta.len();
-            }
-        }
-    }
-
-    Ok(total_size)
-}

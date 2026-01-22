@@ -5,7 +5,7 @@
 use anyhow::{Context, Result};
 use std::fs;
 
-use super::binary::make_executable;
+use super::libdeps::make_executable;
 use super::context::BuildContext;
 
 /// Copy recipe binary to the staging directory.

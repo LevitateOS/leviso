@@ -3,6 +3,7 @@ downloads/
 
 # Build output
 output/
+squashfs-root/
 
 # Local configuration (user-specific paths)
 .env

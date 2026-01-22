@@ -2,7 +2,7 @@
 //!
 //! Copies the recipe binary into the squashfs.
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use std::fs;
 
 use super::libdeps::make_executable;
@@ -36,13 +36,17 @@ pub fn copy_recipe(ctx: &BuildContext) -> Result<()> {
             match search_paths.iter().find(|p| p.exists()) {
                 Some(path) => path.clone(),
                 None => {
-                    println!("  Note: recipe binary not found in common locations:");
-                    for path in &search_paths {
-                        println!("    - {}", path.display());
-                    }
-                    println!("  Squashfs will not include the package manager.");
-                    println!("  To include it, build recipe first: cd recipe && cargo build --release");
-                    return Ok(());
+                    bail!(
+                        "recipe binary not found. LevitateOS REQUIRES the package manager.\n\
+                         \n\
+                         Searched:\n\
+                         {}\n\
+                         \n\
+                         Build recipe first: cd ../recipe && cargo build --release\n\
+                         \n\
+                         DO NOT remove this check. An ISO without recipe is BROKEN.",
+                        search_paths.iter().map(|p| format!("  - {}", p.display())).collect::<Vec<_>>().join("\n")
+                    );
                 }
             }
         }

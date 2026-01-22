@@ -63,6 +63,7 @@ fn build_systemd_and_services(ctx: &BuildContext) -> Result<()> {
     build::systemd::copy_udev_rules(ctx)?;
     build::systemd::copy_tmpfiles(ctx)?;
     build::systemd::copy_sysctl(ctx)?;
+    build::systemd::setup_live_systemd_configs(ctx)?;
 
     Ok(())
 }
@@ -78,6 +79,9 @@ fn build_network_and_auth(ctx: &BuildContext) -> Result<()> {
     // Chrony NTP
     build::users::ensure_chrony_user(ctx)?;
     build::chrony::setup_chrony(ctx)?;
+
+    // OpenSSH server (remote installation/rescue)
+    build::openssh::setup_openssh(ctx)?;
 
     // Kernel modules (daily driver needs hardware support)
     let config = crate::config::Config::load(&ctx.base_dir);
@@ -353,6 +357,63 @@ fn copy_all_firmware(ctx: &BuildContext) -> Result<()> {
         size as f64 / 1_000_000.0
     );
 
+    // Rocky/RHEL puts Intel microcode in /usr/share/microcode_ctl/, not /lib/firmware/
+    // Copy it to the standard location so early microcode loading works
+    let intel_ucode_dst = firmware_dst.join("intel-ucode");
+    let microcode_ctl_src = ctx.source.join("usr/share/microcode_ctl/ucode_with_caveats/intel/intel-ucode");
+    if microcode_ctl_src.exists() && microcode_ctl_src.is_dir() {
+        fs::create_dir_all(&intel_ucode_dst)?;
+        let intel_size = copy_dir_recursive(&microcode_ctl_src, &intel_ucode_dst)?;
+        println!(
+            "  Copied Intel microcode from microcode_ctl ({:.1} KB)",
+            intel_size as f64 / 1_000.0
+        );
+    }
+
+    // Validate microcode directories exist (P0 critical for CPU security)
+    // Per CLAUDE.md Rule 7: FAIL FAST - NO WARNINGS FOR REQUIRED COMPONENTS
+    // LevitateOS ISO must work on ANY x86-64 hardware - require BOTH
+    let amd_ucode = firmware_dst.join("amd-ucode");
+    let intel_ucode = firmware_dst.join("intel-ucode");
+
+    // AMD microcode (required)
+    if !amd_ucode.exists() {
+        bail!(
+            "AMD microcode not found at {}.\n\
+             LevitateOS ISO must work on ANY x86-64 hardware.\n\
+             AMD microcode comes from linux-firmware package.",
+            amd_ucode.display()
+        );
+    }
+    let amd_count = fs::read_dir(&amd_ucode)?.filter(|e| e.is_ok()).count();
+    if amd_count == 0 {
+        bail!(
+            "AMD microcode directory is empty at {}.\n\
+             The directory should contain microcode files from linux-firmware.",
+            amd_ucode.display()
+        );
+    }
+    println!("  AMD microcode: {} files", amd_count);
+
+    // Intel microcode (required)
+    if !intel_ucode.exists() {
+        bail!(
+            "Intel microcode not found at {}.\n\
+             LevitateOS ISO must work on ANY x86-64 hardware.\n\
+             Intel microcode comes from microcode_ctl RPM.",
+            intel_ucode.display()
+        );
+    }
+    let intel_count = fs::read_dir(&intel_ucode)?.filter(|e| e.is_ok()).count();
+    if intel_count == 0 {
+        bail!(
+            "Intel microcode directory is empty at {}.\n\
+             The directory should contain microcode files from microcode_ctl.",
+            intel_ucode.display()
+        );
+    }
+    println!("  Intel microcode: {} files", intel_count);
+
     Ok(())
 }
 
@@ -405,10 +466,10 @@ fn create_welcome_message(ctx: &BuildContext) -> Result<()> {
    recstrap /mnt
 
    # 5. Generate fstab
-   genfstab -U /mnt >> /mnt/etc/fstab
+   recfstab -U /mnt >> /mnt/etc/fstab
 
    # 6. Chroot and configure
-   arch-chroot /mnt
+   recchroot /mnt
    passwd                           # Set root password
    bootctl install                  # Install bootloader
    exit

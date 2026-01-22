@@ -74,6 +74,9 @@ pub fn create_squashfs_iso(base_dir: &Path) -> Result<()> {
     // Stage 6: Create the ISO
     run_xorriso(&paths)?;
 
+    // Stage 7: Generate checksum for download verification
+    generate_iso_checksum(&paths.iso_output)?;
+
     print_iso_summary(&paths.iso_output);
     Ok(())
 }
@@ -99,25 +102,17 @@ fn validate_iso_inputs(paths: &IsoPaths) -> Result<()> {
     Ok(())
 }
 
-/// Find the kernel to use (LevitateOS or Rocky fallback).
+/// Find the LevitateOS kernel. No fallbacks - fail fast if not built.
 fn find_kernel(paths: &IsoPaths) -> Result<PathBuf> {
-    let levitate_kernel = paths.output_dir.join("staging/boot/vmlinuz");
-    if levitate_kernel.exists() {
-        println!("Using LevitateOS kernel: {}", levitate_kernel.display());
-        return Ok(levitate_kernel);
+    let kernel = paths.output_dir.join("staging/boot/vmlinuz");
+    if !kernel.exists() {
+        bail!(
+            "LevitateOS kernel not found at: {}\n\
+             Run 'leviso build kernel' first.",
+            kernel.display()
+        );
     }
-
-    let rocky_kernel = paths.iso_contents.join("images/pxeboot/vmlinuz");
-    if rocky_kernel.exists() {
-        println!("Using Rocky kernel (fallback): {}", rocky_kernel.display());
-        return Ok(rocky_kernel);
-    }
-
-    bail!(
-        "No kernel found.\n\
-         Build LevitateOS kernel: leviso build kernel\n\
-         Or extract Rocky ISO: leviso extract rocky"
-    );
+    Ok(kernel)
 }
 
 /// Stage 3: Create ISO directory structure.
@@ -255,6 +250,60 @@ fn run_xorriso(paths: &IsoPaths) -> Result<()> {
     if !status.success() {
         bail!("xorriso failed");
     }
+
+    Ok(())
+}
+
+/// Stage 7: Generate SHA512 checksum for download verification.
+///
+/// Writes checksum in standard format: "<hash>  <filename>" (two spaces)
+/// Uses just the filename (not full path) so users can verify with:
+///   cd output && sha512sum -c levitateos.iso.sha512
+fn generate_iso_checksum(iso_path: &Path) -> Result<()> {
+    println!("Generating SHA512 checksum...");
+
+    let output = Command::new("sha512sum")
+        .arg(iso_path)
+        .output()
+        .context(
+            "Failed to run sha512sum. Install coreutils:\n\
+             - Fedora: sudo dnf install coreutils\n\
+             - Ubuntu: sudo apt install coreutils"
+        )?;
+
+    if !output.status.success() {
+        bail!("sha512sum failed");
+    }
+
+    // Extract hash and replace full path with just filename
+    // sha512sum outputs: "<hash>  <full_path>"
+    // We want: "<hash>  <filename>"
+    let raw_output = String::from_utf8_lossy(&output.stdout);
+    let hash = raw_output
+        .split_whitespace()
+        .next()
+        .context("Could not parse sha512sum output - no hash found")?;
+
+    let filename = iso_path
+        .file_name()
+        .context("Could not get ISO filename")?
+        .to_string_lossy();
+
+    // Standard format: "<hash>  <filename>" (two spaces between hash and filename)
+    let checksum_content = format!("{}  {}\n", hash, filename);
+
+    let checksum_path = iso_path.with_extension("iso.sha512");
+    fs::write(&checksum_path, &checksum_content)?;
+
+    // Print abbreviated hash for visual confirmation
+    if hash.len() >= 16 {
+        println!(
+            "  SHA512: {}...{}",
+            &hash[..8],
+            &hash[hash.len() - 8..]
+        );
+    }
+    println!("  Wrote: {}", checksum_path.display());
 
     Ok(())
 }

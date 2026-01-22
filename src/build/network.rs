@@ -10,10 +10,13 @@ use super::libdeps::{
     copy_binary_with_libs, copy_dir_tree, copy_file, copy_sbin_binary_with_libs, copy_systemd_units,
 };
 
-const NM_BINARIES: &[&str] = &["nmcli", "nmtui", "nm-online"];
+// Required: nmcli is the primary CLI, nm-online for scripts
+const NM_REQUIRED: &[&str] = &["nmcli", "nm-online"];
+// Optional: nmtui is TUI convenience (not in Rocky minimal)
+const NM_OPTIONAL: &[&str] = &["nmtui"];
 const NM_SBIN: &[&str] = &["NetworkManager"];
-const WPA_SBIN: &[&str] = &["wpa_supplicant"];
-const WPA_BIN: &[&str] = &["wpa_cli", "wpa_passphrase"];
+// All wpa tools are in /usr/sbin on Rocky
+const WPA_SBIN: &[&str] = &["wpa_supplicant", "wpa_cli", "wpa_passphrase"];
 
 const NM_UNITS: &[&str] = &["NetworkManager.service", "NetworkManager-dispatcher.service"];
 const WPA_UNITS: &[&str] = &["wpa_supplicant.service"];
@@ -32,21 +35,20 @@ pub fn setup_network(ctx: &BuildContext) -> Result<()> {
             bail!("{} not found - NetworkManager is required", bin);
         }
     }
-    for bin in NM_BINARIES {
+    for bin in NM_REQUIRED {
         if !copy_binary_with_libs(ctx, bin, "usr/bin")? {
-            bail!("{} not found - users need nmcli/nmtui to configure networking", bin);
+            bail!("{} not found - required for network configuration", bin);
         }
+    }
+    for bin in NM_OPTIONAL {
+        // Best effort - nmtui not in Rocky minimal
+        let _ = copy_binary_with_libs(ctx, bin, "usr/bin");
     }
 
     // wpa_supplicant (required for WiFi)
     for bin in WPA_SBIN {
         if !copy_sbin_binary_with_libs(ctx, bin)? {
             bail!("{} not found - wpa_supplicant is required for WiFi", bin);
-        }
-    }
-    for bin in WPA_BIN {
-        if !copy_binary_with_libs(ctx, bin, "usr/bin")? {
-            bail!("{} not found - required for WiFi configuration", bin);
         }
     }
 
@@ -67,14 +69,13 @@ pub fn setup_network(ctx: &BuildContext) -> Result<()> {
     )?;
 
     // D-Bus policies (required - NM won't start without them)
+    // NetworkManager policy is in /usr/share, wpa_supplicant is in /etc
     if !copy_file(ctx, "usr/share/dbus-1/system.d/org.freedesktop.NetworkManager.conf")? {
         bail!("NetworkManager D-Bus policy not found - networking will fail");
     }
-    if !copy_file(ctx, "usr/share/dbus-1/system.d/wpa_supplicant.conf")? {
+    if !copy_file(ctx, "etc/dbus-1/system.d/wpa_supplicant.conf")? {
         bail!("wpa_supplicant D-Bus policy not found - WiFi will fail");
     }
-    // fi.w1 is the newer interface name, try to copy but don't fail
-    let _ = copy_file(ctx, "usr/share/dbus-1/system.d/fi.w1.wpa_supplicant1.conf");
 
     // Systemd units
     copy_systemd_units(ctx, NM_UNITS)?;

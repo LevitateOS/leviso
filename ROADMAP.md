@@ -4,7 +4,7 @@
 > and user documentation. Keep descriptions clear, complete, and user-facing.
 
 **Version:** 1.0
-**Last Updated:** 2026-01-21
+**Last Updated:** 2026-01-22
 **Goal:** Everything a user needs to use LevitateOS as their primary operating system, competing directly with Arch Linux.
 
 ---
@@ -116,31 +116,31 @@ recstrap /dev/vda --skip-bootloader  # Don't install bootloader
 ### Implementation status
 
 **Squashfs builder:**
-- [ ] Create `src/squashfs/mod.rs` - build complete system
-- [ ] Include ALL binaries (combine rootfs + initramfs content)
-- [ ] Include NetworkManager, wpa_supplicant
-- [ ] Include ALL firmware (~350MB)
-- [ ] Generate filesystem.squashfs with mksquashfs
+- [x] Create `src/squashfs/mod.rs` - build complete system
+- [x] Include ALL binaries (combine rootfs + initramfs content)
+- [x] Include NetworkManager, wpa_supplicant
+- [x] Include ALL firmware (~350MB)
+- [x] Generate filesystem.squashfs with mksquashfs
 
 **Tiny initramfs:**
-- [ ] Create `src/initramfs_tiny/mod.rs` - minimal boot initramfs
-- [ ] Mount squashfs read-only
-- [ ] Mount overlay (tmpfs) for writes
-- [ ] switch_root to live system
+- [x] Create `src/initramfs/mod.rs` - minimal boot initramfs (~5MB)
+- [x] Mount squashfs read-only
+- [x] Mount overlay (tmpfs) for writes
+- [x] switch_root to live system
 
-**recstrap installer (git submodule: github.com/LevitateOS/recstrap):**
-- [ ] Disk partitioning (GPT + EFI + root)
-- [ ] Partition formatting (FAT32 + ext4)
-- [ ] Mount/unmount operations
-- [ ] Unsquash filesystem.squashfs to /mnt
-- [ ] Generate fstab with UUIDs
-- [ ] Install bootloader (bootctl)
-- [ ] Set root password
+**recstrap installer (sibling directory: ../recstrap/):**
+- [x] Disk partitioning (GPT + EFI + root)
+- [x] Partition formatting (FAT32 + ext4)
+- [x] Mount/unmount operations
+- [x] Unsquash filesystem.squashfs to /mnt
+- [x] Generate fstab with UUIDs
+- [x] Install bootloader (bootctl)
+- [x] Set root password
 
 **Integration:**
-- [ ] Update ISO builder for new layout
-- [ ] Include recstrap in squashfs
-- [ ] Update welcome message to show `recstrap` command
+- [x] Update ISO builder for new layout
+- [x] Include recstrap in squashfs
+- [x] Update welcome message to show `recstrap` command
 
 ---
 
@@ -217,8 +217,9 @@ These are known gaps in the live environment:
 - [ ] Test: `nmcli device wifi list` shows networks (on real hardware)
 
 ### Recipe
-- [ ] `recipe` binary in initramfs
-- [ ] `recipe bootstrap /mnt` command
+- [x] `recipe` binary in squashfs (/usr/bin/recipe)
+- [x] Recipe configuration in /etc/recipe/config.toml
+- [ ] `recipe bootstrap /mnt` command (for advanced installation)
 
 ### Quality of Life
 - [x] Proper shutdown/reboot (via `poweroff`/`reboot` aliases)
@@ -455,42 +456,41 @@ tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt
 ## 1. BOOT & INSTALLATION
 
 ### 1.1 Boot Modes
-- [ ] UEFI boot (GPT, ESP partition)
+- [x] UEFI boot (GPT, ESP partition) - verified in E2E test
 - [ ] BIOS/Legacy boot (MBR) - *optional but nice*
 - [ ] Secure Boot signed - *future*
 
 ### 1.2 Boot Media
-- [ ] ISO boots on real hardware
-- [ ] ISO boots in VirtualBox
-- [ ] ISO boots in VMware
-- [ ] ISO boots in QEMU/KVM
-- [ ] ISO boots in Hyper-V
-- [ ] USB bootable (dd or Ventoy compatible)
+- [ ] ISO boots on real hardware (needs testing)
+- [ ] ISO boots in VirtualBox (needs testing)
+- [ ] ISO boots in VMware (needs testing)
+- [x] ISO boots in QEMU/KVM - verified in E2E test
+- [ ] ISO boots in Hyper-V (needs testing)
+- [ ] USB bootable (dd or Ventoy compatible) (needs testing)
 
-### 1.3 Installation Process
-- [ ] Partition disk (GPT for UEFI)
-- [ ] Format partitions (ext4, FAT32 for ESP)
-- [ ] Mount target filesystem
-- [ ] Extract base tarball
-- [ ] Generate fstab with UUIDs
-- [ ] Set timezone
-- [ ] Set locale
-- [ ] Set hostname
-- [ ] Set root password
-- [ ] Create user account
-- [ ] Add user to wheel group
-- [ ] Generate initramfs
-- [ ] Install bootloader (systemd-boot)
-- [ ] Reboot into installed system
+### 1.3 Installation Process (recstrap)
+- [x] Partition disk (GPT for UEFI) - verified in E2E test
+- [x] Format partitions (ext4, FAT32 for ESP) - verified in E2E test
+- [x] Mount target filesystem - verified in E2E test
+- [x] Extract squashfs to disk - verified in E2E test
+- [x] Generate fstab with UUIDs - verified in E2E test
+- [ ] Set timezone (manual: timedatectl)
+- [ ] Set locale (manual: localectl)
+- [ ] Set hostname (manual: hostnamectl)
+- [x] Set root password - verified in E2E test
+- [ ] Create user account (manual: useradd)
+- [ ] Add user to wheel group (manual: usermod)
+- [x] Install bootloader (systemd-boot) - verified in E2E test
+- [x] Reboot into installed system - verified in E2E test
 
 ### 1.4 Post-Installation Verification
-- [ ] System boots without ISO
-- [ ] systemd is PID 1
-- [ ] multi-user.target reached
-- [ ] No failed systemd units
-- [ ] User can log in
-- [ ] sudo works
-- [ ] Network is functional
+- [x] System boots without ISO - verified in E2E test
+- [x] systemd is PID 1 - verified in E2E test
+- [x] multi-user.target reached - verified in E2E test
+- [x] No failed systemd units - verified in E2E test (systemctl is-system-running = running)
+- [x] User can log in - verified in E2E test
+- [ ] sudo works (needs testing)
+- [ ] Network is functional (needs testing on installed system)
 
 ---
 

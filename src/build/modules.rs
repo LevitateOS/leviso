@@ -1,6 +1,6 @@
 //! Kernel module setup.
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use std::fs;
 use std::path::Path;
 
@@ -33,7 +33,9 @@ pub fn setup_modules(ctx: &BuildContext, modules: &[&str]) -> Result<()> {
     let dst_modules = ctx.staging.join("lib/modules").join(&kernel_version);
     fs::create_dir_all(&dst_modules)?;
 
-    // Copy specified modules
+    // Copy specified modules - ALL specified modules are REQUIRED
+    // If a module is in the list, it's because it's needed. Missing = fail.
+    let mut missing = Vec::new();
     for module in modules {
         let src = src_modules.join(module);
         if src.exists() {
@@ -44,8 +46,26 @@ pub fn setup_modules(ctx: &BuildContext, modules: &[&str]) -> Result<()> {
             fs::copy(&src, &dst)?;
             println!("  Copied {}", module_name.to_string_lossy());
         } else {
-            println!("  Warning: {} not found", module);
+            missing.push(*module);
         }
+    }
+
+    // FAIL FAST if any specified module is missing
+    // If a module is in the config, it's REQUIRED. No "optional" modules here.
+    if !missing.is_empty() {
+        bail!(
+            "Required kernel modules not found: {:?}\n\
+             \n\
+             These modules were specified in the configuration.\n\
+             If a module is in the config, it's REQUIRED for hardware support.\n\
+             \n\
+             Either:\n\
+             1. Remove the module from config if it's truly optional\n\
+             2. Fix the rootfs to include the module\n\
+             \n\
+             DO NOT change this to a warning. FAIL FAST.",
+            missing
+        );
     }
 
     // Copy module metadata files
@@ -57,7 +77,8 @@ pub fn setup_modules(ctx: &BuildContext, modules: &[&str]) -> Result<()> {
         }
     }
 
-    // Run depmod
+    // Run depmod - REQUIRED for modprobe to work
+    // Without depmod, modprobe cannot resolve module dependencies.
     println!("  Running depmod...");
     let depmod_status = std::process::Command::new("depmod")
         .args([
@@ -70,8 +91,30 @@ pub fn setup_modules(ctx: &BuildContext, modules: &[&str]) -> Result<()> {
 
     match depmod_status {
         Ok(status) if status.success() => println!("  depmod completed successfully"),
-        Ok(status) => println!("  Warning: depmod exited with status {}", status),
-        Err(e) => println!("  Warning: Could not run depmod: {}", e),
+        Ok(status) => {
+            // FAIL FAST - depmod failure means modprobe won't work
+            bail!(
+                "depmod failed with exit code {}.\n\
+                 \n\
+                 depmod generates module dependency information.\n\
+                 Without it, modprobe cannot load modules.\n\
+                 \n\
+                 DO NOT change this to a warning. FAIL FAST.",
+                status
+            );
+        }
+        Err(e) => {
+            // FAIL FAST - depmod not found means the build environment is broken
+            bail!(
+                "Could not run depmod: {}\n\
+                 \n\
+                 depmod is REQUIRED to generate module dependencies.\n\
+                 Install it: sudo dnf install kmod\n\
+                 \n\
+                 DO NOT change this to a warning. FAIL FAST.",
+                e
+            );
+        }
     }
 
     Ok(())

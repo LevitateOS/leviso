@@ -13,7 +13,7 @@
 //!
 //! DESIGN: Live = Installed (same content, zero duplication)
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use std::fs;
 
 use crate::build::{self, BuildContext};
@@ -164,7 +164,18 @@ fn copy_keymaps(ctx: &BuildContext) -> Result<()> {
         copy_dir_recursive(&keymaps_src, &keymaps_dst)?;
         println!("  Copied keymaps for keyboard layout support");
     } else {
-        println!("  Warning: Keymaps not found at {}", keymaps_src.display());
+        // FAIL FAST - keymaps are REQUIRED for loadkeys (keyboard layout)
+        // Without keymaps, users cannot change keyboard layout.
+        // DO NOT change this to a warning.
+        bail!(
+            "Keymaps not found at {}.\n\
+             \n\
+             Keymaps are REQUIRED for keyboard layout support (loadkeys).\n\
+             Users cannot change keyboard layout without them.\n\
+             \n\
+             DO NOT change this to a warning. FAIL FAST.",
+            keymaps_src.display()
+        );
     }
 
     Ok(())
@@ -185,7 +196,18 @@ fn copy_dracut_modules(ctx: &BuildContext) -> Result<()> {
             size as f64 / 1_000_000.0
         );
     } else {
-        println!("  Warning: Dracut modules not found at {}", dracut_src.display());
+        // FAIL FAST - dracut is REQUIRED for initramfs generation during installation
+        // Without dracut, users cannot install LevitateOS to disk.
+        // DO NOT change this to a warning.
+        bail!(
+            "Dracut modules not found at {}.\n\
+             \n\
+             Dracut is REQUIRED - it generates the initramfs during installation.\n\
+             Without it, users cannot install LevitateOS to disk.\n\
+             \n\
+             DO NOT change this to a warning. FAIL FAST.",
+            dracut_src.display()
+        );
     }
 
     Ok(())
@@ -205,8 +227,24 @@ fn copy_all_firmware(ctx: &BuildContext) -> Result<()> {
     } else if alt_src.exists() {
         &alt_src
     } else {
-        println!("  Warning: No firmware directory found");
-        return Ok(());
+        // FAIL FAST - firmware is REQUIRED for hardware support
+        // Without firmware, WiFi, Bluetooth, GPU, and other hardware won't work.
+        // LevitateOS is a DAILY DRIVER - it MUST support real hardware.
+        // DO NOT change this to a warning.
+        bail!(
+            "No firmware directory found.\n\
+             \n\
+             Checked:\n\
+             - {}\n\
+             - {}\n\
+             \n\
+             Firmware is REQUIRED - LevitateOS is a daily driver for real hardware.\n\
+             Without firmware, WiFi, Bluetooth, GPU, and other devices won't work.\n\
+             \n\
+             DO NOT change this to a warning. FAIL FAST.",
+            firmware_src.display(),
+            alt_src.display()
+        );
     };
 
     fs::create_dir_all(&firmware_dst)?;
@@ -228,6 +266,7 @@ fn copy_kernel(ctx: &BuildContext) -> Result<()> {
     let levitate_kernel = ctx.base_dir.join("output/staging/boot/vmlinuz");
     let rocky_kernel = ctx.base_dir.join("downloads/iso-contents/images/pxeboot/vmlinuz");
 
+    // FAIL FAST - kernel is REQUIRED. No warning. No "return Ok()". FAIL.
     let kernel_src = if levitate_kernel.exists() {
         println!("Using LevitateOS kernel");
         levitate_kernel
@@ -235,9 +274,18 @@ fn copy_kernel(ctx: &BuildContext) -> Result<()> {
         println!("Using Rocky kernel (fallback)");
         rocky_kernel
     } else {
-        println!("Warning: No kernel found for squashfs");
-        println!("  Installation to disk will not have a kernel");
-        return Ok(());
+        bail!(
+            "No kernel found for squashfs.\n\
+             \n\
+             Checked:\n\
+             - {}\n\
+             - {}\n\
+             \n\
+             The kernel is REQUIRED. The ISO cannot boot without it.\n\
+             DO NOT change this to a warning. FAIL FAST.",
+            levitate_kernel.display(),
+            rocky_kernel.display()
+        );
     };
 
     fs::create_dir_all(ctx.staging.join("boot"))?;
@@ -359,7 +407,6 @@ LevitateOS Live - \l
 /// DO NOT change this to a warning. DO NOT make it optional.
 /// If you think it should be optional, you are WRONG.
 fn copy_recstrap(ctx: &BuildContext) -> Result<()> {
-    use anyhow::bail;
     use std::os::unix::fs::PermissionsExt;
 
     let recstrap_src = ctx.base_dir.join("../recstrap/target/release/recstrap");

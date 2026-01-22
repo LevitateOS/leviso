@@ -40,6 +40,8 @@ pub fn copy_library(ctx: &BuildContext, lib_name: &str) -> Result<()> {
 /// Returns Ok(false) if binary not found, Ok(true) if copied successfully.
 pub fn copy_binary_with_libs(ctx: &BuildContext, binary: &str, dest_dir: &str) -> Result<bool> {
     // Try rootfs first, then RPM extraction
+    // NOTE: This function returns Ok(false) when binary not found.
+    // The CALLER decides if missing binary is an error. No warnings here.
     let bin_path = match find_binary(&ctx.source, binary) {
         Some(p) => p,
         None => match extract_binary_from_rpm(ctx, binary) {
@@ -48,7 +50,7 @@ pub fn copy_binary_with_libs(ctx: &BuildContext, binary: &str, dest_dir: &str) -
                 p
             }
             None => {
-                println!("  Warning: {} not found", binary);
+                // Don't warn - caller decides if this is an error
                 return Ok(false);
             }
         },
@@ -73,6 +75,7 @@ pub fn copy_binary_with_libs(ctx: &BuildContext, binary: &str, dest_dir: &str) -
 }
 
 /// Copy a sbin binary and its library dependencies.
+/// NOTE: Returns Ok(false) when binary not found - caller decides if that's an error.
 pub fn copy_sbin_binary_with_libs(ctx: &BuildContext, binary: &str) -> Result<bool> {
     let bin_path = match find_sbin_binary(&ctx.source, binary) {
         Some(p) => p,
@@ -82,7 +85,7 @@ pub fn copy_sbin_binary_with_libs(ctx: &BuildContext, binary: &str) -> Result<bo
                 p
             }
             None => {
-                println!("  Warning: {} not found", binary);
+                // Don't warn - caller decides if this is an error
                 return Ok(false);
             }
         },

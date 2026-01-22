@@ -1,6 +1,6 @@
 //! Network stack setup (NetworkManager, wpa_supplicant, WiFi firmware).
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 
@@ -105,24 +105,43 @@ fn copy_network_binaries(ctx: &BuildContext) -> Result<()> {
 
         let libs = get_all_dependencies(&ctx.source, &src, &[])?;
         for lib_name in &libs {
-            if let Err(e) = copy_library(ctx, lib_name) {
-                println!("    Warning: Failed to copy library {}: {}", lib_name, e);
-            }
+            // Library dependencies are REQUIRED - if the binary needs it, we need it
+            copy_library(ctx, lib_name)?;
         }
         Ok(true)
     };
 
+    // NetworkManager and nmcli are REQUIRED for a daily driver OS
+    // Users MUST be able to connect to networks
     for (binary, src_dir) in NETWORKMANAGER_BINARIES {
         if !copy_binary(binary, src_dir)?
             && (*binary == "NetworkManager" || *binary == "nmcli")
         {
-            println!("  Warning: Required binary {} not found", binary);
+            // FAIL FAST - these are REQUIRED
+            bail!(
+                "Required networking binary {} not found.\n\
+                 \n\
+                 NetworkManager and nmcli are REQUIRED for network connectivity.\n\
+                 LevitateOS is a daily driver - users MUST be able to connect to networks.\n\
+                 \n\
+                 DO NOT change this to a warning. FAIL FAST.",
+                binary
+            );
         }
     }
 
+    // wpa_supplicant is REQUIRED for WiFi
     for (binary, src_dir) in WPA_BINARIES {
         if !copy_binary(binary, src_dir)? && *binary == "wpa_supplicant" {
-            println!("  Warning: wpa_supplicant not found");
+            // FAIL FAST - wpa_supplicant is REQUIRED for WiFi
+            bail!(
+                "wpa_supplicant not found.\n\
+                 \n\
+                 wpa_supplicant is REQUIRED for WiFi connectivity.\n\
+                 LevitateOS is a daily driver - users need WiFi.\n\
+                 \n\
+                 DO NOT change this to a warning. FAIL FAST."
+            );
         }
     }
 
@@ -202,8 +221,16 @@ fn copy_networkmanager_plugins(ctx: &BuildContext) -> Result<()> {
     let plugin_dst = ctx.staging.join("usr/lib64/NetworkManager");
 
     if !plugin_src.is_dir() {
-        println!("  Warning: NetworkManager plugins directory not found");
-        return Ok(());
+        // FAIL FAST - plugins are REQUIRED for NetworkManager to work
+        bail!(
+            "NetworkManager plugins directory not found at {}.\n\
+             \n\
+             NetworkManager plugins are REQUIRED for network connectivity.\n\
+             Without plugins, NetworkManager cannot manage network connections.\n\
+             \n\
+             DO NOT change this to a warning. FAIL FAST.",
+            plugin_src.display()
+        );
     }
 
     let mut count = 0;
@@ -307,8 +334,21 @@ fn copy_wifi_firmware(ctx: &BuildContext) -> Result<()> {
     } else if alt_firmware_src.is_dir() {
         &alt_firmware_src
     } else {
-        println!("  Warning: No firmware directory found");
-        return Ok(());
+        // FAIL FAST - firmware is REQUIRED for WiFi hardware
+        bail!(
+            "No firmware directory found.\n\
+             \n\
+             Checked:\n\
+             - {}\n\
+             - {}\n\
+             \n\
+             WiFi firmware is REQUIRED - without it, WiFi won't work.\n\
+             LevitateOS is a daily driver for real hardware.\n\
+             \n\
+             DO NOT change this to a warning. FAIL FAST.",
+            firmware_src.display(),
+            alt_firmware_src.display()
+        );
     };
 
     fs::create_dir_all(&firmware_dst)?;

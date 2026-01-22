@@ -194,8 +194,20 @@ fn copy_cdrom_modules(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
     // Find the kernel modules directory
     let modules_dir = rootfs.join("usr/lib/modules");
     if !modules_dir.exists() {
-        println!("  Warning: No kernel modules found, CDROM support may not work");
-        return Ok(());
+        // FAIL FAST - CDROM modules are REQUIRED for ISO boot on the Rocky kernel.
+        // The Rocky kernel has CDROM support as modules (sr_mod, cdrom, isofs).
+        // Without these, the initramfs cannot mount the ISO.
+        // DO NOT change this to a warning.
+        bail!(
+            "No kernel modules found at {}.\n\
+             \n\
+             CDROM kernel modules (sr_mod, cdrom, isofs) are REQUIRED.\n\
+             The Rocky kernel has CDROM support as modules, not built-in.\n\
+             Without them, the ISO cannot boot.\n\
+             \n\
+             DO NOT change this to a warning. FAIL FAST.",
+            modules_dir.display()
+        );
     }
 
     // Find the kernel version directory (e.g., 6.12.0-124.8.1.el10_1.x86_64)
@@ -205,16 +217,27 @@ fn copy_cdrom_modules(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
         .map(|e| e.file_name().to_string_lossy().to_string());
 
     let Some(kver) = kernel_version else {
-        println!("  Warning: No kernel version directory found");
-        return Ok(());
+        // FAIL FAST - we found the modules directory but no kernel version inside.
+        // This is a corrupted or incomplete rootfs extraction.
+        // DO NOT change this to a warning.
+        bail!(
+            "No kernel version directory found in {}.\n\
+             \n\
+             The modules directory exists but contains no kernel version.\n\
+             This indicates a corrupted or incomplete rootfs extraction.\n\
+             \n\
+             DO NOT change this to a warning. FAIL FAST.",
+            modules_dir.display()
+        );
     };
 
     let kmod_src = modules_dir.join(&kver);
     let kmod_dst = initramfs_root.join("lib/modules").join(&kver);
     fs::create_dir_all(&kmod_dst)?;
 
-    // Copy each CDROM module
+    // Copy each CDROM module - ALL are required
     let mut copied = 0;
+    let mut missing = Vec::new();
     for module in CDROM_MODULES {
         let src = kmod_src.join(module);
         if src.exists() {
@@ -223,8 +246,25 @@ fn copy_cdrom_modules(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
             fs::copy(&src, &dst)?;
             copied += 1;
         } else {
-            println!("  Warning: Module not found: {}", module);
+            missing.push(*module);
         }
+    }
+
+    // FAIL FAST if any module is missing - ALL are required for CDROM boot
+    if !missing.is_empty() {
+        bail!(
+            "CDROM modules missing: {:?}\n\
+             \n\
+             These kernel modules are REQUIRED for the ISO to boot:\n\
+             - cdrom.ko.xz (CDROM driver)\n\
+             - sr_mod.ko.xz (SCSI CDROM driver)\n\
+             - isofs.ko.xz (ISO 9660 filesystem)\n\
+             \n\
+             Without ALL of these, QEMU and real hardware cannot mount the ISO.\n\
+             \n\
+             DO NOT change this to a warning. FAIL FAST.",
+            missing
+        );
     }
 
     println!("  Copied {}/{} CDROM modules", copied, CDROM_MODULES.len());

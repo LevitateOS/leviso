@@ -139,7 +139,19 @@ pub fn extract_rocky(base_dir: &Path) -> Result<()> {
             .context("Failed to fix permissions")?;
 
         if !chmod_status.success() {
-            println!("Warning: Could not fix all permissions (may need sudo for some files)");
+            // FAIL FAST - if we can't fix permissions, the build will fail later
+            // Better to fail now with a clear message
+            bail!(
+                "Could not fix permissions on extracted rootfs.\n\
+                 \n\
+                 The rootfs contains files owned by root that prevent writing.\n\
+                 Without write access, we cannot merge supplementary RPMs.\n\
+                 \n\
+                 Run with sudo, or run 'sudo chown -R $USER {}' first.\n\
+                 \n\
+                 DO NOT change this to a warning. FAIL FAST.",
+                rootfs_dir.display()
+            );
         }
     } else {
         println!("Rootfs already extracted to {}", rootfs_dir.display());
@@ -198,13 +210,33 @@ fn extract_supplementary_rpms(iso_contents: &Path, rootfs_dir: &Path) -> Result<
                 .context("Failed to extract RPM")?;
 
             if !output.status.success() {
-                println!("Warning: Failed to extract {}: {}",
+                // FAIL FAST - RPM extraction failure means missing utilities
+                // These RPMs are in the SUPPLEMENTARY_RPMS list because they're REQUIRED
+                bail!(
+                    "Failed to extract RPM {}:\n{}\n\
+                     \n\
+                     This RPM is in SUPPLEMENTARY_RPMS because it's REQUIRED.\n\
+                     The build cannot continue without it.\n\
+                     \n\
+                     DO NOT change this to a warning. FAIL FAST.",
                     rpm.display(),
                     String::from_utf8_lossy(&output.stderr)
                 );
             }
         } else {
-            println!("Warning: RPM not found for prefix: {}", rpm_prefix);
+            // FAIL FAST - if an RPM is in SUPPLEMENTARY_RPMS, it's REQUIRED
+            // Don't silently continue with missing packages
+            bail!(
+                "Required RPM not found for prefix: {}\n\
+                 \n\
+                 This RPM is in SUPPLEMENTARY_RPMS because it provides essential utilities.\n\
+                 Without it, users will get 'command not found' errors.\n\
+                 \n\
+                 Check that the ISO has both BaseOS/Packages and AppStream/Packages.\n\
+                 \n\
+                 DO NOT change this to a warning. FAIL FAST.",
+                rpm_prefix
+            );
         }
     }
 

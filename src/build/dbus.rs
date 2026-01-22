@@ -87,11 +87,10 @@ fn copy_dbus_binaries(ctx: &BuildContext) -> Result<()> {
             println!("  Copied {}", binary);
 
             // Get library dependencies using readelf (cross-compilation safe)
+            // Library dependencies are REQUIRED - if the binary needs it, we need it
             let libs = get_all_dependencies(&ctx.source, &src, &[])?;
             for lib_name in &libs {
-                if let Err(e) = copy_library(ctx, lib_name) {
-                    println!("  Warning: Failed to copy library {}: {}", lib_name, e);
-                }
+                copy_library(ctx, lib_name)?;
             }
         }
     }

@@ -5,38 +5,25 @@
 //! - Tiny initramfs (mounts squashfs, ~5MB)
 //! - Bootable ISO
 
+mod artifact;
 mod build;
+mod cache;
 mod clean;
-mod common;
+mod commands;
 mod component;
 mod config;
-mod deps;
 mod extract;
-mod initramfs;
-mod iso;
 mod preflight;
 mod process;
 mod qemu;
-mod squashfs;
+mod rebuild;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use config::Config;
-use deps::DependencyResolver;
-
-/// Check if source file is newer than target (or target doesn't exist).
-fn needs_rebuild(source: &Path, target: &Path) -> bool {
-    if !target.exists() {
-        return true;
-    }
-    let Ok(src_meta) = source.metadata() else { return true };
-    let Ok(tgt_meta) = target.metadata() else { return true };
-    let Ok(src_time) = src_meta.modified() else { return true };
-    let Ok(tgt_time) = tgt_meta.modified() else { return true };
-    src_time > tgt_time
-}
+use leviso_deps::DependencyResolver;
 
 #[derive(Parser)]
 #[command(name = "leviso")]
@@ -167,288 +154,71 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let base_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let resolver = DependencyResolver::new(&base_dir)?;
-    let config = Config::load();  // .env loaded by resolver
+    let config = Config::load(); // .env loaded by resolver
 
     match cli.command {
-        // ===== BUILD =====
         Commands::Build { target } => {
-            match target {
-                None => {
-                    // Full build: squashfs + tiny initramfs + ISO
-                    // SKIP anything already built, rebuild only on changes
-                    println!("=== Full LevitateOS Build ===\n");
-
-                    // 1. Download Rocky if needed
-                    if !base_dir.join("downloads/iso-contents/BaseOS").exists() {
-                        println!("Resolving Rocky Linux ISO...");
-                        let rocky = resolver.rocky_iso()?;
-                        if !base_dir.join("downloads/iso-contents/BaseOS").exists() {
-                            extract::extract_rocky_iso(&base_dir, &rocky.path)?;
-                        }
-                    }
-
-                    // 2. Resolve Linux source (auto-detects submodule or downloads)
-                    let linux = resolver.linux()?;
-
-                    // 3. Build kernel (skip if built and kconfig unchanged)
-                    let vmlinuz = base_dir.join("output/staging/boot/vmlinuz");
-                    let kconfig = base_dir.join("kconfig");
-                    if needs_rebuild(&kconfig, &vmlinuz) {
-                        println!("\nBuilding kernel...");
-                        build_kernel(&base_dir, &linux.path, &config, false)?;
-                    } else {
-                        println!("\n[SKIP] Kernel already built");
-                    }
-
-                    // 4. Build squashfs (skip if exists and newer than staging)
-                    let squashfs_path = base_dir.join("output/filesystem.squashfs");
-                    let staging_dir = base_dir.join("output/staging");
-                    if needs_rebuild(&staging_dir, &squashfs_path) || needs_rebuild(&vmlinuz, &squashfs_path) {
-                        println!("\nBuilding squashfs system image...");
-                        squashfs::build_squashfs(&base_dir)?;
-                    } else {
-                        println!("\n[SKIP] Squashfs already built");
-                    }
-
-                    // 5. Build tiny initramfs (skip if exists and newer than source)
-                    let initramfs_path = base_dir.join("output/initramfs-tiny.cpio.gz");
-                    let init_script = base_dir.join("profile/init_tiny");
-                    if needs_rebuild(&init_script, &initramfs_path) || needs_rebuild(&vmlinuz, &initramfs_path) {
-                        println!("\nBuilding tiny initramfs...");
-                        initramfs::build_tiny_initramfs(&base_dir)?;
-                    } else {
-                        println!("\n[SKIP] Initramfs already built");
-                    }
-
-                    // 6. Build ISO (skip if exists and newer than components)
-                    let iso_path = base_dir.join("output/levitateos.iso");
-                    if needs_rebuild(&squashfs_path, &iso_path)
-                        || needs_rebuild(&initramfs_path, &iso_path)
-                        || needs_rebuild(&vmlinuz, &iso_path) {
-                        println!("\nBuilding ISO...");
-                        iso::create_squashfs_iso(&base_dir)?;
-                    } else {
-                        println!("\n[SKIP] ISO already built");
-                    }
-
-                    println!("\n=== Build Complete ===");
-                    println!("  ISO: output/levitateos.iso");
-                    println!("  Squashfs: output/filesystem.squashfs");
-                    println!("\nNext: leviso run");
-                }
+            let build_target = match target {
+                None => commands::build::BuildTarget::Full,
                 Some(BuildTarget::Kernel { clean }) => {
-                    let linux = resolver.linux()?;
-                    build_kernel(&base_dir, &linux.path, &config, clean)?;
+                    commands::build::BuildTarget::Kernel { clean }
                 }
-                Some(BuildTarget::Squashfs) => {
-                    squashfs::build_squashfs(&base_dir)?;
-                }
-                Some(BuildTarget::Initramfs) => {
-                    initramfs::build_tiny_initramfs(&base_dir)?;
-                }
-                Some(BuildTarget::Iso) => {
-                    let squashfs_path = base_dir.join("output/filesystem.squashfs");
-                    let initramfs_path = base_dir.join("output/initramfs-tiny.cpio.gz");
-
-                    if !squashfs_path.exists() {
-                        println!("Squashfs not found, building...");
-                        squashfs::build_squashfs(&base_dir)?;
-                    }
-                    if !initramfs_path.exists() {
-                        println!("Tiny initramfs not found, building...");
-                        initramfs::build_tiny_initramfs(&base_dir)?;
-                    }
-                    iso::create_squashfs_iso(&base_dir)?;
-                }
-            }
+                Some(BuildTarget::Squashfs) => commands::build::BuildTarget::Squashfs,
+                Some(BuildTarget::Initramfs) => commands::build::BuildTarget::Initramfs,
+                Some(BuildTarget::Iso) => commands::build::BuildTarget::Iso,
+            };
+            commands::cmd_build(&base_dir, build_target, &resolver, &config)?;
         }
 
-        // ===== RUN =====
         Commands::Run { no_disk, disk_size } => {
-            // Auto-build if ISO doesn't exist
-            let iso_path = base_dir.join("output/levitateos.iso");
-            if !iso_path.exists() {
-                println!("ISO not found, building...\n");
-                let squashfs_path = base_dir.join("output/filesystem.squashfs");
-                let initramfs_path = base_dir.join("output/initramfs-tiny.cpio.gz");
-
-                if !squashfs_path.exists() {
-                    squashfs::build_squashfs(&base_dir)?;
-                }
-                if !initramfs_path.exists() {
-                    initramfs::build_tiny_initramfs(&base_dir)?;
-                }
-                iso::create_squashfs_iso(&base_dir)?;
-            }
-            let disk = if no_disk { None } else { Some(disk_size) };
-            qemu::run_iso(&base_dir, disk)?;
+            commands::cmd_run(&base_dir, no_disk, disk_size)?;
         }
 
-        // ===== CLEAN =====
         Commands::Clean { what } => {
-            match what {
-                None => {
-                    // Default: clean outputs but preserve downloads
-                    clean::clean_outputs(&base_dir)?;
-                }
-                Some(CleanTarget::Kernel) => {
-                    clean::clean_kernel(&base_dir)?;
-                }
-                Some(CleanTarget::Iso) => {
-                    clean::clean_iso(&base_dir)?;
-                }
-                Some(CleanTarget::Squashfs) => {
-                    clean::clean_squashfs(&base_dir)?;
-                }
-                Some(CleanTarget::Downloads) => {
-                    clean::clean_downloads(&base_dir)?;
-                }
-                Some(CleanTarget::Cache) => {
-                    println!("Clearing tool cache (~/.cache/levitate/)...");
-                    resolver.clear_cache()?;
-                    println!("Cache cleared.");
-                }
-                Some(CleanTarget::All) => {
-                    clean::clean_all(&base_dir)?;
-                    resolver.clear_cache()?;
-                }
-            }
+            let clean_target = match what {
+                None => commands::clean::CleanTarget::Outputs,
+                Some(CleanTarget::Kernel) => commands::clean::CleanTarget::Kernel,
+                Some(CleanTarget::Iso) => commands::clean::CleanTarget::Iso,
+                Some(CleanTarget::Squashfs) => commands::clean::CleanTarget::Squashfs,
+                Some(CleanTarget::Downloads) => commands::clean::CleanTarget::Downloads,
+                Some(CleanTarget::Cache) => commands::clean::CleanTarget::Cache,
+                Some(CleanTarget::All) => commands::clean::CleanTarget::All,
+            };
+            commands::cmd_clean(&base_dir, clean_target, &resolver)?;
         }
 
-        // ===== SHOW =====
         Commands::Show { what } => {
-            match what {
-                ShowTarget::Config => {
-                    config.print();
-                    println!();
-                    resolver.print_status();
-                }
-                ShowTarget::Squashfs => {
-                    let squashfs = base_dir.join("output/filesystem.squashfs");
-                    if !squashfs.exists() {
-                        anyhow::bail!("Squashfs not found. Run 'leviso build squashfs' first.");
-                    }
-                    // Use unsquashfs -l to list contents
-                    process::Cmd::new("unsquashfs")
-                        .args(["-l"])
-                        .arg_path(&squashfs)
-                        .error_msg("unsquashfs failed. Install: sudo dnf install squashfs-tools")
-                        .run_interactive()?;
-                }
-            }
+            let show_target = match what {
+                ShowTarget::Config => commands::show::ShowTarget::Config,
+                ShowTarget::Squashfs => commands::show::ShowTarget::Squashfs,
+            };
+            commands::cmd_show(&base_dir, show_target, &config, &resolver)?;
         }
 
-        // ===== DOWNLOAD =====
         Commands::Download { what } => {
-            match what {
-                None => {
-                    // Resolve all dependencies (downloads if needed)
-                    println!("Resolving all dependencies...\n");
-                    resolver.rocky_iso()?;
-                    resolver.linux()?;
-                    let _ = resolver.all_tools()?;
-                    println!("\nAll dependencies resolved.");
-                }
-                Some(DownloadTarget::Linux { full: _ }) => {
-                    // Resolver handles shallow vs full via LINUX_FULL_CLONE env var
-                    let linux = resolver.linux()?;
-                    println!("Linux source: {}", linux.path.display());
-                }
-                Some(DownloadTarget::Rocky) => {
-                    let rocky = resolver.rocky_iso()?;
-                    let status = if rocky.is_valid() { "OK" } else { "MISSING" };
-                    println!("Rocky ISO: {} [{}]", rocky.path.display(), status);
-                    println!("  Version: {} ({})", rocky.config.version, rocky.config.arch);
-                }
-                Some(DownloadTarget::Tools) => {
-                    println!("Resolving installation tools...\n");
-                    let (recstrap, recfstab, recchroot) = resolver.all_tools()?;
-                    println!("\nTools resolved:");
-                    for bin in [&recstrap, &recfstab, &recchroot] {
-                        let source = match bin.source {
-                            deps::ToolSourceType::BuiltFromEnvVar => "built (env)",
-                            deps::ToolSourceType::BuiltFromSubmodule => "built (submodule)",
-                            deps::ToolSourceType::Downloaded => "downloaded",
-                        };
-                        let valid = if bin.is_valid() { "OK" } else { "MISSING" };
-                        println!("  {:10} {} [{}] ({})",
-                            format!("{}:", bin.tool.name()),
-                            bin.path.display(),
-                            valid,
-                            source
-                        );
-                    }
-                }
-            }
+            let download_target = match what {
+                None => commands::download::DownloadTarget::All,
+                Some(DownloadTarget::Linux { full: _ }) => commands::download::DownloadTarget::Linux,
+                Some(DownloadTarget::Rocky) => commands::download::DownloadTarget::Rocky,
+                Some(DownloadTarget::Tools) => commands::download::DownloadTarget::Tools,
+            };
+            commands::cmd_download(download_target, &resolver)?;
         }
 
-        // ===== EXTRACT =====
         Commands::Extract { what } => {
-            match what {
-                ExtractTarget::Rocky => {
-                    let rocky = resolver.rocky_iso()?;
-                    extract::extract_rocky_iso(&base_dir, &rocky.path)?;
-                }
+            let extract_target = match what {
+                ExtractTarget::Rocky => commands::extract::ExtractTarget::Rocky,
                 ExtractTarget::Squashfs { output } => {
-                    let squashfs = base_dir.join("output/filesystem.squashfs");
-                    if !squashfs.exists() {
-                        anyhow::bail!("Squashfs not found. Run 'leviso build squashfs' first.");
-                    }
-                    let output_dir = output.unwrap_or_else(|| base_dir.join("output/squashfs-extracted"));
-                    println!("Extracting squashfs to {}...", output_dir.display());
-                    process::Cmd::new("unsquashfs")
-                        .args(["-d"])
-                        .arg_path(&output_dir)
-                        .arg("-f")
-                        .arg_path(&squashfs)
-                        .error_msg("unsquashfs failed. Install: sudo dnf install squashfs-tools")
-                        .run_interactive()?;
-                    println!("Extracted to: {}", output_dir.display());
+                    commands::extract::ExtractTarget::Squashfs { output }
                 }
-            }
+            };
+            commands::cmd_extract(&base_dir, extract_target, &resolver)?;
         }
 
-        // ===== PREFLIGHT =====
         Commands::Preflight { strict } => {
-            if strict {
-                preflight::run_preflight_or_fail(&base_dir)?;
-            } else {
-                let report = preflight::run_preflight(&base_dir)?;
-                report.print();
-                if !report.all_passed() {
-                    println!("Some checks failed. Use --strict to fail the build.");
-                }
-            }
+            commands::cmd_preflight(&base_dir, strict)?;
         }
     }
-
-    Ok(())
-}
-
-/// Build the kernel.
-fn build_kernel(base_dir: &Path, linux_source: &Path, _config: &Config, clean: bool) -> Result<()> {
-    let output_dir = base_dir.join("output");
-
-    if clean {
-        let kernel_build = output_dir.join("kernel-build");
-        if kernel_build.exists() {
-            println!("Cleaning kernel build directory...");
-            std::fs::remove_dir_all(&kernel_build)?;
-        }
-    }
-
-    let version = build::kernel::build_kernel(linux_source, &output_dir, base_dir)?;
-
-    build::kernel::install_kernel(
-        linux_source,
-        &output_dir,
-        &output_dir.join("staging"),
-    )?;
-
-    println!("\n=== Kernel build complete ===");
-    println!("  Version: {}", version);
-    println!("  Kernel:  output/staging/boot/vmlinuz");
-    println!("  Modules: output/staging/usr/lib/modules/{}/", version);
 
     Ok(())
 }

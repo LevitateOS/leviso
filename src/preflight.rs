@@ -6,7 +6,7 @@
 use anyhow::{bail, Result};
 use std::path::Path;
 
-use crate::deps::DependencyResolver;
+use leviso_deps::DependencyResolver;
 use crate::process::{self, Cmd};
 
 /// Result of a single preflight check.

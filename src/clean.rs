@@ -22,6 +22,7 @@ pub fn clean_kernel(base_dir: &Path) -> Result<()> {
     let kernel_build = base_dir.join("output/kernel-build");
     let vmlinuz = base_dir.join("output/staging/boot/vmlinuz");
     let modules = base_dir.join("output/staging/usr/lib/modules");
+    let kconfig_hash = base_dir.join("output/.kconfig.hash");
 
     let mut cleaned = false;
 
@@ -43,6 +44,11 @@ pub fn clean_kernel(base_dir: &Path) -> Result<()> {
         cleaned = true;
     }
 
+    if kconfig_hash.exists() {
+        fs::remove_file(&kconfig_hash)?;
+        cleaned = true;
+    }
+
     if cleaned {
         println!("Kernel artifacts cleaned.");
     } else {
@@ -57,9 +63,12 @@ pub fn clean_iso(base_dir: &Path) -> Result<()> {
     let iso = base_dir.join("output/levitateos.iso");
     let checksum = base_dir.join("output/levitateos.iso.sha512");
     let initramfs = base_dir.join("output/initramfs.img");
+    let initramfs_tiny = base_dir.join("output/initramfs-tiny.cpio.gz");
     let initramfs_dir = base_dir.join("output/initramfs");
+    let initramfs_tiny_root = base_dir.join("output/initramfs-tiny-root");
     let efiboot = base_dir.join("output/efiboot.img");
     let live_overlay = base_dir.join("output/live-overlay");
+    let initramfs_hash = base_dir.join("output/.initramfs-inputs.hash");
 
     let mut cleaned = false;
 
@@ -81,9 +90,21 @@ pub fn clean_iso(base_dir: &Path) -> Result<()> {
         cleaned = true;
     }
 
+    if initramfs_tiny.exists() {
+        println!("Removing initramfs-tiny.cpio.gz...");
+        fs::remove_file(&initramfs_tiny)?;
+        cleaned = true;
+    }
+
     if initramfs_dir.exists() {
         println!("Removing initramfs build directory...");
         fs::remove_dir_all(&initramfs_dir)?;
+        cleaned = true;
+    }
+
+    if initramfs_tiny_root.exists() {
+        println!("Removing initramfs-tiny-root directory...");
+        fs::remove_dir_all(&initramfs_tiny_root)?;
         cleaned = true;
     }
 
@@ -96,6 +117,11 @@ pub fn clean_iso(base_dir: &Path) -> Result<()> {
     if live_overlay.exists() {
         println!("Removing live-overlay directory...");
         fs::remove_dir_all(&live_overlay)?;
+        cleaned = true;
+    }
+
+    if initramfs_hash.exists() {
+        fs::remove_file(&initramfs_hash)?;
         cleaned = true;
     }
 
@@ -113,6 +139,7 @@ pub fn clean_squashfs(base_dir: &Path) -> Result<()> {
     let squashfs = base_dir.join("output/filesystem.squashfs");
     let squashfs_root = base_dir.join("output/squashfs-root");
     let squashfs_extracted = base_dir.join("output/squashfs-extracted");
+    let squashfs_hash = base_dir.join("output/.squashfs-inputs.hash");
 
     let mut cleaned = false;
 
@@ -131,6 +158,11 @@ pub fn clean_squashfs(base_dir: &Path) -> Result<()> {
     if squashfs_extracted.exists() {
         println!("Removing extracted squashfs...");
         fs::remove_dir_all(&squashfs_extracted)?;
+        cleaned = true;
+    }
+
+    if squashfs_hash.exists() {
+        fs::remove_file(&squashfs_hash)?;
         cleaned = true;
     }
 

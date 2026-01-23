@@ -14,11 +14,12 @@ serde_json = "1"
 walkdir = "2"
 distro-spec = { path = "../distro-spec" }
 
-# Async runtime + networking (for torrent/HTTP downloads)
+# Extracted crates
+leviso-deps = { path = "../leviso-deps" }
+leviso-elf = { path = "../leviso-elf" }
+
+# Async runtime (minimal - heavy networking moved to leviso-deps)
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "time", "process"] }
-librqbit = "8"
-reqwest = { version = "0.12", features = ["stream"] }
-futures-util = "0.3"
 sha2 = "0.10"
 
 [dev-dependencies]

@@ -4,11 +4,12 @@
 //!
 //! See `leviso/tests/README.md` for what tests belong where.
 
+pub mod artifact;
 pub mod build;
-pub mod common;
 pub mod component;
 pub mod config;
-pub mod deps;
-pub mod initramfs;
 pub mod process;
-pub mod squashfs;
+
+// Re-export from extracted crates for API compatibility
+pub use leviso_deps as deps;
+pub use leviso_elf as elf;

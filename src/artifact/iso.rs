@@ -1,9 +1,16 @@
+//! ISO creation - builds bootable LevitateOS ISO.
+//!
+//! Creates an ISO with squashfs-based architecture:
+//! - Tiny initramfs (~5MB) - mounts squashfs + overlay
+//! - Squashfs image (~350MB) - complete base system
+//! - Live overlay - live-specific configs (autologin, serial console, empty root password)
+
 use anyhow::{bail, Context, Result};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::common::binary::copy_dir_recursive;
+use leviso_elf::copy_dir_recursive;
 use crate::component::custom::create_live_overlay_at;
 use crate::process::Cmd;
 

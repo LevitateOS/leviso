@@ -8,10 +8,10 @@ use std::path::{Path, PathBuf};
 
 use super::context::BuildContext;
 use crate::process::shell_in;
-use crate::common::binary::copy_library_to;
+use leviso_elf::copy_library_to;
 
 // Re-export commonly used functions
-pub use crate::common::binary::{
+pub use leviso_elf::{
     find_binary, find_sbin_binary, get_all_dependencies, make_executable,
 };
 

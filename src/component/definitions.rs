@@ -17,7 +17,7 @@
 //! 9. Final - welcome message, recstrap
 
 use super::{
-    bin, bins, copy_file, copy_tree, custom, dir, dirs, enable_getty, enable_multi_user,
+    bins, copy_file, copy_tree, custom, dir, dirs, enable_getty, enable_multi_user,
     enable_sockets, enable_sysinit, group, sbins, symlink, units, user, Component, CustomOp, Op,
     Phase,
 };
@@ -425,7 +425,7 @@ pub static DBUS: Component = Component {
 // --- Network ---
 
 /// NetworkManager required binaries.
-const NM_REQUIRED: &[&str] = &["nmcli", "nm-online"];
+const NM_REQUIRED: &[&str] = &["nmcli", "nm-online", "nmtui"];
 /// NetworkManager sbin binaries.
 const NM_SBIN: &[&str] = &["NetworkManager"];
 /// wpa_supplicant binaries.

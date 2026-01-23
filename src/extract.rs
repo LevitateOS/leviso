@@ -80,6 +80,12 @@ const SUPPLEMENTARY_RPMS: &[&str] = &[
     // openssh-clients: ssh, scp, sftp for remote access FROM the live ISO
     "openssh-server",
     "openssh-clients",
+
+    // === NETWORK TOOLS ===
+    // nmtui: TUI for NetworkManager (user-friendly WiFi configuration)
+    "NetworkManager-tui",
+    "newt",   // libnewt.so - required by nmtui
+    "slang",  // libslang.so - required by newt
 ];
 
 /// Extract Rocky ISO from a specific path.

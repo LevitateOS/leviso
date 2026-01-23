@@ -10,6 +10,7 @@
 //! Kernel config is in `kconfig` at the project root.
 
 use anyhow::{bail, Context, Result};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::Path;
 
@@ -46,33 +47,57 @@ pub fn build_kernel(kernel_source: &Path, output_dir: &Path, base_dir: &Path) ->
     fs::create_dir_all(&build_dir)?;
 
     let config_path = build_dir.join(".config");
+    let config_hash_path = build_dir.join(".config.kconfig-hash");
 
     let kernel_src_str = kernel_source.to_string_lossy();
     let build_dir_arg = format!("O={}", build_dir.display());
 
-    // Start with x86_64 defconfig
-    println!("  Generating base config from defconfig...");
-    Cmd::new("make")
-        .args(["-C", &kernel_src_str, &build_dir_arg, "x86_64_defconfig"])
-        .error_msg("make defconfig failed")
-        .run()?;
+    // Compute hash of our kconfig
+    let kconfig_hash = {
+        let mut hasher = Sha256::new();
+        hasher.update(kconfig.as_bytes());
+        format!("{:x}", hasher.finalize())
+    };
 
-    // Apply our custom options
-    println!("  Applying LevitateOS kernel config from kconfig...");
-    apply_kernel_config(&config_path, &kconfig)?;
+    // Check if we need to regenerate .config
+    let need_config_regen = if config_path.exists() && config_hash_path.exists() {
+        let cached_hash = fs::read_to_string(&config_hash_path).unwrap_or_default();
+        cached_hash.trim() != kconfig_hash
+    } else {
+        true
+    };
 
-    // Resolve dependencies
-    println!("  Resolving config dependencies...");
-    Cmd::new("make")
-        .args(["-C", &kernel_src_str, &build_dir_arg, "olddefconfig"])
-        .error_msg("make olddefconfig failed")
-        .run()?;
+    if need_config_regen {
+        // Start with x86_64 defconfig
+        println!("  Generating base config from defconfig...");
+        Cmd::new("make")
+            .args(["-C", &kernel_src_str, &build_dir_arg, "x86_64_defconfig"])
+            .error_msg("make defconfig failed")
+            .run()?;
+
+        // Apply our custom options
+        println!("  Applying LevitateOS kernel config from kconfig...");
+        apply_kernel_config(&config_path, &kconfig)?;
+
+        // Resolve dependencies
+        println!("  Resolving config dependencies...");
+        Cmd::new("make")
+            .args(["-C", &kernel_src_str, &build_dir_arg, "olddefconfig"])
+            .error_msg("make olddefconfig failed")
+            .run()?;
+
+        // Cache the kconfig hash
+        fs::write(&config_hash_path, &kconfig_hash)?;
+    } else {
+        println!("  [SKIP] Config unchanged, reusing existing .config");
+    }
 
     let cpus = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
     let jobs_arg = format!("-j{}", cpus);
 
     // Build kernel (interactive - user sees progress)
-    println!("  Building kernel (this will take a while)...");
+    // make will skip files that are already up-to-date
+    println!("  Building kernel...");
     Cmd::new("make")
         .args(["-C", &kernel_src_str, &build_dir_arg, &jobs_arg])
         .error_msg("Kernel build failed")

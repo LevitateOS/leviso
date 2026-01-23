@@ -18,7 +18,7 @@ use crate::build::libdeps::{
     copy_systemd_units, make_executable,
 };
 use crate::build::users;
-use crate::common::binary::create_symlink_if_missing;
+use leviso_elf::create_symlink_if_missing;
 
 /// Execute all operations in a component.
 pub fn execute(ctx: &BuildContext, component: &Component) -> Result<()> {

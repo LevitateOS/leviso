@@ -8,11 +8,14 @@
 mod build;
 mod clean;
 mod common;
+mod component;
 mod config;
 mod deps;
 mod extract;
 mod initramfs;
 mod iso;
+mod preflight;
+mod process;
 mod qemu;
 mod squashfs;
 
@@ -38,7 +41,7 @@ fn needs_rebuild(source: &Path, target: &Path) -> bool {
 #[derive(Parser)]
 #[command(name = "leviso")]
 #[command(about = "LevitateOS ISO builder")]
-#[command(after_help = "QUICK START:\n  leviso build      Build everything\n  leviso run        Boot in QEMU\n  leviso clean      Remove build artifacts")]
+#[command(after_help = "QUICK START:\n  leviso preflight  Check all dependencies\n  leviso build      Build everything\n  leviso run        Boot in QEMU\n  leviso clean      Remove build artifacts")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -85,6 +88,13 @@ enum Commands {
         #[command(subcommand)]
         what: ExtractTarget,
     },
+
+    /// Run preflight checks (verify all dependencies before build)
+    Preflight {
+        /// Fail if any checks fail (exit code 1)
+        #[arg(long)]
+        strict: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -121,7 +131,9 @@ enum CleanTarget {
     Squashfs,
     /// Clean downloaded sources (Rocky ISO, Linux source)
     Downloads,
-    /// Clean everything (downloads + outputs)
+    /// Clean cached tool binaries (~/.cache/levitate/)
+    Cache,
+    /// Clean everything (downloads + outputs + cache)
     All,
 }
 
@@ -135,6 +147,8 @@ enum DownloadTarget {
     },
     /// Download Rocky Linux ISO
     Rocky,
+    /// Build or download installation tools (recstrap, recfstab, recchroot)
+    Tools,
 }
 
 #[derive(Subcommand)]
@@ -289,8 +303,14 @@ fn main() -> Result<()> {
                 Some(CleanTarget::Downloads) => {
                     clean::clean_downloads(&base_dir)?;
                 }
+                Some(CleanTarget::Cache) => {
+                    println!("Clearing tool cache (~/.cache/levitate/)...");
+                    resolver.clear_cache()?;
+                    println!("Cache cleared.");
+                }
                 Some(CleanTarget::All) => {
                     clean::clean_all(&base_dir)?;
+                    resolver.clear_cache()?;
                 }
             }
         }
@@ -309,12 +329,11 @@ fn main() -> Result<()> {
                         anyhow::bail!("Squashfs not found. Run 'leviso build squashfs' first.");
                     }
                     // Use unsquashfs -l to list contents
-                    let status = std::process::Command::new("unsquashfs")
-                        .args(["-l", squashfs.to_str().unwrap()])
-                        .status()?;
-                    if !status.success() {
-                        anyhow::bail!("unsquashfs failed");
-                    }
+                    process::Cmd::new("unsquashfs")
+                        .args(["-l"])
+                        .arg_path(&squashfs)
+                        .error_msg("unsquashfs failed. Install: sudo dnf install squashfs-tools")
+                        .run_interactive()?;
                 }
             }
         }
@@ -327,6 +346,7 @@ fn main() -> Result<()> {
                     println!("Resolving all dependencies...\n");
                     resolver.rocky_iso()?;
                     resolver.linux()?;
+                    let _ = resolver.all_tools()?;
                     println!("\nAll dependencies resolved.");
                 }
                 Some(DownloadTarget::Linux { full: _ }) => {
@@ -336,7 +356,28 @@ fn main() -> Result<()> {
                 }
                 Some(DownloadTarget::Rocky) => {
                     let rocky = resolver.rocky_iso()?;
-                    println!("Rocky ISO: {}", rocky.path.display());
+                    let status = if rocky.is_valid() { "OK" } else { "MISSING" };
+                    println!("Rocky ISO: {} [{}]", rocky.path.display(), status);
+                    println!("  Version: {} ({})", rocky.config.version, rocky.config.arch);
+                }
+                Some(DownloadTarget::Tools) => {
+                    println!("Resolving installation tools...\n");
+                    let (recstrap, recfstab, recchroot) = resolver.all_tools()?;
+                    println!("\nTools resolved:");
+                    for bin in [&recstrap, &recfstab, &recchroot] {
+                        let source = match bin.source {
+                            deps::ToolSourceType::BuiltFromEnvVar => "built (env)",
+                            deps::ToolSourceType::BuiltFromSubmodule => "built (submodule)",
+                            deps::ToolSourceType::Downloaded => "downloaded",
+                        };
+                        let valid = if bin.is_valid() { "OK" } else { "MISSING" };
+                        println!("  {:10} {} [{}] ({})",
+                            format!("{}:", bin.tool.name()),
+                            bin.path.display(),
+                            valid,
+                            source
+                        );
+                    }
                 }
             }
         }
@@ -355,13 +396,27 @@ fn main() -> Result<()> {
                     }
                     let output_dir = output.unwrap_or_else(|| base_dir.join("output/squashfs-extracted"));
                     println!("Extracting squashfs to {}...", output_dir.display());
-                    let status = std::process::Command::new("unsquashfs")
-                        .args(["-d", output_dir.to_str().unwrap(), "-f", squashfs.to_str().unwrap()])
-                        .status()?;
-                    if !status.success() {
-                        anyhow::bail!("unsquashfs failed");
-                    }
+                    process::Cmd::new("unsquashfs")
+                        .args(["-d"])
+                        .arg_path(&output_dir)
+                        .arg("-f")
+                        .arg_path(&squashfs)
+                        .error_msg("unsquashfs failed. Install: sudo dnf install squashfs-tools")
+                        .run_interactive()?;
                     println!("Extracted to: {}", output_dir.display());
+                }
+            }
+        }
+
+        // ===== PREFLIGHT =====
+        Commands::Preflight { strict } => {
+            if strict {
+                preflight::run_preflight_or_fail(&base_dir)?;
+            } else {
+                let report = preflight::run_preflight(&base_dir)?;
+                report.print();
+                if !report.all_passed() {
+                    println!("Some checks failed. Use --strict to fail the build.");
                 }
             }
         }

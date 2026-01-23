@@ -2,10 +2,10 @@ use anyhow::{bail, Context, Result};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
-use crate::build;
 use crate::common::binary::copy_dir_recursive;
+use crate::component::custom::create_live_overlay_at;
+use crate::process::Cmd;
 
 /// Get ISO volume label from environment or use default.
 /// Used for boot device detection (root=LABEL=X).
@@ -64,7 +64,7 @@ pub fn create_squashfs_iso(base_dir: &Path) -> Result<()> {
 
     // Stage 2: Create live overlay (autologin, serial console, empty root password)
     // This is ONLY applied during live boot, NOT extracted to installed systems
-    build::systemd::create_live_overlay(&paths.output_dir)?;
+    create_live_overlay_at(&paths.output_dir)?;
 
     // Stage 3: Set up ISO directory structure
     setup_iso_structure(&paths)?;
@@ -231,31 +231,17 @@ menuentry 'LevitateOS (Debug)' {{
 fn run_xorriso(paths: &IsoPaths) -> Result<()> {
     println!("Creating UEFI bootable ISO with xorriso...");
     let label = iso_label();
-    let status = Command::new("xorriso")
-        .args([
-            "-as",
-            "mkisofs",
-            "-o",
-            paths.iso_output.to_str().unwrap(),
-            "-V",
-            &label, // CRITICAL: Volume label for device detection
-            "-partition_offset",
-            "16",
-            "-full-iso9660-filenames",
-            "-joliet",
-            "-rational-rock",
-            "-e",
-            "efiboot.img",
-            "-no-emul-boot",
-            "-isohybrid-gpt-basdat",
-            paths.iso_root.to_str().unwrap(),
-        ])
-        .status()
-        .context("Failed to run xorriso. Is xorriso installed?")?;
 
-    if !status.success() {
-        bail!("xorriso failed");
-    }
+    Cmd::new("xorriso")
+        .args(["-as", "mkisofs", "-o"])
+        .arg_path(&paths.iso_output)
+        .args(["-V", &label]) // CRITICAL: Volume label for device detection
+        .args(["-partition_offset", "16"])
+        .args(["-full-iso9660-filenames", "-joliet", "-rational-rock"])
+        .args(["-e", "efiboot.img", "-no-emul-boot", "-isohybrid-gpt-basdat"])
+        .arg_path(&paths.iso_root)
+        .error_msg("xorriso failed. Install: sudo dnf install xorriso")
+        .run()?;
 
     Ok(())
 }
@@ -268,24 +254,16 @@ fn run_xorriso(paths: &IsoPaths) -> Result<()> {
 fn generate_iso_checksum(iso_path: &Path) -> Result<()> {
     println!("Generating SHA512 checksum...");
 
-    let output = Command::new("sha512sum")
-        .arg(iso_path)
-        .output()
-        .context(
-            "Failed to run sha512sum. Install coreutils:\n\
-             - Fedora: sudo dnf install coreutils\n\
-             - Ubuntu: sudo apt install coreutils"
-        )?;
-
-    if !output.status.success() {
-        bail!("sha512sum failed");
-    }
+    let result = Cmd::new("sha512sum")
+        .arg_path(iso_path)
+        .error_msg("sha512sum failed. Install: sudo dnf install coreutils")
+        .run()?;
 
     // Extract hash and replace full path with just filename
     // sha512sum outputs: "<hash>  <full_path>"
     // We want: "<hash>  <filename>"
-    let raw_output = String::from_utf8_lossy(&output.stdout);
-    let hash = raw_output
+    let hash = result
+        .stdout
         .split_whitespace()
         .next()
         .context("Could not parse sha512sum output - no hash found")?;
@@ -330,94 +308,54 @@ fn print_iso_summary(iso_output: &Path) {
 fn create_efi_boot_image(iso_root: &Path, efiboot_img: &Path) -> Result<()> {
     // Create a FAT image file (16MB for FAT16 minimum + space for EFI files)
     let size_mb = 16;
+    let efiboot_str = efiboot_img.to_string_lossy();
 
     // Create empty file
-    let status = Command::new("dd")
-        .args([
-            "if=/dev/zero",
-            &format!("of={}", efiboot_img.to_str().unwrap()),
-            "bs=1M",
-            &format!("count={}", size_mb),
-        ])
-        .status()
-        .context("Failed to create efiboot.img")?;
-
-    if !status.success() {
-        bail!("dd failed");
-    }
+    Cmd::new("dd")
+        .args(["if=/dev/zero", &format!("of={}", efiboot_str)])
+        .args(["bs=1M", &format!("count={}", size_mb)])
+        .error_msg("Failed to create efiboot.img with dd")
+        .run()?;
 
     // Format as FAT16
-    let status = Command::new("mkfs.fat")
-        .args(["-F", "16", efiboot_img.to_str().unwrap()])
-        .status()
-        .context("Failed to format efiboot.img. Is dosfstools installed?")?;
-
-    if !status.success() {
-        bail!("mkfs.fat failed");
-    }
+    Cmd::new("mkfs.fat")
+        .args(["-F", "16"])
+        .arg_path(efiboot_img)
+        .error_msg("mkfs.fat failed. Install: sudo dnf install dosfstools")
+        .run()?;
 
     // Create EFI/BOOT directory structure using mtools
-    let status = Command::new("mmd")
-        .args(["-i", efiboot_img.to_str().unwrap(), "::EFI"])
-        .status()
-        .context(
-            "mtools (mmd) not found. Install mtools:\n\
-             - Fedora: sudo dnf install mtools\n\
-             - Ubuntu: sudo apt install mtools\n\
-             - Arch: sudo pacman -S mtools",
-        )?;
+    Cmd::new("mmd")
+        .args(["-i", &efiboot_str, "::EFI"])
+        .error_msg("mmd failed. Install: sudo dnf install mtools")
+        .run()?;
 
-    if !status.success() {
-        bail!("mmd failed to create ::EFI directory in efiboot.img");
-    }
-
-    let status = Command::new("mmd")
-        .args(["-i", efiboot_img.to_str().unwrap(), "::EFI/BOOT"])
-        .status()?;
-
-    if !status.success() {
-        bail!("mmd failed to create ::EFI/BOOT directory in efiboot.img");
-    }
+    Cmd::new("mmd")
+        .args(["-i", &efiboot_str, "::EFI/BOOT"])
+        .error_msg("mmd failed to create ::EFI/BOOT directory")
+        .run()?;
 
     // Copy EFI files - these must succeed for UEFI boot to work
-    let status = Command::new("mcopy")
-        .args([
-            "-i",
-            efiboot_img.to_str().unwrap(),
-            iso_root.join("EFI/BOOT/BOOTX64.EFI").to_str().unwrap(),
-            "::EFI/BOOT/",
-        ])
-        .status()?;
+    Cmd::new("mcopy")
+        .args(["-i", &efiboot_str])
+        .arg_path(&iso_root.join("EFI/BOOT/BOOTX64.EFI"))
+        .arg("::EFI/BOOT/")
+        .error_msg("mcopy failed to copy BOOTX64.EFI")
+        .run()?;
 
-    if !status.success() {
-        bail!("mcopy failed to copy BOOTX64.EFI to efiboot.img");
-    }
+    Cmd::new("mcopy")
+        .args(["-i", &efiboot_str])
+        .arg_path(&iso_root.join("EFI/BOOT/grubx64.efi"))
+        .arg("::EFI/BOOT/")
+        .error_msg("mcopy failed to copy grubx64.efi")
+        .run()?;
 
-    let status = Command::new("mcopy")
-        .args([
-            "-i",
-            efiboot_img.to_str().unwrap(),
-            iso_root.join("EFI/BOOT/grubx64.efi").to_str().unwrap(),
-            "::EFI/BOOT/",
-        ])
-        .status()?;
-
-    if !status.success() {
-        bail!("mcopy failed to copy grubx64.efi to efiboot.img");
-    }
-
-    let status = Command::new("mcopy")
-        .args([
-            "-i",
-            efiboot_img.to_str().unwrap(),
-            iso_root.join("EFI/BOOT/grub.cfg").to_str().unwrap(),
-            "::EFI/BOOT/",
-        ])
-        .status()?;
-
-    if !status.success() {
-        bail!("mcopy failed to copy grub.cfg to efiboot.img");
-    }
+    Cmd::new("mcopy")
+        .args(["-i", &efiboot_str])
+        .arg_path(&iso_root.join("EFI/BOOT/grub.cfg"))
+        .arg("::EFI/BOOT/")
+        .error_msg("mcopy failed to copy grub.cfg")
+        .run()?;
 
     // Copy efiboot.img into iso-root for xorriso
     fs::copy(efiboot_img, iso_root.join("efiboot.img"))?;

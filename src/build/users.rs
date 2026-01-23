@@ -4,8 +4,6 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 
-use super::context::BuildContext;
-
 /// Read a UID from the rootfs passwd file.
 pub fn read_uid_from_rootfs(rootfs: &Path, username: &str) -> Option<(u32, u32)> {
     let passwd_path = rootfs.join("etc/passwd");
@@ -87,20 +85,5 @@ pub fn create_root_user(staging: &Path) -> Result<()> {
         "root:x:0:0:root:/root:/bin/bash\n",
     )?;
     fs::write(staging.join("etc/group"), "root:x:0:\n")?;
-    Ok(())
-}
-
-/// Ensure chrony user and group exist.
-pub fn ensure_chrony_user(ctx: &BuildContext) -> Result<()> {
-    ensure_user(
-        &ctx.source,
-        &ctx.staging,
-        "chrony",
-        992,
-        987,
-        "/var/lib/chrony",
-        "/sbin/nologin",
-    )?;
-    ensure_group(&ctx.source, &ctx.staging, "chrony", 987)?;
     Ok(())
 }

@@ -1,0 +1,417 @@
+//! Declarative component system for building LevitateOS system images.
+//!
+//! This module replaces imperative build code with declarative component definitions.
+//! Instead of 2100 lines of copy-paste patterns across 14 files, we have:
+//! - ~150 lines of data structures (this file)
+//! - ~200 lines of executor (executor.rs)
+//! - ~400 lines of component definitions (definitions.rs)
+//! - ~50 lines of orchestration (builder.rs)
+//!
+//! # Architecture
+//!
+//! Components are defined as static data structures that describe WHAT needs
+//! to happen, not HOW. The executor then interprets these definitions.
+//!
+//! ```text
+//! Component Definition (DATA)     →     Executor (LOGIC)
+//! ─────────────────────────────        ─────────────────
+//! DBUS = Component {                   for op in component.ops {
+//!   ops: [                               execute_op(ctx, op)?;
+//!     dir("run/dbus"),                 }
+//!     bin_required("dbus-broker"),
+//!     enable("dbus.socket", Sockets),
+//!   ]
+//! }
+//! ```
+//!
+//! # Benefits
+//!
+//! - **Single source of truth**: No more D-Bus socket enabled in 2 places
+//! - **Readable at a glance**: Component requirements are obvious
+//! - **Consistent behavior**: One implementation of each operation
+//! - **Easy to extend**: Add new Op variants, not new copy-paste code
+
+// Allow dead code for API items not yet used (reserved for future components)
+#![allow(dead_code)]
+
+pub mod builder;
+pub mod custom;
+pub mod definitions;
+pub mod executor;
+
+pub use builder::build_system;
+
+use std::fmt;
+
+/// A system component that can be installed.
+///
+/// Components are immutable, static data describing what operations
+/// need to be performed to set up a particular system service.
+#[derive(Debug, Clone)]
+pub struct Component {
+    /// Human-readable name for logging.
+    pub name: &'static str,
+    /// Build phase (determines ordering).
+    pub phase: Phase,
+    /// Operations to perform.
+    pub ops: &'static [Op],
+}
+
+/// Build phases determine component ordering.
+///
+/// Components are sorted by phase before execution. This ensures
+/// dependencies are satisfied (e.g., directories exist before files
+/// are copied into them).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u8)]
+pub enum Phase {
+    /// Create FHS directories and merged-usr symlinks.
+    Filesystem = 1,
+    /// Copy bash, coreutils, sbin utilities.
+    Binaries = 2,
+    /// Copy systemd binary, units, getty, udev.
+    Systemd = 3,
+    /// D-Bus message bus (before network services).
+    Dbus = 4,
+    /// Services: network, chrony, ssh, pam.
+    Services = 5,
+    /// /etc configuration files.
+    Config = 6,
+    /// Recipe package manager, dracut.
+    Packages = 7,
+    /// WiFi firmware, keymaps.
+    Firmware = 8,
+    /// Final cleanup and setup.
+    Final = 9,
+}
+
+/// Operations that can be performed during component installation.
+///
+/// Each variant represents a single atomic operation. The executor
+/// handles the actual implementation, ensuring consistent behavior.
+#[derive(Debug, Clone)]
+pub enum Op {
+    // ─────────────────────────────────────────────────────────────────────
+    // Directory operations
+    // ─────────────────────────────────────────────────────────────────────
+    /// Create a directory (uses create_dir_all).
+    Dir(&'static str),
+
+    /// Create a directory with specific permissions.
+    DirMode(&'static str, u32),
+
+    /// Create multiple directories at once.
+    Dirs(&'static [&'static str]),
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Binary operations
+    // ─────────────────────────────────────────────────────────────────────
+    /// Copy a binary to /usr/bin with library dependencies.
+    Bin(&'static str, Dest, Req),
+
+    /// Copy multiple binaries to /usr/bin.
+    Bins(&'static [&'static str], Dest, Req),
+
+    /// Copy bash shell specifically (special handling).
+    Bash,
+
+    /// Copy systemd main binary and helpers.
+    SystemdBinaries(&'static [&'static str]),
+
+    /// Copy sudo support libraries from /usr/libexec/sudo.
+    SudoLibs(&'static [&'static str]),
+
+    // ─────────────────────────────────────────────────────────────────────
+    // File operations
+    // ─────────────────────────────────────────────────────────────────────
+    /// Copy a single file from source to staging.
+    CopyFile(&'static str, Req),
+
+    /// Copy a directory tree from source to staging.
+    CopyTree(&'static str),
+
+    /// Write a file with given content.
+    WriteFile(&'static str, &'static str),
+
+    /// Write a file with specific permissions.
+    WriteFileMode(&'static str, &'static str, u32),
+
+    /// Create a symlink (link_path, target).
+    Symlink(&'static str, &'static str),
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Systemd operations
+    // ─────────────────────────────────────────────────────────────────────
+    /// Copy systemd unit files.
+    Units(&'static [&'static str]),
+
+    /// Enable a unit by creating symlink in target.wants.
+    Enable(&'static str, Target),
+
+    /// Copy D-Bus activation symlinks.
+    DbusSymlinks(&'static [&'static str]),
+
+    /// Copy udev helpers to /usr/lib/udev.
+    UdevHelpers(&'static [&'static str]),
+
+    // ─────────────────────────────────────────────────────────────────────
+    // User/group operations
+    // ─────────────────────────────────────────────────────────────────────
+    /// Ensure a user exists in passwd file.
+    User {
+        name: &'static str,
+        uid: u32,
+        gid: u32,
+        home: &'static str,
+        shell: &'static str,
+    },
+
+    /// Ensure a group exists in group file.
+    Group { name: &'static str, gid: u32 },
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Special operations (index into custom functions)
+    // ─────────────────────────────────────────────────────────────────────
+    /// Run a custom operation (index into CUSTOM_FNS array).
+    Custom(CustomOp),
+}
+
+/// Binary destination.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dest {
+    /// /usr/bin
+    Bin,
+    /// /usr/sbin
+    Sbin,
+}
+
+/// Whether a resource is required or optional.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Req {
+    /// Build fails if missing.
+    Required,
+    /// Silently skip if missing.
+    Optional,
+}
+
+/// Systemd target for enabling units.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Target {
+    /// multi-user.target.wants
+    MultiUser,
+    /// getty.target.wants
+    Getty,
+    /// sockets.target.wants
+    Sockets,
+    /// sysinit.target.wants
+    Sysinit,
+}
+
+impl Target {
+    /// Get the wants directory path for this target.
+    pub fn wants_dir(&self) -> &'static str {
+        match self {
+            Target::MultiUser => "etc/systemd/system/multi-user.target.wants",
+            Target::Getty => "etc/systemd/system/getty.target.wants",
+            Target::Sockets => "etc/systemd/system/sockets.target.wants",
+            Target::Sysinit => "etc/systemd/system/sysinit.target.wants",
+        }
+    }
+}
+
+/// Custom operations that require imperative code.
+///
+/// These operations have complex logic that doesn't fit the declarative
+/// pattern. Each variant maps to a function in custom.rs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CustomOp {
+    /// Create FHS symlinks (merged /usr).
+    CreateFhsSymlinks,
+    /// Create live overlay directory.
+    CreateLiveOverlay,
+    /// Copy WiFi firmware (size tracking, multiple sources).
+    CopyWifiFirmware,
+    /// Copy all firmware (daily driver support).
+    CopyAllFirmware,
+    /// Run depmod for kernel modules.
+    RunDepmod,
+    /// Copy kernel modules.
+    CopyModules,
+    /// Create /etc configuration files.
+    CreateEtcFiles,
+    /// Copy timezone data.
+    CopyTimezoneData,
+    /// Copy locales.
+    CopyLocales,
+    /// Copy dracut modules.
+    CopyDracutModules,
+    /// Copy systemd-boot EFI files.
+    CopySystemdBootEfi,
+    /// Copy keymaps.
+    CopyKeymaps,
+    /// Create welcome message.
+    CreateWelcomeMessage,
+    /// Copy recstrap installer tools.
+    CopyRecstrap,
+    /// Disable SELinux.
+    DisableSelinux,
+    /// Create PAM system-auth and related files.
+    CreatePamFiles,
+    /// Create security config files.
+    CreateSecurityConfig,
+    /// Copy recipe binary.
+    CopyRecipe,
+    /// Setup recipe config.
+    SetupRecipeConfig,
+    /// Setup live systemd configs.
+    SetupLiveSystemdConfigs,
+    /// Create dracut config.
+    CreateDracutConfig,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper functions for readable component definitions
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Create a directory.
+pub const fn dir(path: &'static str) -> Op {
+    Op::Dir(path)
+}
+
+/// Create a directory with specific mode.
+pub const fn dir_mode(path: &'static str, mode: u32) -> Op {
+    Op::DirMode(path, mode)
+}
+
+/// Create multiple directories.
+pub const fn dirs(paths: &'static [&'static str]) -> Op {
+    Op::Dirs(paths)
+}
+
+/// Copy a required binary to /usr/bin.
+pub const fn bin_required(name: &'static str) -> Op {
+    Op::Bin(name, Dest::Bin, Req::Required)
+}
+
+/// Copy an optional binary to /usr/bin.
+pub const fn bin_optional(name: &'static str) -> Op {
+    Op::Bin(name, Dest::Bin, Req::Optional)
+}
+
+/// Copy a required binary to /usr/sbin.
+pub const fn sbin_required(name: &'static str) -> Op {
+    Op::Bin(name, Dest::Sbin, Req::Required)
+}
+
+/// Copy an optional binary to /usr/sbin.
+pub const fn sbin_optional(name: &'static str) -> Op {
+    Op::Bin(name, Dest::Sbin, Req::Optional)
+}
+
+/// Copy multiple required binaries to /usr/bin.
+pub const fn bins_required(names: &'static [&'static str]) -> Op {
+    Op::Bins(names, Dest::Bin, Req::Required)
+}
+
+/// Copy multiple required binaries to /usr/sbin.
+pub const fn sbins_required(names: &'static [&'static str]) -> Op {
+    Op::Bins(names, Dest::Sbin, Req::Required)
+}
+
+/// Copy a directory tree.
+pub const fn copy_tree(path: &'static str) -> Op {
+    Op::CopyTree(path)
+}
+
+/// Copy a required file.
+pub const fn copy_file_required(path: &'static str) -> Op {
+    Op::CopyFile(path, Req::Required)
+}
+
+/// Copy an optional file.
+pub const fn copy_file_optional(path: &'static str) -> Op {
+    Op::CopyFile(path, Req::Optional)
+}
+
+/// Copy systemd unit files.
+pub const fn units(names: &'static [&'static str]) -> Op {
+    Op::Units(names)
+}
+
+/// Enable a unit for multi-user.target.
+pub const fn enable_multi_user(unit: &'static str) -> Op {
+    Op::Enable(unit, Target::MultiUser)
+}
+
+/// Enable a unit for getty.target.
+pub const fn enable_getty(unit: &'static str) -> Op {
+    Op::Enable(unit, Target::Getty)
+}
+
+/// Enable a unit for sockets.target.
+pub const fn enable_sockets(unit: &'static str) -> Op {
+    Op::Enable(unit, Target::Sockets)
+}
+
+/// Enable a unit for sysinit.target.
+pub const fn enable_sysinit(unit: &'static str) -> Op {
+    Op::Enable(unit, Target::Sysinit)
+}
+
+/// Create a symlink.
+pub const fn symlink(link: &'static str, target: &'static str) -> Op {
+    Op::Symlink(link, target)
+}
+
+/// Write a file.
+pub const fn write_file(path: &'static str, content: &'static str) -> Op {
+    Op::WriteFile(path, content)
+}
+
+/// Write a file with permissions.
+pub const fn write_file_mode(path: &'static str, content: &'static str, mode: u32) -> Op {
+    Op::WriteFileMode(path, content, mode)
+}
+
+/// Ensure a user exists.
+pub const fn user(
+    name: &'static str,
+    uid: u32,
+    gid: u32,
+    home: &'static str,
+    shell: &'static str,
+) -> Op {
+    Op::User {
+        name,
+        uid,
+        gid,
+        home,
+        shell,
+    }
+}
+
+/// Ensure a group exists.
+pub const fn group(name: &'static str, gid: u32) -> Op {
+    Op::Group { name, gid }
+}
+
+/// Run a custom operation.
+pub const fn custom(op: CustomOp) -> Op {
+    Op::Custom(op)
+}
+
+impl fmt::Display for Phase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Phase::Filesystem => write!(f, "Filesystem"),
+            Phase::Binaries => write!(f, "Binaries"),
+            Phase::Systemd => write!(f, "Systemd"),
+            Phase::Dbus => write!(f, "D-Bus"),
+            Phase::Services => write!(f, "Services"),
+            Phase::Config => write!(f, "Config"),
+            Phase::Packages => write!(f, "Packages"),
+            Phase::Firmware => write!(f, "Firmware"),
+            Phase::Final => write!(f, "Final"),
+        }
+    }
+}

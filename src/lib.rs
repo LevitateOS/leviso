@@ -7,5 +7,6 @@
 pub mod build;
 pub mod common;
 pub mod config;
+pub mod deps;
 pub mod initramfs;
 pub mod squashfs;

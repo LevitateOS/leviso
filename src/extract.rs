@@ -66,17 +66,31 @@ const SUPPLEMENTARY_RPMS: &[&str] = &[
     // Provides unsquashfs - REQUIRED by recstrap to extract squashfs to disk
     // (mksquashfs is also included in the RPM but we only copy unsquashfs to the image)
     "squashfs-tools",
+
+    // === FIRMWARE ===
+    // Intel CPU microcode for security updates (Spectre, Meltdown, etc.)
+    // AMD microcode comes from linux-firmware which is already in install.img
+    // Without microcode, CPUs are vulnerable to known security exploits
+    "microcode_ctl",
+
+    // === SSH (server and client) ===
+    // openssh-server: sshd for remote access TO the live ISO
+    // openssh-clients: ssh, scp, sftp for remote access FROM the live ISO
+    "openssh-server",
+    "openssh-clients",
 ];
 
-pub fn extract_rocky(base_dir: &Path) -> Result<()> {
+/// Extract Rocky ISO from a specific path.
+///
+/// This is the main extraction function used by the dependency resolver.
+pub fn extract_rocky_iso(base_dir: &Path, iso_path: &Path) -> Result<()> {
     let extract_dir = base_dir.join("downloads");
-    let iso_path = extract_dir.join("Rocky-10.1-x86_64-dvd1.iso");
     let iso_contents = extract_dir.join("iso-contents");
     let rootfs_dir = extract_dir.join("rootfs");
 
     if !iso_path.exists() {
         bail!(
-            "Rocky DVD ISO not found at {}. Run 'leviso download' first.",
+            "Rocky DVD ISO not found at {}.",
             iso_path.display()
         );
     }
@@ -260,11 +274,12 @@ fn find_rpm(dir: &Path, prefix: &str) -> Result<Option<std::path::PathBuf>> {
             let name_str = name.to_string_lossy();
             // Match RPM files that start with the prefix and end with .rpm
             // e.g., "procps-ng" matches "procps-ng-4.0.4-8.el10.x86_64.rpm"
+            // Also accept noarch packages (e.g., microcode_ctl is noarch)
             if name_str.starts_with(prefix)
                 && name_str.ends_with(".rpm")
                 && !name_str.contains("-devel")
                 && !name_str.contains("-i18n")
-                && name_str.contains("x86_64")
+                && (name_str.contains("x86_64") || name_str.contains("noarch"))
             {
                 return Ok(Some(path));
             }

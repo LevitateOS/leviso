@@ -84,7 +84,7 @@ fn build_network_and_auth(ctx: &BuildContext) -> Result<()> {
     build::openssh::setup_openssh(ctx)?;
 
     // Kernel modules (daily driver needs hardware support)
-    let config = crate::config::Config::load(&ctx.base_dir);
+    let config = crate::config::Config::load();
     let module_list = config.all_modules();
     build::modules::setup_modules(ctx, &module_list)?;
 

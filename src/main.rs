@@ -9,7 +9,7 @@ mod build;
 mod clean;
 mod common;
 mod config;
-mod download;
+mod deps;
 mod extract;
 mod initramfs;
 mod iso;
@@ -21,6 +21,7 @@ use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
 
 use config::Config;
+use deps::DependencyResolver;
 
 /// Check if source file is newer than target (or target doesn't exist).
 fn needs_rebuild(source: &Path, target: &Path) -> bool {
@@ -151,7 +152,8 @@ enum ExtractTarget {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let base_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let config = Config::load(&base_dir);
+    let resolver = DependencyResolver::new(&base_dir)?;
+    let config = Config::load();  // .env loaded by resolver
 
     match cli.command {
         // ===== BUILD =====
@@ -164,23 +166,22 @@ fn main() -> Result<()> {
 
                     // 1. Download Rocky if needed
                     if !base_dir.join("downloads/iso-contents/BaseOS").exists() {
-                        println!("Downloading Rocky Linux...");
-                        download::download_rocky(&base_dir, &config.rocky)?;
-                        extract::extract_rocky(&base_dir)?;
+                        println!("Resolving Rocky Linux ISO...");
+                        let rocky = resolver.rocky_iso()?;
+                        if !base_dir.join("downloads/iso-contents/BaseOS").exists() {
+                            extract::extract_rocky_iso(&base_dir, &rocky.path)?;
+                        }
                     }
 
-                    // 2. Download Linux source if needed
-                    if !config.has_linux_source() {
-                        println!("\nDownloading Linux kernel source...");
-                        download_linux(&config, true)?;
-                    }
+                    // 2. Resolve Linux source (auto-detects submodule or downloads)
+                    let linux = resolver.linux()?;
 
                     // 3. Build kernel (skip if built and kconfig unchanged)
                     let vmlinuz = base_dir.join("output/staging/boot/vmlinuz");
                     let kconfig = base_dir.join("kconfig");
                     if needs_rebuild(&kconfig, &vmlinuz) {
                         println!("\nBuilding kernel...");
-                        build_kernel(&base_dir, &config, false)?;
+                        build_kernel(&base_dir, &linux.path, &config, false)?;
                     } else {
                         println!("\n[SKIP] Kernel already built");
                     }
@@ -222,14 +223,8 @@ fn main() -> Result<()> {
                     println!("\nNext: leviso run");
                 }
                 Some(BuildTarget::Kernel { clean }) => {
-                    if !config.has_linux_source() {
-                        anyhow::bail!(
-                            "Linux source not found at: {}\n\n\
-                             Run 'leviso download linux' first.",
-                            config.linux_source.display()
-                        );
-                    }
-                    build_kernel(&base_dir, &config, clean)?;
+                    let linux = resolver.linux()?;
+                    build_kernel(&base_dir, &linux.path, &config, clean)?;
                 }
                 Some(BuildTarget::Squashfs) => {
                     squashfs::build_squashfs(&base_dir)?;
@@ -305,6 +300,8 @@ fn main() -> Result<()> {
             match what {
                 ShowTarget::Config => {
                     config.print();
+                    println!();
+                    resolver.print_status();
                 }
                 ShowTarget::Squashfs => {
                     let squashfs = base_dir.join("output/filesystem.squashfs");
@@ -326,25 +323,20 @@ fn main() -> Result<()> {
         Commands::Download { what } => {
             match what {
                 None => {
-                    // Download everything
-                    println!("Downloading all dependencies...\n");
-                    download::download_rocky(&base_dir, &config.rocky)?;
-                    if !config.has_linux_source() {
-                        download_linux(&config, true)?;
-                    } else {
-                        println!("Linux source already exists at: {}", config.linux_source.display());
-                    }
+                    // Resolve all dependencies (downloads if needed)
+                    println!("Resolving all dependencies...\n");
+                    resolver.rocky_iso()?;
+                    resolver.linux()?;
+                    println!("\nAll dependencies resolved.");
                 }
-                Some(DownloadTarget::Linux { full }) => {
-                    if config.has_linux_source() {
-                        println!("Linux source already exists at: {}", config.linux_source.display());
-                        println!("To re-download, remove the directory first.");
-                        return Ok(());
-                    }
-                    download_linux(&config, !full)?;
+                Some(DownloadTarget::Linux { full: _ }) => {
+                    // Resolver handles shallow vs full via LINUX_FULL_CLONE env var
+                    let linux = resolver.linux()?;
+                    println!("Linux source: {}", linux.path.display());
                 }
                 Some(DownloadTarget::Rocky) => {
-                    download::download_rocky(&base_dir, &config.rocky)?;
+                    let rocky = resolver.rocky_iso()?;
+                    println!("Rocky ISO: {}", rocky.path.display());
                 }
             }
         }
@@ -353,7 +345,8 @@ fn main() -> Result<()> {
         Commands::Extract { what } => {
             match what {
                 ExtractTarget::Rocky => {
-                    extract::extract_rocky(&base_dir)?;
+                    let rocky = resolver.rocky_iso()?;
+                    extract::extract_rocky_iso(&base_dir, &rocky.path)?;
                 }
                 ExtractTarget::Squashfs { output } => {
                     let squashfs = base_dir.join("output/filesystem.squashfs");
@@ -377,35 +370,8 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Download Linux kernel source.
-fn download_linux(config: &Config, shallow: bool) -> Result<()> {
-    println!("Downloading Linux kernel source...");
-    println!("  URL: {}", config.linux_git_url);
-    println!("  Destination: {}", config.linux_source.display());
-
-    if let Some(parent) = config.linux_source.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    let mut cmd = std::process::Command::new("git");
-    cmd.arg("clone");
-    if shallow {
-        cmd.args(["--depth", "1"]);
-    }
-    cmd.arg(&config.linux_git_url);
-    cmd.arg(&config.linux_source);
-
-    let status = cmd.status()?;
-    if !status.success() {
-        anyhow::bail!("git clone failed");
-    }
-
-    println!("Linux source downloaded successfully.");
-    Ok(())
-}
-
 /// Build the kernel.
-fn build_kernel(base_dir: &Path, config: &Config, clean: bool) -> Result<()> {
+fn build_kernel(base_dir: &Path, linux_source: &Path, _config: &Config, clean: bool) -> Result<()> {
     let output_dir = base_dir.join("output");
 
     if clean {
@@ -416,10 +382,10 @@ fn build_kernel(base_dir: &Path, config: &Config, clean: bool) -> Result<()> {
         }
     }
 
-    let version = build::kernel::build_kernel(&config.linux_source, &output_dir, base_dir)?;
+    let version = build::kernel::build_kernel(linux_source, &output_dir, base_dir)?;
 
     build::kernel::install_kernel(
-        &config.linux_source,
+        linux_source,
         &output_dir,
         &output_dir.join("staging"),
     )?;

@@ -9,8 +9,5 @@ unset script
 
 if [ -n "$PS1" ]; then
     PS1='[\u@\h \W]\$ '
-    alias poweroff='systemctl poweroff --force'
-    alias reboot='systemctl reboot --force'
-    alias halt='systemctl halt --force'
     [ -f /etc/motd ] && cat /etc/motd
 fi

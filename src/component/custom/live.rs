@@ -14,8 +14,6 @@ const LIVE_CONSOLE_AUTOLOGIN: &str =
     include_str!("../../../profile/live-overlay/etc/systemd/system/console-autologin.service");
 const LIVE_SERIAL_CONSOLE: &str =
     include_str!("../../../profile/live-overlay/etc/systemd/system/serial-console.service");
-const LIVE_GETTY_DISABLE: &str =
-    include_str!("../../../profile/live-overlay/etc/systemd/system/getty@tty1.service.d/live-disable.conf");
 const LIVE_SHADOW: &str = include_str!("../../../profile/live-overlay/etc/shadow");
 
 /// Create live overlay directory with autologin, serial console, empty root password.
@@ -38,7 +36,7 @@ pub fn create_live_overlay_at(output_dir: &Path) -> Result<()> {
     fs::create_dir_all(&multi_user_wants)?;
     fs::create_dir_all(overlay_dir.join("etc"))?;
 
-    // Console autologin service
+    // Console autologin service (Conflicts=getty@tty1.service ensures no conflict)
     fs::write(
         systemd_dir.join("console-autologin.service"),
         LIVE_CONSOLE_AUTOLOGIN,
@@ -48,11 +46,6 @@ pub fn create_live_overlay_at(output_dir: &Path) -> Result<()> {
         "../console-autologin.service",
         getty_wants.join("console-autologin.service"),
     )?;
-
-    // Disable getty@tty1 during live boot
-    let getty_override = systemd_dir.join("getty@tty1.service.d");
-    fs::create_dir_all(&getty_override)?;
-    fs::write(getty_override.join("live-disable.conf"), LIVE_GETTY_DISABLE)?;
 
     // Serial console service
     fs::write(

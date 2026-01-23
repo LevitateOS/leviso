@@ -2,6 +2,7 @@
 Description=Console Autologin
 After=systemd-user-sessions.service getty-pre.target
 Before=getty.target
+Conflicts=getty@tty1.service
 
 [Service]
 Environment=HOME=/root

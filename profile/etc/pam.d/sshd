@@ -5,6 +5,8 @@ account    required     pam_nologin.so
 account    include      system-auth
 password   include      system-auth
 session    required     pam_loginuid.so
+session    required     pam_namespace.so
 session    optional     pam_keyinit.so force revoke
+session    optional     pam_motd.so
 session    include      system-auth
 session    include      postlogin

@@ -7,6 +7,8 @@ description = "Minimal bootable Linux ISO builder"
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4", features = ["derive"] }
+dirs = "5.0"
+dotenvy = "0.15"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 walkdir = "2"
@@ -14,6 +16,6 @@ distro-spec = { path = "../distro-spec" }
 
 [dev-dependencies]
 tempfile = "3"
-cheat-test = { path = "../cheat-test" }
+leviso-cheat-test = { path = "../cheat-test" }
 libc = "0.2"
 regex = "1"

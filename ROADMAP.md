@@ -20,8 +20,6 @@ LevitateOS aims for parity with archiso - the Arch Linux installation ISO. This 
 | Gap | Impact | Status |
 |-----|--------|--------|
 | **Intel/AMD microcode** | CPU bugs, security vulnerabilities | NOT IN BUILD |
-| **genfstab equivalent** | Users must manually write fstab | NOT IMPLEMENTED |
-| **arch-chroot equivalent** | Users must manually set up chroot | NOT IMPLEMENTED |
 | **cryptsetup (LUKS)** | No encrypted disk support | NOT IN BUILD |
 | **lvm2** | No LVM support | NOT IN BUILD |
 | **btrfs-progs** | No Btrfs support | NOT IN BUILD |
@@ -30,18 +28,18 @@ LevitateOS aims for parity with archiso - the Arch Linux installation ISO. This 
 
 | Gap | Impact | Status |
 |-----|--------|--------|
-| Volatile journal storage | Logs may fill tmpfs | NOT CONFIGURED |
-| do-not-suspend config | Live session may sleep during install | NOT CONFIGURED |
-| SSH server (sshd) | No remote installation/rescue | NOT ENABLED |
-| pciutils (lspci) | Cannot identify PCI hardware | NOT IN BUILD |
+| ~~Volatile journal storage~~ | ~~Logs may fill tmpfs~~ | ✅ CONFIGURED |
+| ~~do-not-suspend config~~ | ~~Live session may sleep during install~~ | ✅ CONFIGURED |
+| ~~SSH server (sshd)~~ | ~~No remote installation/rescue~~ | ✅ AVAILABLE |
+| ~~pciutils (lspci)~~ | ~~Cannot identify PCI hardware~~ | ✅ INCLUDED |
 | usbutils (lsusb) | Cannot identify USB devices | NOT IN BUILD |
 | dmidecode | Cannot read BIOS/DMI info | NOT IN BUILD |
 | ethtool | Cannot diagnose NICs | NOT IN BUILD |
-| gdisk/sgdisk | Only fdisk for GPT (less capable) | NOT IN BUILD |
+| ~~gdisk/sgdisk~~ | ~~Only fdisk for GPT~~ | N/A - NOT IN ROCKY 10.1 (parted/sfdisk sufficient) |
 | iwd | Only wpa_supplicant for WiFi | NOT IN BUILD |
 | wireless-regdb | WiFi may violate regulations | NOT IN BUILD |
 | sof-firmware | Modern laptop sound may not work | NOT IN BUILD |
-| ISO SHA512 checksum | Users cannot verify downloads | NOT GENERATED |
+| ~~ISO SHA512 checksum~~ | ~~Users cannot verify downloads~~ | ✅ GENERATED |
 
 ### What's Working (Verified)
 
@@ -53,6 +51,8 @@ LevitateOS aims for parity with archiso - the Arch Linux installation ISO. This 
 | machine-id empty | ✅ Regenerates on first boot |
 | Hostname set ("levitateos") | ✅ Configured |
 | recstrap (squashfs extraction) | ✅ Working |
+| recfstab (genfstab equivalent) | ✅ Implemented |
+| recchroot (arch-chroot equivalent) | ✅ Implemented |
 | systemd as PID 1 | ✅ Verified |
 | Serial console | ✅ Enabled |
 
@@ -161,7 +161,7 @@ User does EVERYTHING else manually (like Arch):
 - Partitioning (fdisk, parted)
 - Formatting (mkfs.ext4, mkfs.fat)
 - Mounting (/mnt, /mnt/boot)
-- fstab generation (genfstab)
+- fstab generation (recfstab)
 - Bootloader (bootctl install)
 - Password (passwd)
 - Users (useradd)
@@ -251,16 +251,18 @@ Result: Live = Installed (same files!)
 
 These are known gaps in the live environment (squashfs):
 
-### Critical Tools (P0 - BLOCKING)
-- [ ] `genfstab` - generate fstab from mounted filesystems (arch-install-scripts)
-- [ ] `levi-chroot` - arch-chroot equivalent for entering installed system
+### Critical Tools (P0 - IMPLEMENTED)
+- [x] `recfstab` - generate fstab from mounted filesystems (genfstab equivalent)
+- [x] `recchroot` - enter installed system with proper mounts (arch-chroot equivalent)
+
+> **✅ NOTE:** The /etc/motd welcome message has been updated to reference `recfstab` and `recchroot`.
 - [ ] `cryptsetup` - LUKS disk encryption
 - [ ] `lvm2` - Logical Volume Manager (pvcreate, vgcreate, lvcreate)
 - [ ] `btrfs-progs` - Btrfs filesystem tools
 
 ### Important Tools (P1)
 - [ ] `gdisk` / `sgdisk` - GPT partitioning (better than fdisk for GPT)
-- [ ] `pciutils` (lspci) - identify PCI hardware
+- [x] `pciutils` (lspci) - identify PCI hardware
 - [ ] `usbutils` (lsusb) - identify USB devices
 - [ ] `dmidecode` - BIOS/DMI information
 - [ ] `ethtool` - NIC diagnostics and configuration
@@ -268,8 +270,8 @@ These are known gaps in the live environment (squashfs):
 - [ ] `wireless-regdb` - WiFi regulatory database
 
 ### Live Environment Config (P1)
-- [ ] Volatile journal storage (`Storage=volatile` in journald.conf)
-- [ ] do-not-suspend logind config (prevent sleep during install)
+- [x] Volatile journal storage (`Storage=volatile` in journald.conf)
+- [x] do-not-suspend logind config (prevent sleep during install)
 
 ### User Tools (Working)
 - [x] `passwd` - interactive password setting
@@ -434,7 +436,7 @@ tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt
 
 - **Rocky Linux is the binary source** - Userspace binaries extracted from Rocky/Fedora RPMs (build in minutes, not hours)
 - **Kernel is independent** - Built from kernel.org, not a Rocky rebrand
-- **Initramfs IS the live environment** - No squashfs layer, no switch_root
+- **Squashfs-based architecture** - Tiny initramfs (~5MB) mounts squashfs + overlay, then switch_root
 - **`recipe` handles everything** - Both live queries AND installation to target disk
 
 ---
@@ -466,16 +468,16 @@ archiso provides checksum files so users can verify their download.
 
 ### 1.3 Installation Process (recstrap)
 
-**Installation Helper Scripts (P0 - archiso parity):**
-- [ ] **`genfstab`** - Generate fstab from mounted filesystems (currently manual)
-- [ ] **`levi-chroot`** - Enter installed system like arch-chroot (currently manual)
+**Installation Helper Scripts (archiso parity - IMPLEMENTED):**
+- [x] **`recfstab`** - Generate fstab from mounted filesystems (like genfstab)
+- [x] **`recchroot`** - Enter installed system like arch-chroot
 
 **Installation Steps:**
 - [x] Partition disk (GPT for UEFI) - verified in E2E test
 - [x] Format partitions (ext4, FAT32 for ESP) - verified in E2E test
 - [x] Mount target filesystem - verified in E2E test
 - [x] Extract squashfs to disk - verified in E2E test
-- [~] Generate fstab with UUIDs - **manual only** (no genfstab script)
+- [x] Generate fstab with UUIDs - `recfstab -U /mnt >> /mnt/etc/fstab`
 - [ ] Set timezone (manual: timedatectl)
 - [ ] Set locale (manual: localectl)
 - [ ] Set hostname (manual: hostnamectl)
@@ -485,7 +487,7 @@ archiso provides checksum files so users can verify their download.
 - [x] Install bootloader (systemd-boot) - verified in E2E test
 - [x] Reboot into installed system - verified in E2E test
 
-> **NOTE:** The E2E test generates fstab manually with a script. Users need `genfstab` for a proper archiso-like experience.
+> **NOTE:** Users can use `recfstab -U /mnt >> /mnt/etc/fstab` for archiso-like fstab generation.
 
 ### 1.4 Post-Installation Verification
 - [x] System boots without ISO - verified in E2E test
@@ -503,9 +505,9 @@ archiso provides checksum files so users can verify their download.
 ### 2.1 Network Stack
 - [x] NetworkManager (in initramfs via network.rs)
 - [x] systemd-resolved for DNS (in rootfs)
-- [ ] /etc/resolv.conf configured
-- [ ] /etc/hosts with localhost entries
-- [ ] /etc/nsswitch.conf with proper hosts line
+- [x] /etc/resolv.conf configured (symlink to systemd-resolved stub)
+- [x] /etc/hosts with localhost entries
+- [x] /etc/nsswitch.conf with proper hosts line
 
 ### 2.2 Ethernet
 - [x] DHCP client works (NetworkManager)
@@ -557,7 +559,7 @@ archiso provides checksum files so users can verify their download.
 
 ### 3.1 Partitioning Tools
 - [x] `fdisk` - MBR/GPT partitioning (in rootfs)
-- [~] `parted` - GPT partitioning (in initramfs only, not rootfs)
+- [x] `parted` - GPT partitioning (in squashfs)
 - [ ] **`gdisk` / `sgdisk`** - P1: GPT-specific tools (better than fdisk for GPT)
 - [x] `lsblk` - list block devices (in rootfs)
 - [x] `blkid` - show UUIDs and labels (in rootfs)
@@ -623,17 +625,19 @@ archiso provides checksum files so users can verify their download.
 - [x] `groupdel` - delete groups (in rootfs)
 - [ ] `gpasswd` - group administration
 - [x] `/etc/group` proper format (created by rootfs builder)
-- [ ] `/etc/gshadow` proper format
+- [x] `/etc/gshadow` proper format (with 0600 permissions)
 
 ### 4.3 Default Groups
 - [x] `wheel` - sudo access (created by install)
-- [ ] `audio` - audio devices
-- [ ] `video` - video devices
+- [x] `audio` - audio devices
+- [x] `video` - video devices
 - [ ] `input` - input devices
 - [ ] `storage` - removable media
 - [ ] `optical` - CD/DVD drives
 - [ ] `network` - network configuration
-- [ ] `users` - standard users group
+- [x] `users` - standard users group
+- [x] `disk` - disk devices
+- [x] `tty` - tty devices
 
 ### 4.4 Privilege Escalation
 - [x] `sudo` installed and configured (in rootfs)
@@ -760,7 +764,7 @@ archiso provides checksum files so users can verify their download.
 - [x] `/proc/meminfo` readable
 
 ### 7.3 PCI/USB Detection
-- [ ] **`lspci` (pciutils)** - P1: Users need to identify hardware
+- [x] `lspci` (pciutils) - identify PCI hardware
 - [ ] **`lsusb` (usbutils)** - P1: Users need to identify hardware
 - [ ] `lshw` - *optional but useful*
 - [ ] **`dmidecode`** - P1: SMBIOS/DMI info for hardware identification
@@ -797,6 +801,34 @@ archiso provides checksum files so users can verify their download.
 ### 7.9 Printing - *optional*
 - [ ] CUPS
 - [ ] Common printer drivers
+
+### 7.10 LLM Inference & GPU Compute
+
+> **Target:** 24GB+ RAM systems with dedicated GPU for local LLM inference
+
+**Kernel Support (in kconfig):**
+- [x] CONFIG_DRM_AMDGPU_USERPTR - GPU direct userspace memory access
+- [x] CONFIG_HSA_AMD - ROCm heterogeneous compute support
+- [x] CONFIG_LRU_GEN - MGLRU for better memory management under pressure
+- [x] CONFIG_SCHED_CLASS_EXT - BPF schedulers (sched_ext)
+- [x] CONFIG_TRANSPARENT_HUGEPAGE - Large memory allocations for models
+- [x] CONFIG_HUGETLBFS - Explicit huge pages
+
+**Userspace (installable via recipe):**
+- [ ] ROCm stack (AMD GPUs) - `recipe install rocm`
+- [ ] CUDA toolkit (NVIDIA GPUs) - `recipe install cuda`
+- [ ] Vulkan compute - `recipe install vulkan-tools`
+- [ ] llama.cpp - `recipe install llama-cpp`
+- [ ] ollama - `recipe install ollama`
+
+**System Tuning (P2):**
+- [ ] `levitate-tune` daemon - auto-configure sysctls for hardware profile
+  - vm.swappiness=10 (prefer RAM over swap)
+  - vm.dirty_ratio tuned for NVMe
+  - Transparent hugepage settings
+  - CPU governor selection
+- [ ] First-boot GPU detection and driver recommendation
+- [ ] scx schedulers package for workload-specific scheduling
 
 ---
 
@@ -1048,7 +1080,7 @@ Arch Linux ISO includes these packages. Status in LevitateOS noted.
 - `lvm2` - **MISSING (P0)**
 - `mdadm` - MISSING (P2)
 - `nvme-cli` - MISSING (P2)
-- `parted` - ✅ INCLUDED (initramfs only)
+- `parted` - ✅ INCLUDED (in squashfs)
 - `sdparm` - MISSING (P3)
 - `smartmontools` - MISSING (P2)
 
@@ -1060,10 +1092,10 @@ Arch Linux ISO includes these packages. Status in LevitateOS noted.
 - `sof-firmware` - sound - **MISSING (P1)**
 - `dmidecode` - **MISSING (P1)**
 - `usbutils` - **MISSING (P1)**
-- `pciutils` - **MISSING (P1)**
+- `pciutils` - ✅ INCLUDED
 
 ### Utilities
-- `arch-install-scripts` - genfstab, arch-chroot - **NEED EQUIVALENT (P0)**
+- `arch-install-scripts` - genfstab, arch-chroot - ✅ IMPLEMENTED (recfstab, recchroot)
 - `diffutils` - ✅ INCLUDED
 - `less` - ✅ INCLUDED
 - `man-db` - MISSING (P1)
@@ -1103,24 +1135,24 @@ Arch Linux ISO includes these packages. Status in LevitateOS noted.
 - [x] WiFi support (wpa_supplicant + firmware)
 - [x] User management + sudo
 - [x] Core utilities
+- [x] **recfstab** - fstab generation helper (genfstab equivalent)
+- [x] **recchroot** - arch-chroot equivalent
 - [ ] **Intel/AMD microcode** - CPU security/stability
-- [ ] **genfstab** - fstab generation helper
-- [ ] **levi-chroot** - arch-chroot equivalent
 - [ ] **cryptsetup (LUKS)** - disk encryption
 - [ ] **lvm2** - Logical Volume Manager
 - [ ] **btrfs-progs** - Btrfs filesystem support
 
 ### P1 - Should Have (archiso Parity)
-- [ ] Volatile journal storage (prevent tmpfs fill)
-- [ ] do-not-suspend config (prevent sleep during install)
-- [ ] SSH server enabled (remote installation/rescue)
-- [ ] Hardware probing: lspci, lsusb, dmidecode
+- [x] Volatile journal storage (prevent tmpfs fill)
+- [x] do-not-suspend config (prevent sleep during install)
+- [x] SSH server available (remote installation/rescue) - not enabled by default
+- [~] Hardware probing: ~~lspci~~, lsusb, dmidecode (lspci done, others pending)
 - [ ] ethtool (NIC diagnostics)
-- [ ] gdisk/sgdisk (better GPT tools)
+- [~] gdisk/sgdisk - NOT IN ROCKY 10.1 (parted/sfdisk sufficient)
 - [ ] iwd (alternative WiFi)
 - [ ] wireless-regdb (regulatory compliance)
 - [ ] sof-firmware (Intel laptop sound)
-- [ ] ISO SHA512 checksum generation
+- [x] ISO SHA512 checksum generation
 - [ ] Man pages
 
 ### P2 - Nice to Have (Enhancement)
@@ -1130,6 +1162,9 @@ Arch Linux ISO includes these packages. Status in LevitateOS noted.
 - Recovery tools (testdisk, ddrescue)
 - ModemManager (mobile broadband)
 - XFS, exFAT, NTFS support
+- **System tuner daemon** - auto-tune sysctls for hardware (vm.swappiness, vm.dirty_ratio)
+- **First-boot GPU detection** - detect GPU, suggest ROCm/CUDA install via recipe
+- **scx schedulers package** - BPF schedulers for sched_ext (kernel has CONFIG_SCHED_CLASS_EXT=y)
 
 ### P3 - Future
 - Secure Boot signing
@@ -1159,7 +1194,7 @@ When you find something missing:
 
 | Priority | Meaning | Example |
 |----------|---------|---------|
-| P0 | Blocking daily driver use | microcode, cryptsetup, genfstab |
-| P1 | archiso parity / should have | lspci, SSH, ethtool |
+| P0 | Blocking daily driver use | microcode, cryptsetup, lvm2, btrfs |
+| P1 | archiso parity / should have | lsusb, SSH, ethtool |
 | P2 | Nice to have | VPN, VM tools, recovery |
 | P3 | Future / optional | Secure Boot, accessibility |

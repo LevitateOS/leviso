@@ -7,11 +7,13 @@
 //! # Remaining modules
 //!
 //! - `context`: BuildContext for paths during build
+//! - `filesystem`: Filesystem structure creation utilities
 //! - `kernel`: Interactive kernel compilation (stays imperative)
 //! - `libdeps`: Library dependency resolution utilities
 //! - `users`: User/group file manipulation utilities
 
 pub mod context;
+pub mod filesystem;
 pub mod kernel;
 pub mod libdeps;
 pub mod users;

@@ -11,7 +11,7 @@ use helpers::{
     create_mock_binary, create_mock_rootfs, TestEnv,
 };
 use leviso::build::{filesystem, users};
-use leviso::common::binary;
+use leviso::elf as binary;
 use serial_test::serial;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -553,7 +553,7 @@ fn test_copy_dir_recursive() {
 
     // Copy to destination
     let dst = env.base_dir.join("dst_dir");
-    filesystem::copy_dir_recursive(&src, &dst).expect("copy_dir_recursive should succeed");
+    binary::copy_dir_recursive(&src, &dst).expect("copy_dir_recursive should succeed");
 
     // Verify structure
     assert_file_exists(&dst.join("file1.txt"));

@@ -7,6 +7,8 @@ use std::path::Path;
 
 use crate::build::context::BuildContext;
 
+const MOTD: &str = include_str!("../../../profile/etc/motd");
+
 /// Create live overlay directory with autologin, serial console, empty root password.
 ///
 /// This is called by iso.rs during ISO creation. The overlay is applied ONLY
@@ -102,57 +104,8 @@ pub fn create_live_overlay(ctx: &BuildContext) -> Result<()> {
 
 /// Create welcome message (MOTD) for live environment.
 pub fn create_welcome_message(ctx: &BuildContext) -> Result<()> {
-    let motd = ctx.staging.join("etc/motd");
-    fs::write(
-        &motd,
-        r#"
-  _                _ _        _        ___  ____
- | |    _____   __(_) |_ __ _| |_ ___ / _ \/ ___|
- | |   / _ \ \ / /| | __/ _` | __/ _ \ | | \___ \
- | |__|  __/\ V / | | || (_| | ||  __/ |_| |___) |
- |_____\___| \_/  |_|\__\__,_|\__\___|\___/|____/
-
- Welcome to LevitateOS Live!
-
- Installation (manual, like Arch):
-
-   # 1. Partition disk
-   fdisk /dev/vda                   # Create GPT, EFI + root partitions
-
-   # 2. Format partitions
-   mkfs.fat -F32 /dev/vda1          # EFI partition
-   mkfs.ext4 /dev/vda2              # Root partition
-
-   # 3. Mount
-   mount /dev/vda2 /mnt
-   mkdir -p /mnt/boot
-   mount /dev/vda1 /mnt/boot
-
-   # 4. Extract system
-   recstrap /mnt
-
-   # 5. Generate fstab
-   recfstab -U /mnt >> /mnt/etc/fstab
-
-   # 6. Chroot and configure
-   recchroot /mnt
-   passwd                           # Set root password
-   bootctl install                  # Install bootloader
-   exit
-
-   # 7. Reboot
-   reboot
-
- For networking:
-   nmcli device wifi list           # List WiFi networks
-   nmcli device wifi connect SSID password PASSWORD
-
-"#,
-    )?;
-
-    let issue = ctx.staging.join("etc/issue");
-    fs::write(&issue, "\nLevitateOS Live - \\l\n\n")?;
-
+    fs::write(ctx.staging.join("etc/motd"), MOTD)?;
+    fs::write(ctx.staging.join("etc/issue"), "\nLevitateOS Live - \\l\n\n")?;
     Ok(())
 }
 

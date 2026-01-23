@@ -17,8 +17,8 @@
 //! 9. Final - welcome message, recstrap
 
 use super::{
-    bins, copy_file, copy_tree, custom, dir, dirs, enable_getty, enable_multi_user,
-    enable_sockets, enable_sysinit, group, sbins, symlink, units, user, Component, CustomOp, Op,
+    bins, copy_file, copy_tree, custom, dirs, enable_getty, enable_multi_user,
+    enable_sysinit, group, sbins, symlink, units, user, Component, CustomOp, Op,
     Phase,
 };
 
@@ -387,36 +387,7 @@ pub static LIVE_SYSTEMD: Component = Component {
 // =============================================================================
 // Phase 4: D-Bus
 // =============================================================================
-
-/// D-Bus binaries.
-const DBUS_BINARIES: &[&str] = &[
-    "dbus-broker",
-    "dbus-broker-launch",
-    "dbus-send",
-    "dbus-daemon",
-    "busctl",
-];
-
-/// D-Bus systemd units.
-const DBUS_UNITS: &[&str] = &["dbus.socket", "dbus-daemon.service"];
-
-pub static DBUS: Component = Component {
-    name: "dbus",
-    phase: Phase::Dbus,
-    ops: &[
-        dir("run/dbus"),
-        bins(DBUS_BINARIES),
-        copy_tree("usr/share/dbus-1"),
-        copy_tree("etc/dbus-1"),
-        units(DBUS_UNITS),
-        symlink("usr/lib/systemd/system/dbus.service", "dbus-daemon.service"),
-        enable_sockets("dbus.socket"),
-        enable_sockets("systemd-journald.socket"),
-        enable_sockets("systemd-journald-dev-log.socket"),
-        user("dbus", 81, 81, "/", "/sbin/nologin"),
-        group("dbus", 81),
-    ],
-};
+// See DBUS_SVC in the Service-based definitions section below.
 
 // =============================================================================
 // Phase 5: Services
@@ -466,56 +437,10 @@ pub static NETWORK: Component = Component {
 };
 
 // --- Chrony ---
-
-pub static CHRONY: Component = Component {
-    name: "chrony",
-    phase: Phase::Services,
-    ops: &[
-        dir("var/lib/chrony"),
-        dir("var/run/chrony"),
-        copy_file("etc/chrony.conf"),
-        copy_file("etc/sysconfig/chronyd"),
-        copy_file("usr/lib/systemd/ntp-units.d/50-chronyd.list"),
-        enable_multi_user("chronyd.service"),
-        user("chrony", 992, 987, "/var/lib/chrony", "/sbin/nologin"),
-        group("chrony", 987),
-    ],
-};
+// See CHRONY_SVC in the Service-based definitions section below.
 
 // --- OpenSSH ---
-
-/// SSH server binaries.
-const SSH_SERVER: &[&str] = &["sshd"];
-/// SSH client binaries.
-const SSH_CLIENT: &[&str] = &["ssh", "scp", "sftp", "ssh-keygen", "ssh-add", "ssh-agent"];
-/// SSH units.
-const SSH_UNITS: &[&str] = &[
-    "sshd.service",
-    "sshd.socket",
-    "sshd@.service",
-    "sshd-keygen.target",
-    "sshd-keygen@.service",
-];
-
-pub static OPENSSH: Component = Component {
-    name: "openssh",
-    phase: Phase::Services,
-    ops: &[
-        sbins(SSH_SERVER),
-        bins(SSH_CLIENT),
-        copy_tree("usr/libexec/openssh"),
-        copy_tree("etc/ssh"),
-        copy_file("etc/pam.d/sshd"),
-        units(SSH_UNITS),
-        copy_file("etc/sysconfig/sshd"),
-        copy_tree("etc/crypto-policies"),
-        copy_tree("usr/share/crypto-policies"),
-        dir("var/empty/sshd"),
-        dir("run/sshd"),
-        user("sshd", 74, 74, "/var/empty/sshd", "/usr/sbin/nologin"),
-        group("sshd", 74),
-    ],
-};
+// See OPENSSH_SVC in the Service-based definitions section below.
 
 // --- PAM ---
 
@@ -608,4 +533,104 @@ pub static FINAL: Component = Component {
         custom(CustomOp::CreateWelcomeMessage),
         custom(CustomOp::CopyRecstrap),
     ],
+};
+
+// =============================================================================
+// Service-based definitions (higher-level abstraction)
+// =============================================================================
+//
+// These use the Service struct which provides a more ergonomic API for
+// defining services with binaries, units, configs, and users/groups.
+
+use super::{Group, Service, Symlink, Target, User};
+
+/// OpenSSH server and client.
+pub static OPENSSH_SVC: Service = Service {
+    name: "openssh",
+    phase: Phase::Services,
+    bins: &["ssh", "scp", "sftp", "ssh-keygen", "ssh-add", "ssh-agent"],
+    sbins: &["sshd"],
+    units: &[
+        "sshd.service",
+        "sshd.socket",
+        "sshd@.service",
+        "sshd-keygen.target",
+        "sshd-keygen@.service",
+    ],
+    enable: &[],  // Not enabled by default
+    config_trees: &[
+        "usr/libexec/openssh",
+        "etc/ssh",
+        "etc/crypto-policies",
+        "usr/share/crypto-policies",
+    ],
+    config_files: &["etc/pam.d/sshd", "etc/sysconfig/sshd"],
+    dirs: &["var/empty/sshd", "run/sshd"],
+    symlinks: &[],
+    users: &[User {
+        name: "sshd",
+        uid: 74,
+        gid: 74,
+        home: "/var/empty/sshd",
+        shell: "/usr/sbin/nologin",
+    }],
+    groups: &[Group { name: "sshd", gid: 74 }],
+    custom: &[],
+};
+
+/// Chrony NTP daemon.
+pub static CHRONY_SVC: Service = Service {
+    name: "chrony",
+    phase: Phase::Services,
+    bins: &[],
+    sbins: &[],  // chronyd is already in SBIN_UTILS
+    units: &[],  // Already in ESSENTIAL_UNITS
+    enable: &[(Target::MultiUser, "chronyd.service")],
+    config_trees: &[],
+    config_files: &[
+        "etc/chrony.conf",
+        "etc/sysconfig/chronyd",
+        "usr/lib/systemd/ntp-units.d/50-chronyd.list",
+    ],
+    dirs: &["var/lib/chrony", "var/run/chrony"],
+    symlinks: &[],
+    users: &[User {
+        name: "chrony",
+        uid: 992,
+        gid: 987,
+        home: "/var/lib/chrony",
+        shell: "/sbin/nologin",
+    }],
+    groups: &[Group { name: "chrony", gid: 987 }],
+    custom: &[],
+};
+
+/// D-Bus message bus.
+pub static DBUS_SVC: Service = Service {
+    name: "dbus",
+    phase: Phase::Dbus,
+    bins: &["dbus-broker", "dbus-broker-launch", "dbus-send", "dbus-daemon", "busctl"],
+    sbins: &[],
+    units: &["dbus.socket", "dbus-daemon.service"],
+    enable: &[
+        (Target::Sockets, "dbus.socket"),
+        (Target::Sockets, "systemd-journald.socket"),
+        (Target::Sockets, "systemd-journald-dev-log.socket"),
+    ],
+    config_trees: &["usr/share/dbus-1", "etc/dbus-1"],
+    config_files: &[],
+    dirs: &["run/dbus"],
+    symlinks: &[Symlink {
+        link: "usr/lib/systemd/system/dbus.service",
+        target: "dbus-daemon.service",
+    }],
+    users: &[User {
+        name: "dbus",
+        uid: 81,
+        gid: 81,
+        home: "/",
+        shell: "/sbin/nologin",
+    }],
+    groups: &[Group { name: "dbus", gid: 81 }],
+    custom: &[],
 };

@@ -5,34 +5,10 @@ use std::fs;
 
 use crate::build::context::BuildContext;
 
-/// PAM system-auth configuration.
-const PAM_SYSTEM_AUTH: &str = "\
-auth required pam_env.so
-auth sufficient pam_unix.so try_first_pass nullok
-auth required pam_deny.so
-account required pam_unix.so
-password requisite pam_pwquality.so try_first_pass local_users_only retry=3
-password sufficient pam_unix.so try_first_pass use_authtok nullok sha512 shadow
-password required pam_deny.so
-session optional pam_keyinit.so revoke
-session required pam_limits.so
-session required pam_unix.so
-";
-
-/// PAM login configuration.
-const PAM_LOGIN: &str = "\
-auth requisite pam_nologin.so
-auth include system-auth
-account required pam_access.so
-account include system-auth
-password include system-auth
-session required pam_loginuid.so
-session optional pam_keyinit.so force revoke
-session include system-auth
-session required pam_namespace.so
-session optional pam_lastlog.so showfailed
-session optional pam_motd.so
-";
+// PAM configs from profile/etc/pam.d/
+const PAM_SYSTEM_AUTH: &str = include_str!("../../../profile/etc/pam.d/system-auth");
+const PAM_LOGIN: &str = include_str!("../../../profile/etc/pam.d/login");
+const LIMITS_CONF: &str = include_str!("../../../profile/etc/security/limits.conf");
 
 /// Create PAM configuration files.
 pub fn create_pam_files(ctx: &BuildContext) -> Result<()> {
@@ -63,14 +39,7 @@ pub fn create_security_config(ctx: &BuildContext) -> Result<()> {
     let security_dir = ctx.staging.join("etc/security");
     fs::create_dir_all(&security_dir)?;
 
-    fs::write(
-        security_dir.join("limits.conf"),
-        "*               soft    core            0\n\
-         *               hard    nofile          1048576\n\
-         *               soft    nofile          1024\n\
-         root            soft    nofile          1048576\n",
-    )?;
-
+    fs::write(security_dir.join("limits.conf"), LIMITS_CONF)?;
     fs::write(security_dir.join("access.conf"), "+:root:LOCAL\n+:ALL:ALL\n")?;
     fs::write(security_dir.join("namespace.conf"), "# Polyinstantiation config\n")?;
     fs::write(security_dir.join("pam_env.conf"), "# Environment variables\n")?;

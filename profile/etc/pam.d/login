@@ -1,0 +1,11 @@
+auth requisite pam_nologin.so
+auth include system-auth
+account required pam_access.so
+account include system-auth
+password include system-auth
+session required pam_loginuid.so
+session optional pam_keyinit.so force revoke
+session include system-auth
+session required pam_namespace.so
+session optional pam_lastlog.so showfailed
+session optional pam_motd.so

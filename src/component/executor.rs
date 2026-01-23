@@ -11,7 +11,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-use super::{Component, Dest, Op};
+use super::{Dest, Installable, Op};
 use crate::build::context::BuildContext;
 use crate::build::libdeps::{
     copy_bash, copy_binary_with_libs, copy_dir_tree, copy_file, copy_sbin_binary_with_libs,
@@ -20,13 +20,16 @@ use crate::build::libdeps::{
 use crate::build::users;
 use leviso_elf::create_symlink_if_missing;
 
-/// Execute all operations in a component.
-pub fn execute(ctx: &BuildContext, component: &Component) -> Result<()> {
-    println!("Installing {}...", component.name);
+/// Execute all operations in an installable component.
+pub fn execute(ctx: &BuildContext, component: &impl Installable) -> Result<()> {
+    let name = component.name();
+    let ops = component.ops();
 
-    for op in component.ops {
+    println!("Installing {}...", name);
+
+    for op in &ops {
         execute_op(ctx, op)
-            .with_context(|| format!("in component '{}': {:?}", component.name, op))?;
+            .with_context(|| format!("in component '{}': {:?}", name, op))?;
     }
 
     Ok(())

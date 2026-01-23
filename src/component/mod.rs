@@ -38,15 +38,33 @@ pub mod builder;
 pub mod custom;
 pub mod definitions;
 pub mod executor;
+pub mod service;
 
 pub use builder::build_system;
+pub use service::{Group, Service, Symlink, User};
 
 use std::fmt;
+
+/// Trait for anything that can be installed by the executor.
+///
+/// Both static `Component` definitions and dynamic `Service` definitions
+/// implement this trait.
+pub trait Installable {
+    /// Name for logging.
+    fn name(&self) -> &str;
+    /// Build phase for ordering.
+    fn phase(&self) -> Phase;
+    /// Generate the operations to perform.
+    fn ops(&self) -> Vec<Op>;
+}
 
 /// A system component that can be installed.
 ///
 /// Components are immutable, static data describing what operations
 /// need to be performed to set up a particular system service.
+///
+/// For service-type components (with bins, units, users), prefer using
+/// the `Service` struct which provides a more ergonomic API.
 #[derive(Debug, Clone)]
 pub struct Component {
     /// Human-readable name for logging.
@@ -55,6 +73,48 @@ pub struct Component {
     pub phase: Phase,
     /// Operations to perform.
     pub ops: &'static [Op],
+}
+
+impl Installable for Component {
+    fn name(&self) -> &str {
+        self.name
+    }
+
+    fn phase(&self) -> Phase {
+        self.phase
+    }
+
+    fn ops(&self) -> Vec<Op> {
+        self.ops.to_vec()
+    }
+}
+
+impl Installable for &Component {
+    fn name(&self) -> &str {
+        self.name
+    }
+
+    fn phase(&self) -> Phase {
+        self.phase
+    }
+
+    fn ops(&self) -> Vec<Op> {
+        self.ops.to_vec()
+    }
+}
+
+impl Installable for Service {
+    fn name(&self) -> &str {
+        self.name
+    }
+
+    fn phase(&self) -> Phase {
+        self.phase
+    }
+
+    fn ops(&self) -> Vec<Op> {
+        self.ops()
+    }
 }
 
 /// Build phases determine component ordering.

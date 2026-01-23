@@ -8,6 +8,10 @@ use leviso_elf::{copy_dir_recursive, make_executable};
 use crate::build::context::BuildContext;
 use crate::process::shell_in;
 
+const RECIPE_CONF: &str = include_str!("../../../profile/etc/recipe.conf");
+const RECIPE_SH: &str = include_str!("../../../profile/etc/profile.d/recipe.sh");
+const DRACUT_CONF: &str = include_str!("../../../profile/etc/dracut.conf.d/levitate.conf");
+
 /// Copy dracut modules from source to staging.
 pub fn copy_dracut_modules(ctx: &BuildContext) -> Result<()> {
     let dracut_src = ctx.source.join("usr/lib/dracut");
@@ -165,19 +169,8 @@ pub fn setup_recipe_config(ctx: &BuildContext) -> Result<()> {
         fs::create_dir_all(ctx.staging.join(dir))?;
     }
 
-    fs::write(
-        ctx.staging.join("etc/recipe/recipe.conf"),
-        r#"# Recipe package manager configuration
-recipe_path = "/etc/recipe/repos/rocky10"
-cache_dir = "/var/cache/recipe"
-db_dir = "/var/lib/recipe"
-"#,
-    )?;
-
-    fs::write(
-        ctx.staging.join("etc/profile.d/recipe.sh"),
-        "export RECIPE_PATH=/etc/recipe/repos/rocky10\n",
-    )?;
+    fs::write(ctx.staging.join("etc/recipe/recipe.conf"), RECIPE_CONF)?;
+    fs::write(ctx.staging.join("etc/profile.d/recipe.sh"), RECIPE_SH)?;
 
     println!("  Created recipe configuration");
     Ok(())
@@ -190,15 +183,7 @@ pub fn create_dracut_config(ctx: &BuildContext) -> Result<()> {
     let dracut_conf_dir = ctx.staging.join("etc/dracut.conf.d");
     fs::create_dir_all(&dracut_conf_dir)?;
 
-    fs::write(
-        dracut_conf_dir.join("levitate.conf"),
-        r#"# LevitateOS dracut defaults
-add_drivers+=" ext4 vfat "
-hostonly="no"
-add_dracutmodules+=" base rootfs-block "
-compress="gzip"
-"#,
-    )?;
+    fs::write(dracut_conf_dir.join("levitate.conf"), DRACUT_CONF)?;
 
     println!("  Created /etc/dracut.conf.d/levitate.conf");
     Ok(())

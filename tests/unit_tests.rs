@@ -12,6 +12,7 @@ use helpers::{
 };
 use leviso::build::{filesystem, users};
 use leviso::common::binary;
+use serial_test::serial;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 
@@ -595,7 +596,8 @@ fn test_make_executable() {
 // config.rs tests
 // =============================================================================
 
-use leviso::config::{module_defaults, Config, RockyConfig};
+use leviso::config::{module_defaults, Config};
+use leviso::deps::RockyConfig;
 
 #[cheat_aware(
     protects = "Rocky config uses correct defaults when no env vars set",
@@ -654,24 +656,28 @@ fn test_module_defaults_contain_essentials() {
     consequence = "Extra modules not included in initramfs"
 )]
 #[test]
+#[serial]
 fn test_config_all_modules_includes_extras() {
-    let env = TestEnv::new();
+    let _env = TestEnv::new();
 
-    // Write .env with extra modules
-    fs::write(
-        env.base_dir.join(".env"),
-        "EXTRA_MODULES=kernel/drivers/nvme/host/nvme.ko.xz,kernel/fs/xfs/xfs.ko.xz",
-    )
-    .unwrap();
+    // Set env var directly (Config::load() reads from environment, not .env file)
+    std::env::set_var(
+        "EXTRA_MODULES",
+        "kernel/drivers/nvme/host/nvme.ko.xz,kernel/fs/xfs/xfs.ko.xz",
+    );
 
-    let config = Config::load(&env.base_dir);
+    let config = Config::load();
+
+    // Clean up BEFORE calling all_modules - extras are stored in config.extra_modules
+    std::env::remove_var("EXTRA_MODULES");
+
     let all_modules = config.all_modules();
 
     // Should include defaults
     assert!(all_modules.iter().any(|m| m.contains("virtio_blk")));
     assert!(all_modules.iter().any(|m| m.contains("ext4")));
 
-    // Should include extras
+    // Should include extras (stored in config, not re-read from env)
     assert!(all_modules.iter().any(|m| m.contains("nvme")));
     assert!(all_modules.iter().any(|m| m.contains("xfs")));
 }
@@ -688,13 +694,17 @@ fn test_config_all_modules_includes_extras() {
     consequence = "Build fails with empty EXTRA_MODULES"
 )]
 #[test]
+#[serial]
 fn test_config_empty_extra_modules() {
-    let env = TestEnv::new();
+    let _env = TestEnv::new();
 
-    // Write .env with empty extra modules
-    fs::write(env.base_dir.join(".env"), "EXTRA_MODULES=").unwrap();
+    // Set empty env var (Config::load() reads from environment, not .env file)
+    std::env::set_var("EXTRA_MODULES", "");
 
-    let config = Config::load(&env.base_dir);
+    let config = Config::load();
+
+    // Clean up
+    std::env::remove_var("EXTRA_MODULES");
 
     // Extra modules should be empty
     assert!(config.extra_modules.is_empty());

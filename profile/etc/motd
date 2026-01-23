@@ -5,36 +5,11 @@
  | |__|  __/\ V / | | || (_| | ||  __/ |_| |___) |
  |_____\___| \_/  |_|\__\__,_|\__\___|\___/|____/
 
- Welcome to LevitateOS Live!
+ Hi, welcome to Levitate. This is the author writing.
 
- Installation (manual, like Arch):
+  Thank you for your interest in LevitateOS, hopefully the first vibe-coded Linux distro. If you're running this in a VM or on bare metal, this is still in pre-release so bugs are very much expected. Please kindly use the issues tab at lecitateOS/levitateOS on github after encountering something odd.
 
-   # 1. Partition disk
-   fdisk /dev/vda                   # Create GPT, EFI + root partitions
-
-   # 2. Format partitions
-   mkfs.fat -F32 /dev/vda1          # EFI partition
-   mkfs.ext4 /dev/vda2              # Root partition
-
-   # 3. Mount
-   mount /dev/vda2 /mnt
-   mkdir -p /mnt/boot
-   mount /dev/vda1 /mnt/boot
-
-   # 4. Extract system
-   recstrap /mnt
-
-   # 5. Generate fstab
-   recfstab -U /mnt >> /mnt/etc/fstab
-
-   # 6. Chroot and configure
-   recchroot /mnt
-   passwd                           # Set root password
-   bootctl install                  # Install bootloader
-   exit
-
-   # 7. Reboot
-   reboot
+  I expect there to be TUI on the right side of your screen that guides your through this manual installation. (if not, then I guess you have a good reason to make an issue lmao)
 
  For networking:
    nmcli device wifi list           # List WiFi networks

@@ -9,7 +9,7 @@
 
 mod helpers;
 
-use cheat_test::{cheat_aware, cheat_canary};
+use leviso_cheat_test::{cheat_aware, cheat_canary};
 use helpers::{assert_file_contains, assert_file_exists, assert_symlink, initramfs_is_built, real_initramfs_root};
 use std::fs;
 use std::path::Path;

@@ -5,7 +5,7 @@
 
 mod helpers;
 
-use cheat_test::{cheat_aware, cheat_canary};
+use leviso_cheat_test::{cheat_aware, cheat_canary};
 use helpers::{
     assert_file_contains, assert_file_exists, assert_symlink,
     create_mock_rootfs, TestEnv,

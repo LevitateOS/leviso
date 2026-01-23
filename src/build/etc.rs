@@ -4,10 +4,62 @@
 //! installed system (not the minimal live environment).
 
 use anyhow::Result;
+use std::env;
 use std::fs;
 
 use super::context::BuildContext;
 use super::filesystem::copy_dir_recursive;
+
+/// OS branding configuration.
+struct OsBranding {
+    name: String,
+    id: String,
+    id_like: String,
+    version: String,
+    version_id: String,
+    home_url: String,
+    bug_report_url: String,
+}
+
+impl OsBranding {
+    /// Load OS branding from environment or use defaults.
+    fn load() -> Self {
+        Self {
+            name: env::var("OS_NAME").unwrap_or_else(|_| "LevitateOS".to_string()),
+            id: env::var("OS_ID").unwrap_or_else(|_| "levitateos".to_string()),
+            id_like: env::var("OS_ID_LIKE").unwrap_or_else(|_| "fedora".to_string()),
+            version: env::var("OS_VERSION").unwrap_or_else(|_| "1.0".to_string()),
+            version_id: env::var("OS_VERSION_ID").unwrap_or_else(|_| "1".to_string()),
+            home_url: env::var("OS_HOME_URL").unwrap_or_else(|_| "https://levitateos.org".to_string()),
+            bug_report_url: env::var("OS_BUG_REPORT_URL")
+                .unwrap_or_else(|_| "https://github.com/levitateos/levitateos/issues".to_string()),
+        }
+    }
+
+    /// Generate /etc/os-release content.
+    fn to_os_release(&self) -> String {
+        format!(
+            r#"NAME="{}"
+ID={}
+ID_LIKE={}
+VERSION="{}"
+VERSION_ID={}
+PRETTY_NAME="{} {}"
+HOME_URL="{}"
+BUG_REPORT_URL="{}"
+"#,
+            self.name,
+            self.id,
+            self.id_like,
+            self.version,
+            self.version_id,
+            self.name,
+            self.version,
+            self.home_url,
+            self.bug_report_url
+        )
+    }
+}
 
 /// Create all /etc configuration files.
 pub fn create_etc_files(ctx: &BuildContext) -> Result<()> {
@@ -133,26 +185,17 @@ sshd:!::
 /// Create system identity files.
 fn create_system_identity(ctx: &BuildContext) -> Result<()> {
     let etc = ctx.staging.join("etc");
+    let branding = OsBranding::load();
 
-    // /etc/hostname (empty - will be set during installation)
-    fs::write(etc.join("hostname"), "levitateos\n")?;
+    // /etc/hostname (uses OS ID as default hostname)
+    let hostname = env::var("OS_HOSTNAME").unwrap_or_else(|_| branding.id.clone());
+    fs::write(etc.join("hostname"), format!("{}\n", hostname))?;
 
     // /etc/machine-id (empty - systemd generates on first boot)
     fs::write(etc.join("machine-id"), "")?;
 
     // /etc/os-release
-    fs::write(
-        etc.join("os-release"),
-        r#"NAME="LevitateOS"
-ID=levitateos
-ID_LIKE=fedora
-VERSION="1.0"
-VERSION_ID=1
-PRETTY_NAME="LevitateOS 1.0"
-HOME_URL="https://levitateos.org"
-BUG_REPORT_URL="https://github.com/levitateos/levitateos/issues"
-"#,
-    )?;
+    fs::write(etc.join("os-release"), branding.to_os_release())?;
 
     Ok(())
 }

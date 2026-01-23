@@ -30,14 +30,20 @@
 //! ```
 
 use anyhow::{bail, Context, Result};
+use std::env;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Command;
 
-/// Busybox download URL (static x86_64 build).
-const BUSYBOX_URL: &str =
+/// Default busybox download URL (static x86_64 build).
+const DEFAULT_BUSYBOX_URL: &str =
     "https://busybox.net/downloads/binaries/1.35.0-x86_64-linux-musl/busybox";
+
+/// Get busybox download URL from environment or use default.
+fn busybox_url() -> String {
+    env::var("BUSYBOX_URL").unwrap_or_else(|_| DEFAULT_BUSYBOX_URL.to_string())
+}
 
 /// Commands to symlink from busybox.
 const BUSYBOX_COMMANDS: &[&str] = &[
@@ -151,7 +157,8 @@ fn copy_busybox(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
 
     // Download if not cached
     if !busybox_cache.exists() {
-        println!("  Downloading static busybox from {}", BUSYBOX_URL);
+        let url = busybox_url();
+        println!("  Downloading static busybox from {}", url);
         fs::create_dir_all(&downloads_dir)?;
 
         let status = Command::new("curl")
@@ -160,7 +167,7 @@ fn copy_busybox(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
                 "-o",
                 busybox_cache.to_str().unwrap(),
                 "--progress-bar",
-                BUSYBOX_URL,
+                &url,
             ])
             .status()
             .context("curl not found. Install curl.")?;

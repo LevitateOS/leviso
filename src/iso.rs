@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -6,8 +7,11 @@ use std::process::Command;
 use crate::build;
 use crate::common::binary::copy_dir_recursive;
 
-/// ISO volume label - used for boot device detection.
-const ISO_LABEL: &str = "LEVITATEOS";
+/// Get ISO volume label from environment or use default.
+/// Used for boot device detection (root=LABEL=X).
+fn iso_label() -> String {
+    env::var("ISO_LABEL").unwrap_or_else(|_| "LEVITATEOS".to_string())
+}
 
 /// Paths used during ISO creation.
 struct IsoPaths {
@@ -192,6 +196,7 @@ fn setup_uefi_boot(paths: &IsoPaths) -> Result<()> {
 
     // Create GRUB config with root=LABEL for device detection
     // selinux=0 disables SELinux (we don't ship policies)
+    let label = iso_label();
     let grub_cfg = format!(
         r#"set default=0
 set timeout=5
@@ -211,7 +216,7 @@ menuentry 'LevitateOS (Debug)' {{
     initrdefi /boot/initramfs.img
 }}
 "#,
-        ISO_LABEL, ISO_LABEL, ISO_LABEL
+        label, label, label
     );
     fs::write(paths.iso_root.join("EFI/BOOT/grub.cfg"), grub_cfg)?;
 
@@ -225,6 +230,7 @@ menuentry 'LevitateOS (Debug)' {{
 /// Stage 6: Run xorriso to create the final ISO.
 fn run_xorriso(paths: &IsoPaths) -> Result<()> {
     println!("Creating UEFI bootable ISO with xorriso...");
+    let label = iso_label();
     let status = Command::new("xorriso")
         .args([
             "-as",
@@ -232,7 +238,7 @@ fn run_xorriso(paths: &IsoPaths) -> Result<()> {
             "-o",
             paths.iso_output.to_str().unwrap(),
             "-V",
-            ISO_LABEL, // CRITICAL: Volume label for device detection
+            &label, // CRITICAL: Volume label for device detection
             "-partition_offset",
             "16",
             "-full-iso9660-filenames",
@@ -315,7 +321,7 @@ fn print_iso_summary(iso_output: &Path) {
     if let Ok(meta) = fs::metadata(iso_output) {
         println!("  Size: {} MB", meta.len() / 1024 / 1024);
     }
-    println!("  Label: {}", ISO_LABEL);
+    println!("  Label: {}", iso_label());
     println!("\nTo run in QEMU:");
     println!("  cargo run -- run");
 }

@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use std::env;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -187,6 +188,24 @@ pub fn extract_rocky_iso(base_dir: &Path, iso_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Get the list of RPMs to extract.
+/// Combines SUPPLEMENTARY_RPMS with any additional RPMs from EXTRA_RPMS env var.
+fn get_rpm_list() -> Vec<String> {
+    let mut rpms: Vec<String> = SUPPLEMENTARY_RPMS.iter().map(|s| s.to_string()).collect();
+
+    // Append extra RPMs from environment variable (comma-separated)
+    if let Ok(extra) = env::var("EXTRA_RPMS") {
+        for rpm in extra.split(',') {
+            let rpm = rpm.trim();
+            if !rpm.is_empty() && !rpms.iter().any(|r| r == rpm) {
+                rpms.push(rpm.to_string());
+            }
+        }
+    }
+
+    rpms
+}
+
 /// Extract supplementary RPMs and merge them into the rootfs.
 fn extract_supplementary_rpms(iso_contents: &Path, rootfs_dir: &Path) -> Result<()> {
     // Search both BaseOS and AppStream for packages
@@ -195,7 +214,8 @@ fn extract_supplementary_rpms(iso_contents: &Path, rootfs_dir: &Path) -> Result<
         iso_contents.join("AppStream/Packages"),
     ];
 
-    for rpm_prefix in SUPPLEMENTARY_RPMS {
+    let rpm_list = get_rpm_list();
+    for rpm_prefix in &rpm_list {
         let first_char = rpm_prefix.chars().next().unwrap();
 
         // Search in both BaseOS and AppStream

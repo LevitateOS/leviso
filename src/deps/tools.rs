@@ -7,8 +7,10 @@ use std::process::Command;
 
 use super::DependencyResolver;
 
-/// GitHub org for tool downloads.
-const GITHUB_ORG: &str = "LevitateOS";
+/// Get GitHub org for tool downloads from environment or use default.
+fn github_org() -> String {
+    env::var("GITHUB_ORG").unwrap_or_else(|_| "LevitateOS".to_string())
+}
 
 /// Installation tools.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -239,7 +241,7 @@ fn download(resolver: &DependencyResolver, tool: Tool) -> Result<ToolBinary> {
     // Get latest release URL
     let release_url = format!(
         "https://api.github.com/repos/{}/{}/releases/latest",
-        GITHUB_ORG,
+        github_org(),
         tool.repo()
     );
 

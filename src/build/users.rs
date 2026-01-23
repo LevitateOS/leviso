@@ -4,6 +4,8 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 
+use distro_spec::levitate::ROOT_SHELL;
+
 /// Read a UID from the rootfs passwd file.
 pub fn read_uid_from_rootfs(rootfs: &Path, username: &str) -> Option<(u32, u32)> {
     let passwd_path = rootfs.join("etc/passwd");
@@ -82,7 +84,7 @@ pub fn ensure_group(
 pub fn create_root_user(staging: &Path) -> Result<()> {
     fs::write(
         staging.join("etc/passwd"),
-        "root:x:0:0:root:/root:/bin/bash\n",
+        format!("root:x:0:0:root:/root:{}\n", ROOT_SHELL),
     )?;
     fs::write(staging.join("etc/group"), "root:x:0:\n")?;
     Ok(())

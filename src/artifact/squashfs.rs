@@ -32,6 +32,7 @@ use anyhow::{bail, Result};
 use std::fs;
 use std::path::Path;
 
+use distro_spec::levitate::{SQUASHFS_BLOCK_SIZE, SQUASHFS_COMPRESSION, SQUASHFS_NAME};
 use crate::build::BuildContext;
 use crate::process::{self, Cmd};
 
@@ -47,7 +48,7 @@ pub fn build_squashfs(base_dir: &Path) -> Result<()> {
 
     // 2. Set up paths
     let staging = base_dir.join("output/squashfs-root");
-    let output = base_dir.join("output/filesystem.squashfs");
+    let output = base_dir.join("output").join(SQUASHFS_NAME);
 
     // 3. Clean staging if exists
     if staging.exists() {
@@ -103,7 +104,7 @@ fn check_host_tools() -> Result<()> {
 /// Uses gzip compression for universal kernel compatibility.
 /// (zstd requires CONFIG_SQUASHFS_ZSTD=y which not all kernels have)
 fn create_squashfs(staging: &Path, output: &Path) -> Result<()> {
-    println!("Creating squashfs with gzip compression...");
+    println!("Creating squashfs with {} compression...", SQUASHFS_COMPRESSION);
 
     // Remove existing if present
     if output.exists() {
@@ -119,8 +120,8 @@ fn create_squashfs(staging: &Path, output: &Path) -> Result<()> {
     Cmd::new("mksquashfs")
         .arg_path(staging)
         .arg_path(output)
-        .args(["-comp", "gzip"]) // Universal compatibility - all kernels support gzip
-        .args(["-b", "1M"]) // 1MB blocks for better compression
+        .args(["-comp", SQUASHFS_COMPRESSION]) // Universal compatibility - all kernels support gzip
+        .args(["-b", SQUASHFS_BLOCK_SIZE]) // 1MB blocks for better compression
         .arg("-no-xattrs") // Skip extended attributes
         .arg("-noappend") // Always create fresh
         .arg("-progress") // Show progress

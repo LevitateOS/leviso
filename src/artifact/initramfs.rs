@@ -29,21 +29,35 @@
 //! 4. systemd (PID 1) takes over
 //! ```
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use std::env;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use crate::process::{shell, Cmd};
+use distro_spec::levitate::{
+    // Modules
+    BOOT_MODULES,
+    // Init script generation
+    BOOT_DEVICE_PROBE_ORDER,
+    ISO_LABEL,
+    LIVE_OVERLAY_ISO_PATH,
+    SQUASHFS_ISO_PATH,
+    // Build paths
+    BUSYBOX_URL,
+    BUSYBOX_URL_ENV,
+    INITRAMFS_BUILD_DIR,
+    INITRAMFS_DIRS,
+    INITRAMFS_OUTPUT,
+    // Compression
+    CPIO_GZIP_LEVEL,
+};
 
-/// Default busybox download URL (static x86_64 build).
-const DEFAULT_BUSYBOX_URL: &str =
-    "https://busybox.net/downloads/binaries/1.35.0-x86_64-linux-musl/busybox";
 
 /// Get busybox download URL from environment or use default.
 fn busybox_url() -> String {
-    env::var("BUSYBOX_URL").unwrap_or_else(|_| DEFAULT_BUSYBOX_URL.to_string())
+    env::var(BUSYBOX_URL_ENV).unwrap_or_else(|_| BUSYBOX_URL.to_string())
 }
 
 /// Commands to symlink from busybox.
@@ -53,29 +67,15 @@ const BUSYBOX_COMMANDS: &[&str] = &[
     "insmod", "modprobe", "xz", "gunzip", "find", "head",  // For module loading
 ];
 
-/// Kernel modules needed for boot (Rocky kernel has these as modules).
-/// Order matters for dependencies.
-const BOOT_MODULES: &[&str] = &[
-    // CDROM/SCSI support
-    "kernel/drivers/cdrom/cdrom.ko.xz",
-    "kernel/drivers/scsi/sr_mod.ko.xz",
-    "kernel/drivers/scsi/virtio_scsi.ko.xz",  // QEMU virtio-scsi controller
-    "kernel/fs/isofs/isofs.ko.xz",
-    // Virtio block device (QEMU -drive if=virtio -> /dev/vda)
-    "kernel/drivers/block/virtio_blk.ko.xz",
-    // Loop device and filesystems for squashfs+overlay boot
-    "kernel/drivers/block/loop.ko.xz",
-    "kernel/fs/squashfs/squashfs.ko.xz",
-    "kernel/fs/overlayfs/overlay.ko.xz",
-];
+// BOOT_MODULES moved to distro-spec
 
 /// Build the tiny initramfs.
 pub fn build_tiny_initramfs(base_dir: &Path) -> Result<()> {
     println!("=== Building Tiny Initramfs ===\n");
 
     let output_dir = base_dir.join("output");
-    let initramfs_root = output_dir.join("initramfs-tiny-root");
-    let output_cpio = output_dir.join("initramfs-tiny.cpio.gz");
+    let initramfs_root = output_dir.join(INITRAMFS_BUILD_DIR);
+    let output_cpio = output_dir.join(INITRAMFS_OUTPUT);
 
     // Clean previous build
     if initramfs_root.exists() {
@@ -109,18 +109,7 @@ pub fn build_tiny_initramfs(base_dir: &Path) -> Result<()> {
 fn create_directory_structure(root: &Path) -> Result<()> {
     println!("Creating directory structure...");
 
-    let dirs = [
-        "bin",
-        "dev",
-        "proc",
-        "sys",
-        "tmp",       // Temp files (for module decompression)
-        "mnt",       // ISO mount point
-        "squashfs",  // Squashfs mount point
-        "overlay",   // Overlay work directory
-        "newroot",   // Final rootfs
-        "lib/modules", // Kernel modules for CDROM
-    ];
+    let dirs = INITRAMFS_DIRS;
 
     for dir in dirs {
         fs::create_dir_all(root.join(dir))?;
@@ -288,29 +277,12 @@ fn copy_boot_modules(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
 /// 2. The fallback would quickly become out of sync
 /// 3. A silent fallback to a broken init is worse than failing
 fn create_init_script(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
-    println!("Creating init script...");
+    println!("Creating init script from template...");
 
-    let init_src = base_dir.join("profile/init_tiny");
+    let init_content = generate_init_script(base_dir)?;
     let init_dst = initramfs_root.join("init");
 
-    // FAIL FAST - init_tiny is required
-    if !init_src.exists() {
-        bail!(
-            "Init script not found at {}.\n\
-             \n\
-             profile/init_tiny is REQUIRED - it contains the three-layer overlay logic\n\
-             for separating live-specific configs from the base system.\n\
-             \n\
-             DO NOT create a fallback. The init script is critical and must be maintained\n\
-             in one place (profile/init_tiny), not duplicated in code.\n\
-             \n\
-             Restore profile/init_tiny from git:\n\
-             git checkout profile/init_tiny",
-            init_src.display()
-        );
-    }
-
-    fs::copy(&init_src, &init_dst)?;
+    fs::write(&init_dst, &init_content)?;
 
     // Make executable
     let mut perms = fs::metadata(&init_dst)?.permissions();
@@ -326,12 +298,38 @@ fn build_cpio(root: &Path, output: &Path) -> Result<()> {
 
     // Use find + cpio to create the archive
     let cpio_cmd = format!(
-        "cd {} && find . -print0 | cpio --null -o -H newc 2>/dev/null | gzip -9 > {}",
+        "cd {} && find . -print0 | cpio --null -o -H newc 2>/dev/null | gzip -{} > {}",
         root.display(),
+        CPIO_GZIP_LEVEL,
         output.display()
     );
 
     shell(&cpio_cmd)?;
 
     Ok(())
+}
+
+/// Generate init script from template with distro-spec values.
+fn generate_init_script(base_dir: &Path) -> Result<String> {
+    let template_path = base_dir.join("profile/init_tiny.template");
+    let template = fs::read_to_string(&template_path)
+        .with_context(|| format!("Failed to read init_tiny.template at {}", template_path.display()))?;
+
+    // Extract module names from full paths
+    // e.g., "kernel/fs/squashfs/squashfs.ko.xz" -> "squashfs"
+    let module_names: Vec<&str> = BOOT_MODULES
+        .iter()
+        .filter_map(|m| m.rsplit('/').next())
+        .map(|m| m.trim_end_matches(".ko.xz").trim_end_matches(".ko.gz"))
+        .collect();
+
+    Ok(template
+        .replace("{{ISO_LABEL}}", ISO_LABEL)
+        .replace("{{SQUASHFS_PATH}}", &format!("/{}", SQUASHFS_ISO_PATH))
+        .replace("{{BOOT_MODULES}}", &module_names.join(" "))
+        .replace("{{BOOT_DEVICES}}", &BOOT_DEVICE_PROBE_ORDER.join(" "))
+        .replace(
+            "{{LIVE_OVERLAY_PATH}}",
+            &format!("/{}", LIVE_OVERLAY_ISO_PATH),
+        ))
 }

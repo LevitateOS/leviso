@@ -5,6 +5,8 @@
 
 use std::path::Path;
 
+use distro_spec::levitate::{INITRAMFS_OUTPUT, ISO_FILENAME, SQUASHFS_NAME};
+
 use crate::cache;
 
 /// Check if kernel needs to be rebuilt.
@@ -35,7 +37,7 @@ pub fn kernel_needs_rebuild(base_dir: &Path) -> bool {
 ///
 /// Uses hash of key input files rather than staging dir mtime.
 pub fn squashfs_needs_rebuild(base_dir: &Path) -> bool {
-    let squashfs = base_dir.join("output/filesystem.squashfs");
+    let squashfs = base_dir.join("output").join(SQUASHFS_NAME);
     let hash_file = base_dir.join("output/.squashfs-inputs.hash");
 
     if !squashfs.exists() {
@@ -57,9 +59,9 @@ pub fn squashfs_needs_rebuild(base_dir: &Path) -> bool {
 
 /// Check if initramfs needs to be rebuilt.
 pub fn initramfs_needs_rebuild(base_dir: &Path) -> bool {
-    let initramfs = base_dir.join("output/initramfs-tiny.cpio.gz");
+    let initramfs = base_dir.join("output").join(INITRAMFS_OUTPUT);
     let hash_file = base_dir.join("output/.initramfs-inputs.hash");
-    let init_script = base_dir.join("profile/init_tiny");
+    let init_script = base_dir.join("profile/init_tiny.template");
     let busybox = base_dir.join("downloads/busybox-static");
 
     if !initramfs.exists() {
@@ -77,9 +79,9 @@ pub fn initramfs_needs_rebuild(base_dir: &Path) -> bool {
 
 /// Check if ISO needs to be rebuilt.
 pub fn iso_needs_rebuild(base_dir: &Path) -> bool {
-    let iso = base_dir.join("output/levitateos.iso");
-    let squashfs = base_dir.join("output/filesystem.squashfs");
-    let initramfs = base_dir.join("output/initramfs-tiny.cpio.gz");
+    let iso = base_dir.join("output").join(ISO_FILENAME);
+    let squashfs = base_dir.join("output").join(SQUASHFS_NAME);
+    let initramfs = base_dir.join("output").join(INITRAMFS_OUTPUT);
     let vmlinuz = base_dir.join("output/staging/boot/vmlinuz");
 
     if !iso.exists() {
@@ -111,7 +113,7 @@ pub fn cache_squashfs_hash(base_dir: &Path) {
 
 /// Cache the initramfs input hash after a successful build.
 pub fn cache_initramfs_hash(base_dir: &Path) {
-    let init_script = base_dir.join("profile/init_tiny");
+    let init_script = base_dir.join("profile/init_tiny.template");
     let busybox = base_dir.join("downloads/busybox-static");
     let inputs: Vec<&Path> = vec![&init_script, &busybox];
     if let Some(hash) = cache::hash_files(&inputs) {

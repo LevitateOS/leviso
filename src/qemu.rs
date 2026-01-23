@@ -2,6 +2,12 @@ use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use distro_spec::levitate::{
+    ISO_FILENAME,
+    QEMU_MEMORY_GB, QEMU_DISK_GB,
+    QEMU_DISK_FILENAME, QEMU_SERIAL_LOG, QEMU_CPU_MODE,
+};
+
 /// Builder for QEMU commands - consolidates common configuration patterns
 #[derive(Default)]
 struct QemuBuilder {
@@ -47,10 +53,10 @@ impl QemuBuilder {
         // CPU: Use "max" to get all features TCG supports without warnings.
         // Skylake-Client causes TCG warnings about unsupported features (pcid, hle, rtm, etc.)
         // "max" provides x86-64-v3+ features that Rocky 10 needs, without the noise.
-        cmd.args(["-cpu", "max"]);
+        cmd.args(["-cpu", QEMU_CPU_MODE]);
 
         // Memory (4G - LevitateOS is a daily driver OS, not a toy)
-        cmd.args(["-m", "4G"]);
+        cmd.args(["-m", &format!("{}G", QEMU_MEMORY_GB)]);
 
         // CD-ROM (use virtio-scsi for better compatibility with modern kernels)
         if let Some(cdrom) = &self.cdrom {
@@ -89,7 +95,7 @@ impl QemuBuilder {
             cmd.args(["-vga", vga]);
             // Add serial port even in GUI mode so kernel messages are captured
             // Kernel cmdline in grub.cfg has console=ttyS0 which needs a serial device
-            cmd.args(["-serial", "file:/tmp/levitateos-serial.log"]);
+            cmd.args(["-serial", &format!("file:{}", QEMU_SERIAL_LOG)]);
         }
 
         cmd
@@ -124,7 +130,7 @@ fn find_ovmf() -> Option<PathBuf> {
 /// Run the ISO in QEMU GUI (closest to bare metal)
 pub fn run_iso(base_dir: &Path, disk_size: Option<String>) -> Result<()> {
     let output_dir = base_dir.join("output");
-    let iso_path = output_dir.join("levitateos.iso");
+    let iso_path = output_dir.join(ISO_FILENAME);
 
     if !iso_path.exists() {
         bail!(
@@ -141,8 +147,8 @@ pub fn run_iso(base_dir: &Path, disk_size: Option<String>) -> Result<()> {
     let mut builder = QemuBuilder::new().cdrom(iso_path.clone()).vga("virtio");
 
     // Always include a virtual disk (default 20GB, like a real system)
-    let size = disk_size.unwrap_or_else(|| "20G".to_string());
-    let disk_path = output_dir.join("virtual-disk.qcow2");
+    let size = disk_size.unwrap_or_else(|| format!("{}G", QEMU_DISK_GB));
+    let disk_path = output_dir.join(QEMU_DISK_FILENAME);
 
     // Create disk if it doesn't exist
     if !disk_path.exists() {

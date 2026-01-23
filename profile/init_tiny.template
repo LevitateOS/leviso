@@ -4,8 +4,8 @@
 #
 # REQUIREMENTS:
 # - Kernel built with CONFIG_SQUASHFS=y, CONFIG_BLK_DEV_LOOP=y, CONFIG_OVERLAY_FS=y
-# - ISO labeled "LEVITATEOS" (set by xorriso -V)
-# - Kernel cmdline: root=LABEL=LEVITATEOS
+# - ISO labeled "{{ISO_LABEL}}" (set by xorriso -V)
+# - Kernel cmdline: root=LABEL={{ISO_LABEL}}
 #
 # BOOT FLOW:
 # 1. GRUB loads kernel + this initramfs
@@ -45,7 +45,7 @@ if [ -n "$KVER" ]; then
     # CDROM: cdrom, virtio_scsi (QEMU), sr_mod, isofs
     # Block: virtio_blk (QEMU disk), loop
     # Filesystems: squashfs, overlay
-    for mod in cdrom virtio_scsi sr_mod isofs virtio_blk loop squashfs overlay; do
+    for mod in {{BOOT_MODULES}}; do
         MODPATH=$(busybox find "$MODDIR" -name "${mod}.ko*" 2>/dev/null | busybox head -1)
         if [ -n "$MODPATH" ]; then
             # Decompress if needed
@@ -80,7 +80,7 @@ for param in $CMDLINE; do
 done
 
 # Default label if not specified
-[ -z "$ROOT_LABEL" ] && ROOT_LABEL="LEVITATEOS"
+[ -z "$ROOT_LABEL" ] && ROOT_LABEL="{{ISO_LABEL}}"
 busybox echo "ROOT_LABEL: $ROOT_LABEL"
 
 msg() {
@@ -117,7 +117,7 @@ fi
 # Find the boot device by looking for filesystem.squashfs
 # Check common device paths in order of likelihood
 BOOT_DEV=""
-DEVICES="/dev/sr0 /dev/sda /dev/sda1 /dev/sdb /dev/sdb1 /dev/vda /dev/vda1 /dev/nvme0n1 /dev/nvme0n1p1"
+DEVICES="{{BOOT_DEVICES}}"
 
 busybox echo "Searching devices: $DEVICES"
 
@@ -132,7 +132,7 @@ for dev in $DEVICES; do
     fi
 
     # Check if this is our boot media
-    if [ -f /mnt/live/filesystem.squashfs ]; then
+    if [ -f /mnt{{SQUASHFS_PATH}} ]; then
         BOOT_DEV="$dev"
         msg "Found boot device: $dev"
         break
@@ -151,7 +151,7 @@ if [ -z "$BOOT_DEV" ]; then
     busybox ls -la /dev/sd* /dev/sr* /dev/vd* /dev/nvme* 2>/dev/null || msg "  (none found)"
     msg ""
     msg "Expected structure on boot device:"
-    msg "  /live/filesystem.squashfs"
+    msg "  {{SQUASHFS_PATH}}"
     msg ""
     emergency_shell "Boot device not found"
 fi
@@ -176,10 +176,10 @@ busybox mknod /dev/loop0 b 7 0 2>/dev/null || true
 
 # Set up loop device
 busybox echo "Running losetup..."
-if ! busybox losetup /dev/loop0 /mnt/live/filesystem.squashfs; then
+if ! busybox losetup /dev/loop0 "/mnt{{SQUASHFS_PATH}}"; then
     busybox echo "losetup failed, trying direct mount..."
     # Fall back to direct mount (kernel might handle it)
-    if ! busybox mount -t squashfs -o ro /mnt/live/filesystem.squashfs /squashfs; then
+    if ! busybox mount -t squashfs -o ro "/mnt{{SQUASHFS_PATH}}" /squashfs; then
         emergency_shell "Failed to mount squashfs. Is CONFIG_SQUASHFS=y in kernel?"
     fi
 else
@@ -194,10 +194,10 @@ busybox echo "Squashfs mounted successfully"
 # This contains live-specific configs (autologin, serial console, empty root password)
 # that are NOT included in the squashfs base system
 LIVE_OVERLAY=""
-if [ -d /mnt/live/overlay ]; then
+if [ -d "/mnt{{LIVE_OVERLAY_PATH}}" ]; then
     msg "Found live overlay on ISO"
     # Bind-mount the live overlay from ISO
-    busybox mount --bind /mnt/live/overlay /live-overlay
+    busybox mount --bind "/mnt{{LIVE_OVERLAY_PATH}}" /live-overlay
     LIVE_OVERLAY="/live-overlay"
 else
     msg "No live overlay found on ISO (installed system behavior)"

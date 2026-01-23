@@ -4,6 +4,11 @@ use anyhow::Result;
 use std::fs;
 use std::path::Path;
 
+use distro_spec::levitate::{
+    EFIBOOT_FILENAME, INITRAMFS_BUILD_DIR, INITRAMFS_FILENAME, INITRAMFS_OUTPUT, ISO_CHECKSUM_SUFFIX,
+    ISO_FILENAME, SQUASHFS_NAME,
+};
+
 /// Clean all build outputs (preserves downloads).
 pub fn clean_outputs(base_dir: &Path) -> Result<()> {
     let output_dir = base_dir.join("output");
@@ -60,13 +65,13 @@ pub fn clean_kernel(base_dir: &Path) -> Result<()> {
 
 /// Clean ISO and initramfs only.
 pub fn clean_iso(base_dir: &Path) -> Result<()> {
-    let iso = base_dir.join("output/levitateos.iso");
-    let checksum = base_dir.join("output/levitateos.iso.sha512");
-    let initramfs = base_dir.join("output/initramfs.img");
-    let initramfs_tiny = base_dir.join("output/initramfs-tiny.cpio.gz");
+    let iso = base_dir.join("output").join(ISO_FILENAME);
+    let checksum = base_dir.join("output").join(format!("{}{}", ISO_FILENAME, ISO_CHECKSUM_SUFFIX));
+    let initramfs = base_dir.join("output").join(INITRAMFS_FILENAME);
+    let initramfs_tiny = base_dir.join("output").join(INITRAMFS_OUTPUT);
     let initramfs_dir = base_dir.join("output/initramfs");
-    let initramfs_tiny_root = base_dir.join("output/initramfs-tiny-root");
-    let efiboot = base_dir.join("output/efiboot.img");
+    let initramfs_tiny_root = base_dir.join("output").join(INITRAMFS_BUILD_DIR);
+    let efiboot = base_dir.join("output").join(EFIBOOT_FILENAME);
     let live_overlay = base_dir.join("output/live-overlay");
     let initramfs_hash = base_dir.join("output/.initramfs-inputs.hash");
 
@@ -136,7 +141,7 @@ pub fn clean_iso(base_dir: &Path) -> Result<()> {
 
 /// Clean squashfs only.
 pub fn clean_squashfs(base_dir: &Path) -> Result<()> {
-    let squashfs = base_dir.join("output/filesystem.squashfs");
+    let squashfs = base_dir.join("output").join(SQUASHFS_NAME);
     let squashfs_root = base_dir.join("output/squashfs-root");
     let squashfs_extracted = base_dir.join("output/squashfs-extracted");
     let squashfs_hash = base_dir.join("output/.squashfs-inputs.hash");

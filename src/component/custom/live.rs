@@ -5,6 +5,8 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
+use distro_spec::levitate::LIVE_ISSUE_MESSAGE;
+
 use crate::build::context::BuildContext;
 
 const MOTD: &str = include_str!("../../../profile/etc/motd");
@@ -78,7 +80,7 @@ pub fn create_live_overlay(ctx: &BuildContext) -> Result<()> {
 /// Create welcome message (MOTD) for live environment.
 pub fn create_welcome_message(ctx: &BuildContext) -> Result<()> {
     fs::write(ctx.staging.join("etc/motd"), MOTD)?;
-    fs::write(ctx.staging.join("etc/issue"), "\nLevitateOS Live - \\l\n\n")?;
+    fs::write(ctx.staging.join("etc/issue"), LIVE_ISSUE_MESSAGE)?;
     Ok(())
 }
 

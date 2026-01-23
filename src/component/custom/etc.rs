@@ -19,7 +19,6 @@ const SUDOERS: &str = include_str!("../../../profile/etc/sudoers");
 const PROFILE: &str = include_str!("../../../profile/etc/profile");
 const BASHRC: &str = include_str!("../../../profile/etc/bashrc");
 const NSSWITCH: &str = include_str!("../../../profile/etc/nsswitch.conf");
-const SECURETTY: &str = include_str!("../../../profile/etc/securetty");
 const SHELLS: &str = include_str!("../../../profile/etc/shells");
 const XDG_SH: &str = include_str!("../../../profile/etc/profile.d/xdg.sh");
 
@@ -110,7 +109,6 @@ fn create_filesystem_config(ctx: &BuildContext) -> Result<()> {
 fn create_auth_config(ctx: &BuildContext) -> Result<()> {
     let etc = ctx.staging.join("etc");
 
-    fs::write(etc.join("securetty"), SECURETTY)?;
     fs::write(etc.join("shells"), SHELLS)?;
     fs::write(etc.join("login.defs"), LOGIN_DEFS)?;
     fs::write(etc.join("sudoers"), SUDOERS)?;

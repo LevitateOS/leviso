@@ -1,0 +1,8 @@
+# LevitateOS crond - PAM configuration for cron daemon
+auth       sufficient   pam_rootok.so
+auth       required     pam_env.so
+auth       include      system-auth
+account    required     pam_access.so
+account    include      system-auth
+session    required     pam_loginuid.so
+session    include      system-auth

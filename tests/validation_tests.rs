@@ -584,28 +584,6 @@ fn test_validation_shells_file() {
     assert_file_contains(&shells, "/bin/bash");
 }
 
-#[cheat_aware(
-    protects = "Root can login on console TTYs",
-    severity = "HIGH",
-    ease = "EASY",
-    cheats = [
-        "Check file exists but not tty entries",
-        "Accept empty securetty",
-        "Skip ttyS0 for serial console"
-    ],
-    consequence = "root login disabled on this terminal"
-)]
-#[test]
-#[ignore]
-fn test_validation_securetty() {
-    let root = require_initramfs();
-
-    let securetty = root.join("etc/securetty");
-    assert_file_exists(&securetty);
-    assert_file_contains(&securetty, "tty1");
-    assert_file_contains(&securetty, "ttyS0");
-}
-
 // =============================================================================
 // Symlink integrity tests
 // =============================================================================

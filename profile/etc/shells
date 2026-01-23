@@ -1,4 +1,6 @@
-/usr/bin/bash
+/bin/sh
 /bin/bash
 /usr/bin/sh
-/bin/sh
+/usr/bin/bash
+/usr/bin/zsh
+/bin/zsh

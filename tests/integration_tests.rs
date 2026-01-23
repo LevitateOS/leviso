@@ -272,34 +272,6 @@ session    required     pam_permit.so
 }
 
 #[cheat_aware(
-    protects = "Securetty allows root login on console TTYs",
-    severity = "HIGH",
-    ease = "EASY",
-    cheats = [
-        "Create empty securetty",
-        "Skip ttyS0 for serial console",
-        "List only tty1"
-    ],
-    consequence = "root login disabled on this terminal"
-)]
-#[test]
-fn test_securetty_allows_console() {
-    let env = TestEnv::new();
-    create_mock_rootfs(&env.rootfs);
-    filesystem::create_fhs_structure(&env.initramfs).unwrap();
-
-    // Create securetty (what setup_pam would create)
-    fs::write(
-        env.initramfs.join("etc/securetty"),
-        "tty1\ntty2\ntty3\ntty4\ntty5\ntty6\nttyS0\n",
-    )
-    .unwrap();
-
-    assert_file_contains(&env.initramfs.join("etc/securetty"), "tty1");
-    assert_file_contains(&env.initramfs.join("etc/securetty"), "ttyS0");
-}
-
-#[cheat_aware(
     protects = "Valid login shells listed in /etc/shells",
     severity = "MEDIUM",
     ease = "EASY",

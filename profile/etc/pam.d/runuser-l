@@ -1,0 +1,5 @@
+# LevitateOS runuser-l - PAM configuration for runuser -l (login shell)
+auth       include      runuser
+session    optional     pam_keyinit.so force revoke
+-session   optional     pam_systemd.so
+session    include      system-auth

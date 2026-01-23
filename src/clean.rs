@@ -55,14 +55,23 @@ pub fn clean_kernel(base_dir: &Path) -> Result<()> {
 /// Clean ISO and initramfs only.
 pub fn clean_iso(base_dir: &Path) -> Result<()> {
     let iso = base_dir.join("output/levitateos.iso");
+    let checksum = base_dir.join("output/levitateos.iso.sha512");
     let initramfs = base_dir.join("output/initramfs.img");
     let initramfs_dir = base_dir.join("output/initramfs");
+    let efiboot = base_dir.join("output/efiboot.img");
+    let live_overlay = base_dir.join("output/live-overlay");
 
     let mut cleaned = false;
 
     if iso.exists() {
         println!("Removing ISO...");
         fs::remove_file(&iso)?;
+        cleaned = true;
+    }
+
+    if checksum.exists() {
+        println!("Removing ISO checksum...");
+        fs::remove_file(&checksum)?;
         cleaned = true;
     }
 
@@ -75,6 +84,18 @@ pub fn clean_iso(base_dir: &Path) -> Result<()> {
     if initramfs_dir.exists() {
         println!("Removing initramfs build directory...");
         fs::remove_dir_all(&initramfs_dir)?;
+        cleaned = true;
+    }
+
+    if efiboot.exists() {
+        println!("Removing efiboot.img...");
+        fs::remove_file(&efiboot)?;
+        cleaned = true;
+    }
+
+    if live_overlay.exists() {
+        println!("Removing live-overlay directory...");
+        fs::remove_dir_all(&live_overlay)?;
         cleaned = true;
     }
 

@@ -1,5 +1,14 @@
 # leviso/tests/ - DO NOT PUT E2E INSTALLATION TESTS HERE
 
+## Status
+
+| Metric | Value |
+|--------|-------|
+| Purpose | Unit/integration tests for leviso crate ONLY |
+| E2E tests location | `testing/install-tests/` |
+
+---
+
 ## STOP. READ THIS BEFORE WRITING ANY CODE.
 
 This directory is for **unit tests and integration tests of the leviso crate itself**.

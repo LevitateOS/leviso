@@ -2,7 +2,44 @@
 
 > **STOP. READ. THEN ACT.** E2E installation tests belong in `install-tests/`, NOT in `leviso/tests/`. See `tests/README.md`.
 
-Builds complete bootable LevitateOS ISOs with full hardware support. Extracts pre-built Rocky Linux 10 packages for minute-fast builds instead of hour-long compilations. Produces hybrid UEFI/BIOS ISOs with squashfs live boot and base system tarball for installation.
+Builds complete bootable LevitateOS ISOs with full hardware support. Extracts pre-built Rocky Linux 10 packages for builds in minutes instead of hour-long compilations. Produces hybrid UEFI/BIOS ISOs with squashfs live boot and base system tarball for installation.
+
+## Status
+
+| Metric | Value |
+|--------|-------|
+| Stage | Alpha |
+| Target | x86_64 Linux |
+| Last verified | 2026-01-23 |
+
+### Works
+
+- Downloads and extracts Rocky Linux 10 packages
+- Builds squashfs live root filesystem
+- Creates initramfs with busybox init
+- Packages hybrid UEFI/BIOS ISO
+- QEMU testing (GUI and serial)
+
+### Incomplete / Stubbed
+
+- Kernel build from source (currently uses Rocky kernel)
+- Custom initramfs modules selection
+
+### Known Issues
+
+- See parent repo issues
+
+---
+
+## Author
+
+<!-- HUMAN WRITTEN - DO NOT MODIFY -->
+
+[Waiting for human input]
+
+<!-- END HUMAN WRITTEN -->
+
+---
 
 ## Quick Start
 

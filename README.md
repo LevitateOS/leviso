@@ -19,7 +19,7 @@ ISO builder for LevitateOS. Downloads Rocky Linux 10, extracts packages, builds 
 Rocky Linux 10 ISO → extract packages → squashfs → initramfs → bootable ISO
 ```
 
-1. Downloads Rocky Linux 10 ISO (~2GB)
+1. Downloads Rocky Linux 10 ISO (9.3GB)
 2. Extracts rootfs via `unsquashfs`
 3. Copies binaries + library dependencies
 4. Builds squashfs live filesystem
@@ -30,28 +30,46 @@ Rocky Linux 10 ISO → extract packages → squashfs → initramfs → bootable 
 
 | File | Size | Description |
 |------|------|-------------|
-| `levitateos.iso` | ~800MB | Bootable ISO (UEFI + BIOS) |
-| `filesystem.squashfs` | ~700MB | Compressed root filesystem |
-| `initramfs-tiny.cpio.gz` | ~1MB | Busybox init + kernel modules |
-| `levitateos-base.tar.xz` | ~400MB | Tarball for installation |
+| `output/levitateos.iso` | ~800MB | Bootable ISO (UEFI + BIOS) |
+| `output/filesystem.squashfs` | ~700MB | Compressed root filesystem |
+| `output/initramfs-tiny.cpio.gz` | ~1MB | Busybox init + kernel modules |
 
 Sizes are approximate. Actual sizes depend on package selection.
 
 ## Usage
 
 ```bash
-cargo run -- build    # Full build (downloads ~2GB first run)
-cargo run -- run      # Boot in QEMU (GUI, UEFI)
-cargo run -- test     # Boot in QEMU (serial console)
+cargo run -- build       # Full build (downloads 9.3GB Rocky ISO on first run)
+cargo run -- run         # Boot in QEMU (GUI, UEFI)
+cargo run -- preflight   # Check dependencies before building
 ```
 
-### Individual Steps
+### Build Subcommands
 
 ```bash
-cargo run -- download   # Fetch Rocky ISO
-cargo run -- extract    # Extract rootfs
-cargo run -- initramfs  # Build initramfs
-cargo run -- iso        # Package final ISO
+cargo run -- build squashfs    # Build squashfs only
+cargo run -- build initramfs   # Build initramfs only
+cargo run -- build iso         # Build ISO only
+cargo run -- build kernel      # Build kernel only
+```
+
+### Download/Extract
+
+```bash
+cargo run -- download rocky    # Fetch Rocky ISO
+cargo run -- download linux    # Fetch Linux kernel source
+cargo run -- download tools    # Build/fetch recstrap, recfstab, recchroot
+cargo run -- extract rocky     # Extract Rocky ISO contents
+cargo run -- extract squashfs  # Extract squashfs for inspection
+```
+
+### Other Commands
+
+```bash
+cargo run -- clean             # Remove build outputs (preserves downloads)
+cargo run -- clean all         # Remove everything including downloads
+cargo run -- show config       # Show current configuration
+cargo run -- show squashfs     # List squashfs contents
 ```
 
 ## Boot Sequence
@@ -65,24 +83,31 @@ cargo run -- iso        # Package final ISO
 ## Directory Layout
 
 ```
-downloads/           # Cached downloads (gitignored)
-├── rocky.iso
-├── rootfs/          # Extracted squashfs
-└── iso-contents/    # EFI files, kernel
+downloads/                       # Cached downloads (gitignored)
+├── Rocky-10.1-x86_64-dvd1.iso   # 9.3GB
+├── rootfs/                      # Extracted squashfs from Rocky
+├── iso-contents/                # EFI files, kernel, etc.
+├── linux/                       # Kernel source (git clone)
+├── busybox-static               # Static busybox binary
+└── syslinux-6.03/               # BIOS bootloader source
 
-output/              # Build artifacts (gitignored)
+output/                          # Build artifacts (gitignored)
 ├── filesystem.squashfs
 ├── initramfs-tiny.cpio.gz
-├── levitateos-base.tar.xz
+├── initramfs-tiny-root/         # Initramfs staging directory
+├── squashfs-root/               # Squashfs staging directory
 └── levitateos.iso
 
-profile/
-└── init_tiny        # Busybox init script
+profile/                         # Live system customization
+├── init_tiny                    # Busybox init script
+├── etc/                         # Config file overlays
+├── live-overlay/                # Files overlaid on squashfs
+└── root/                        # Root home directory overlay
 ```
 
 ## Requirements
 
-- Rust 1.75+
+- Rust (edition 2021)
 - unsquashfs (squashfs-tools)
 - xorriso
 - mksquashfs

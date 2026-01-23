@@ -3,6 +3,8 @@
 use anyhow::Result;
 use std::path::Path;
 
+use distro_spec::levitate::{INITRAMFS_OUTPUT, ISO_FILENAME, SQUASHFS_NAME};
+
 use crate::artifact;
 use crate::config::Config;
 use crate::extract;
@@ -91,10 +93,53 @@ fn build_full(base_dir: &Path, resolver: &DependencyResolver, config: &Config) -
         println!("\n[SKIP] ISO already built (components unchanged)");
     }
 
+    // 7. Verify hardware compatibility
+    verify_hardware_compat(base_dir)?;
+
     println!("\n=== Build Complete ===");
-    println!("  ISO: output/levitateos.iso");
-    println!("  Squashfs: output/filesystem.squashfs");
+    println!("  ISO: output/{}", ISO_FILENAME);
+    println!("  Squashfs: output/{}", SQUASHFS_NAME);
     println!("\nNext: leviso run");
+
+    Ok(())
+}
+
+/// Verify hardware compatibility against all profiles.
+fn verify_hardware_compat(base_dir: &Path) -> Result<()> {
+    println!("\n=== Hardware Compatibility Verification ===");
+    
+    let output_dir = base_dir.join("output");
+    let checker = hardware_compat::HardwareCompatChecker::new(
+        output_dir.join("kernel-build/.config"),
+        output_dir.join("staging/usr/lib/firmware"),
+        output_dir.join("staging"),
+    );
+
+    let all_profiles = hardware_compat::profiles::get_all_profiles();
+    let mut failures = 0;
+
+    for p in all_profiles {
+        match checker.verify_profile(p.as_ref()) {
+            Ok(report) => {
+                report.print_summary();
+                if report.has_critical_failures() {
+                    failures += 1;
+                }
+            }
+            Err(e) => {
+                println!("  [ERROR] Failed to verify profile '{}': {}", p.name(), e);
+                failures += 1;
+            }
+        }
+    }
+
+    if failures > 0 {
+        println!("\n[FAIL] Hardware compatibility verification failed for {} profile(s).", failures);
+        // We don't bail yet, just warn, unless it's critical for the DISTRO itself.
+        // For now, let's just print the results.
+    } else {
+        println!("\n[PASS] All hardware compatibility profiles passed (or have only non-critical warnings).");
+    }
 
     Ok(())
 }
@@ -143,8 +188,8 @@ fn build_initramfs_only(base_dir: &Path) -> Result<()> {
 
 /// Build ISO only.
 fn build_iso_only(base_dir: &Path) -> Result<()> {
-    let squashfs_path = base_dir.join("output/filesystem.squashfs");
-    let initramfs_path = base_dir.join("output/initramfs-tiny.cpio.gz");
+    let squashfs_path = base_dir.join("output").join(SQUASHFS_NAME);
+    let initramfs_path = base_dir.join("output").join(INITRAMFS_OUTPUT);
 
     if !squashfs_path.exists() {
         println!("Squashfs not found, building...");

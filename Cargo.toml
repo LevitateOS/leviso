@@ -17,6 +17,7 @@ distro-spec = { path = "../distro-spec" }
 # Extracted crates
 leviso-deps = { path = "../leviso-deps" }
 leviso-elf = { path = "../leviso-elf" }
+hardware-compat = { path = "../testing/hardware-compat" }
 
 # Async runtime (minimal - heavy networking moved to leviso-deps)
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "time", "process"] }

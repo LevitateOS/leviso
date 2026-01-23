@@ -112,7 +112,6 @@ fn verify_hardware_compat(base_dir: &Path) -> Result<()> {
     let checker = hardware_compat::HardwareCompatChecker::new(
         output_dir.join("kernel-build/.config"),
         output_dir.join("staging/usr/lib/firmware"),
-        output_dir.join("staging"),
     );
 
     let all_profiles = hardware_compat::profiles::get_all_profiles();

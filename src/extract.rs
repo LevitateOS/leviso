@@ -2,7 +2,8 @@ use anyhow::{bail, Context, Result};
 use std::env;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
+
+use crate::process::{shell_in, Cmd};
 
 /// RPMs to extract and merge into the rootfs.
 /// The install.img (Anaconda installer) is missing utilities that users expect.
@@ -100,19 +101,13 @@ pub fn extract_rocky_iso(base_dir: &Path, iso_path: &Path) -> Result<()> {
     if !iso_contents.exists() {
         println!("Extracting ISO contents with 7z...");
         fs::create_dir_all(&iso_contents)?;
-        let status = Command::new("7z")
-            .args([
-                "x",
-                "-y",
-                iso_path.to_str().unwrap(),
-                &format!("-o{}", iso_contents.display()),
-            ])
-            .status()
-            .context("Failed to run 7z. Is p7zip installed?")?;
 
-        if !status.success() {
-            bail!("7z extraction failed");
-        }
+        Cmd::new("7z")
+            .args(["x", "-y"])
+            .arg_path(iso_path)
+            .arg(format!("-o{}", iso_contents.display()))
+            .error_msg("7z extraction failed. Install: sudo dnf install p7zip-plugins")
+            .run_interactive()?;
     } else {
         println!("ISO already extracted to {}", iso_contents.display());
     }
@@ -136,32 +131,34 @@ pub fn extract_rocky_iso(base_dir: &Path, iso_path: &Path) -> Result<()> {
         println!("Found squashfs at: {}", squashfs_path.display());
 
         fs::create_dir_all(&rootfs_dir)?;
-        let status = Command::new("unsquashfs")
-            .args([
-                "-d",
-                rootfs_dir.to_str().unwrap(),
-                "-f",
-                "-no-xattrs",
-                squashfs_path.to_str().unwrap(),
-            ])
-            .status()
-            .context("Failed to run unsquashfs. Is squashfs-tools installed?")?;
 
-        // unsquashfs may return non-zero for xattr warnings, check if extraction succeeded
-        if !status.success() && !rootfs_dir.join("usr").exists() {
-            bail!("unsquashfs failed");
+        // unsquashfs may return non-zero for xattr warnings, so allow_fail and check manually
+        let result = Cmd::new("unsquashfs")
+            .args(["-d"])
+            .arg_path(&rootfs_dir)
+            .args(["-f", "-no-xattrs"])
+            .arg_path(squashfs_path)
+            .allow_fail()
+            .run()?;
+
+        // Check if extraction actually succeeded (regardless of exit code)
+        if !result.success() && !rootfs_dir.join("usr").exists() {
+            bail!(
+                "unsquashfs failed. Install: sudo dnf install squashfs-tools\n{}",
+                result.stderr_trimmed()
+            );
         }
 
         // Fix permissions: unsquashfs preserves root ownership which prevents further writes
         // Make the rootfs writable so we can merge in supplementary RPMs
         println!("Fixing permissions on extracted rootfs...");
-        let chmod_status = Command::new("chmod")
+        let chmod_result = Cmd::new("chmod")
             .args(["-R", "u+rwX"])
-            .arg(&rootfs_dir)
-            .status()
-            .context("Failed to fix permissions")?;
+            .arg_path(&rootfs_dir)
+            .allow_fail()
+            .run()?;
 
-        if !chmod_status.success() {
+        if !chmod_result.success() {
             // FAIL FAST - if we can't fix permissions, the build will fail later
             // Better to fail now with a clear message
             bail!(
@@ -241,17 +238,8 @@ fn extract_supplementary_rpms(iso_contents: &Path, rootfs_dir: &Path) -> Result<
 
             // Extract RPM contents directly into rootfs
             // rpm2cpio outputs cpio archive, which we extract in rootfs
-            let output = Command::new("sh")
-                .arg("-c")
-                .arg(format!(
-                    "rpm2cpio '{}' | cpio -idmu --quiet",
-                    rpm.display()
-                ))
-                .current_dir(rootfs_dir)
-                .output()
-                .context("Failed to extract RPM")?;
-
-            if !output.status.success() {
+            let cmd = format!("rpm2cpio '{}' | cpio -idmu --quiet", rpm.display());
+            if let Err(e) = shell_in(&cmd, rootfs_dir) {
                 // FAIL FAST - RPM extraction failure means missing utilities
                 // These RPMs are in the SUPPLEMENTARY_RPMS list because they're REQUIRED
                 bail!(
@@ -262,7 +250,7 @@ fn extract_supplementary_rpms(iso_contents: &Path, rootfs_dir: &Path) -> Result<
                      \n\
                      DO NOT change this to a warning. FAIL FAST.",
                     rpm.display(),
-                    String::from_utf8_lossy(&output.stderr)
+                    e
                 );
             }
         } else {

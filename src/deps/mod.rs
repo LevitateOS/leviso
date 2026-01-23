@@ -10,14 +10,18 @@
 //! ```no_run
 //! use leviso::deps::DependencyResolver;
 //!
-//! let resolver = DependencyResolver::new("/path/to/leviso")?;
+//! fn main() -> anyhow::Result<()> {
+//!     let resolver = DependencyResolver::new("/path/to/leviso")?;
 //!
-//! // Get paths to dependencies (downloads if needed)
-//! let linux = resolver.linux()?;           // Kernel source tree
-//! let recstrap = resolver.recstrap()?;     // Binary path
-//! let rocky_iso = resolver.rocky_iso()?;   // ISO path
+//!     // Get paths to dependencies (downloads if needed)
+//!     let linux = resolver.linux()?;           // Kernel source tree
+//!     let recstrap = resolver.recstrap()?;     // Binary path
+//!     let rocky_iso = resolver.rocky_iso()?;   // ISO path
+//!     Ok(())
+//! }
 //! ```
 
+pub mod download;
 mod linux;
 mod rocky;
 mod tools;
@@ -26,8 +30,11 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
 pub use linux::LinuxSource;
+// RockyConfig is exported for test use
+#[allow(unused_imports)]
+pub use rocky::RockyConfig;
 pub use rocky::RockyIso;
-pub use tools::{Tool, ToolBinary};
+pub use tools::{Tool, ToolBinary, ToolSourceType};
 
 /// Unified resolver for all LevitateOS build dependencies.
 pub struct DependencyResolver {
@@ -177,16 +184,19 @@ impl DependencyResolver {
     /// Print resolved dependency status.
     pub fn print_status(&self) {
         println!("Dependency Status:");
-        println!("  Base dir:     {}", self.base_dir.display());
+        println!("  Base dir:     {}", self.base_dir().display());
         println!("  Monorepo dir: {}", self.monorepo_dir.display());
         println!("  Cache dir:    {}", self.cache_dir.display());
         println!("  Downloads:    {}", self.downloads_dir.display());
         println!();
 
         // Linux
-        match linux::find_existing(self) {
-            Some(src) => println!("  Linux:    FOUND at {}", src.path.display()),
-            None => println!("  Linux:    NOT FOUND (will download)"),
+        if self.has_linux() {
+            if let Some(src) = linux::find_existing(self) {
+                println!("  Linux:    FOUND at {}", src.path.display());
+            }
+        } else {
+            println!("  Linux:    NOT FOUND (will download)");
         }
 
         // Tools
@@ -198,9 +208,12 @@ impl DependencyResolver {
         }
 
         // Rocky ISO
-        match rocky::find_existing(self) {
-            Some(iso) => println!("  Rocky ISO: FOUND at {}", iso.path.display()),
-            None => println!("  Rocky ISO: NOT FOUND (will download)"),
+        if self.has_rocky_iso() {
+            if let Some(iso) = rocky::find_existing(self) {
+                println!("  Rocky ISO: FOUND at {}", iso.path.display());
+            }
+        } else {
+            println!("  Rocky ISO: NOT FOUND (will download)");
         }
     }
 }

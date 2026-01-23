@@ -3,8 +3,9 @@
 use anyhow::{bail, Context, Result};
 use std::env;
 use std::path::PathBuf;
-use std::process::Command;
 
+use super::download::{self, DownloadOptions};
+use crate::process::Cmd;
 use super::DependencyResolver;
 
 /// Get GitHub org for tool downloads from environment or use default.
@@ -73,9 +74,31 @@ pub enum ToolSourceType {
 }
 
 impl ToolBinary {
-    /// Check if the binary exists and is executable.
+    /// Check if the binary exists and is a valid executable file.
     pub fn is_valid(&self) -> bool {
-        self.path.exists()
+        if !self.path.exists() {
+            return false;
+        }
+
+        // Check it's a file, not a directory
+        match std::fs::metadata(&self.path) {
+            Ok(meta) => {
+                if !meta.is_file() {
+                    return false;
+                }
+                // On Unix, check executable bit
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mode = meta.permissions().mode();
+                    if mode & 0o111 == 0 {
+                        return false; // Not executable
+                    }
+                }
+                true
+            }
+            Err(_) => false,
+        }
     }
 }
 
@@ -150,7 +173,7 @@ pub fn resolve(resolver: &DependencyResolver, tool: Tool) -> Result<ToolBinary> 
     }
 
     // 3. Download from GitHub releases
-    download(resolver, tool)
+    download_tool(resolver, tool)
 }
 
 /// Build tool from local crate source.
@@ -185,23 +208,16 @@ fn build_from_crate(
     println!("  Building {} ({})...", tool.name(), source_desc);
     println!("    Source: {}", crate_path.display());
 
-    let mut cmd = Command::new("cargo");
-    cmd.arg("build");
+    let mut cmd = Cmd::new("cargo").arg("build").dir(crate_path);
     if release_build {
-        cmd.arg("--release");
+        cmd = cmd.arg("--release");
         println!("    Profile: release");
     } else {
         println!("    Profile: debug");
     }
-    cmd.current_dir(crate_path);
 
-    let status = cmd
-        .status()
-        .with_context(|| format!("Failed to run cargo build for {}", tool.name()))?;
-
-    if !status.success() {
-        bail!("cargo build failed for {}", tool.name());
-    }
+    cmd.error_msg(&format!("cargo build failed for {}", tool.name()))
+        .run()?;
 
     let profile = if release_build { "release" } else { "debug" };
     let binary = crate_path.join("target").join(profile).join(tool.name());
@@ -223,17 +239,24 @@ fn build_from_crate(
 }
 
 /// Download tool from GitHub releases.
-fn download(resolver: &DependencyResolver, tool: Tool) -> Result<ToolBinary> {
+fn download_tool(resolver: &DependencyResolver, tool: Tool) -> Result<ToolBinary> {
     let binary_path = resolver.cache_dir().join(tool.name());
 
-    // Check if already cached
+    // Check if already cached and valid
     if binary_path.exists() {
-        println!("  {} (cached): {}", tool.name(), binary_path.display());
-        return Ok(ToolBinary {
-            path: binary_path,
+        let cached = ToolBinary {
+            path: binary_path.clone(),
             source: ToolSourceType::Downloaded,
             tool,
-        });
+        };
+        if cached.is_valid() {
+            println!("  {} (cached): {}", tool.name(), binary_path.display());
+            return Ok(cached);
+        } else {
+            // Cached binary is invalid (not executable, corrupted, etc.) - remove and re-download
+            println!("  {} cached binary invalid, re-downloading...", tool.name());
+            std::fs::remove_file(&binary_path).ok();
+        }
     }
 
     println!("  Downloading {} from GitHub...", tool.name());
@@ -245,24 +268,44 @@ fn download(resolver: &DependencyResolver, tool: Tool) -> Result<ToolBinary> {
         tool.repo()
     );
 
-    // Fetch release info
-    let release_json = fetch_url(&release_url)
-        .with_context(|| format!("Failed to fetch release info for {}", tool.name()))?;
+    // Use centralized HTTP download for API call
+    let rt = tokio::runtime::Runtime::new()?;
+    let release_json = rt.block_on(fetch_github_release(&release_url))?;
 
     // Parse to find tarball URL
     let tarball_url = extract_asset_url(&release_json, &tool.tarball_name())
-        .with_context(|| format!("Failed to find {} in release assets", tool.tarball_name()))?;
+        .with_context(|| {
+            format!(
+                "Failed to find {} in release assets for {}",
+                tool.tarball_name(),
+                tool.name()
+            )
+        })?;
 
     println!("    URL: {}", tarball_url);
 
-    // Download tarball
+    // Download tarball using centralized download
     let tarball_path = resolver.cache_dir().join(tool.tarball_name());
-    download_file(&tarball_url, &tarball_path)
-        .with_context(|| format!("Failed to download {}", tool.tarball_name()))?;
+    rt.block_on(download::http(
+        &tarball_url,
+        &tarball_path,
+        &DownloadOptions::default(),
+    ))
+    .with_context(|| format!("Failed to download {} from {}", tool.tarball_name(), tarball_url))?;
 
-    // Extract binary
-    extract_tarball(&tarball_path, resolver.cache_dir(), tool.name())
-        .with_context(|| format!("Failed to extract {}", tool.tarball_name()))?;
+    // Extract binary using centralized extraction
+    rt.block_on(download::extract_file_from_tarball(
+        &tarball_path,
+        resolver.cache_dir(),
+        tool.name(),
+    ))
+    .with_context(|| {
+        format!(
+            "Failed to extract {} from {}",
+            tool.name(),
+            tarball_path.display()
+        )
+    })?;
 
     // Clean up tarball
     let _ = std::fs::remove_file(&tarball_path);
@@ -271,9 +314,12 @@ fn download(resolver: &DependencyResolver, tool: Tool) -> Result<ToolBinary> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&binary_path)?.permissions();
+        let mut perms = std::fs::metadata(&binary_path)
+            .with_context(|| format!("Failed to get metadata for {}", binary_path.display()))?
+            .permissions();
         perms.set_mode(0o755);
-        std::fs::set_permissions(&binary_path, perms)?;
+        std::fs::set_permissions(&binary_path, perms)
+            .with_context(|| format!("Failed to set permissions on {}", binary_path.display()))?;
     }
 
     if !binary_path.exists() {
@@ -292,64 +338,79 @@ fn download(resolver: &DependencyResolver, tool: Tool) -> Result<ToolBinary> {
     })
 }
 
-/// Fetch URL content as string (using curl).
-fn fetch_url(url: &str) -> Result<String> {
-    let output = Command::new("curl")
-        .args(["-fsSL", "-H", "Accept: application/vnd.github+json", url])
-        .output()
-        .context("Failed to run curl")?;
+/// Fetch GitHub release info via API.
+async fn fetch_github_release(url: &str) -> Result<String> {
+    let client = reqwest::Client::builder()
+        .user_agent("leviso/0.1")
+        .build()
+        .context("Failed to create HTTP client")?;
 
-    if !output.status.success() {
-        bail!(
-            "curl failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+    // Check for GitHub token in environment
+    let github_token = env::var("GITHUB_TOKEN").ok();
+
+    let mut request = client
+        .get(url)
+        .header("Accept", "application/vnd.github+json")
+        .timeout(std::time::Duration::from_secs(30));
+
+    // Add auth header if token is available
+    if let Some(token) = &github_token {
+        request = request.header("Authorization", format!("Bearer {}", token));
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
-}
+    let response = request
+        .send()
+        .await
+        .with_context(|| format!("Failed to fetch GitHub release: {}", url))?;
 
-/// Download file using curl.
-fn download_file(url: &str, dest: &PathBuf) -> Result<()> {
-    let status = Command::new("curl")
-        .args(["-fsSL", "-o"])
-        .arg(dest)
-        .arg(url)
-        .status()
-        .context("Failed to run curl")?;
-
-    if !status.success() {
-        bail!("curl download failed");
+    let status = response.status();
+    if !status.is_success() {
+        // Provide helpful error messages for common issues
+        let error_msg = match status.as_u16() {
+            403 => {
+                if github_token.is_some() {
+                    format!(
+                        "GitHub API rate limit exceeded or token invalid (HTTP 403)\n\
+                         Check your GITHUB_TOKEN permissions or wait for rate limit reset."
+                    )
+                } else {
+                    format!(
+                        "GitHub API rate limit exceeded (HTTP 403)\n\
+                         Set GITHUB_TOKEN environment variable to increase rate limit:\n\
+                         export GITHUB_TOKEN=ghp_your_personal_access_token"
+                    )
+                }
+            }
+            429 => format!(
+                "GitHub API rate limit exceeded (HTTP 429)\n\
+                 Set GITHUB_TOKEN environment variable or wait for rate limit reset."
+            ),
+            404 => format!(
+                "GitHub release not found (HTTP 404)\n\
+                 Check that {} exists and has published releases.",
+                url
+            ),
+            _ => format!("GitHub API error: HTTP {} for {}", status, url),
+        };
+        bail!("{}", error_msg);
     }
 
-    Ok(())
-}
-
-/// Extract a single file from a tarball.
-fn extract_tarball(tarball: &PathBuf, dest_dir: &std::path::Path, filename: &str) -> Result<()> {
-    let status = Command::new("tar")
-        .args(["xzf"])
-        .arg(tarball)
-        .args(["-C"])
-        .arg(dest_dir)
-        .arg(filename)
-        .status()
-        .context("Failed to run tar")?;
-
-    if !status.success() {
-        bail!("tar extraction failed");
-    }
-
-    Ok(())
+    response
+        .text()
+        .await
+        .with_context(|| format!("Failed to read response from {}", url))
 }
 
 /// Extract asset download URL from GitHub release JSON.
 fn extract_asset_url(json: &str, asset_name: &str) -> Result<String> {
     // Find the asset with our name
     let asset_marker = format!("\"name\":\"{}\"", asset_name);
-    let asset_pos = json
-        .find(&asset_marker)
-        .with_context(|| format!("Asset {} not found in release", asset_name))?;
+    let asset_pos = json.find(&asset_marker).with_context(|| {
+        format!(
+            "Asset '{}' not found in GitHub release. Available assets may not include this platform.",
+            asset_name
+        )
+    })?;
 
     // Find browser_download_url near this position
     let search_region =
@@ -358,12 +419,12 @@ fn extract_asset_url(json: &str, asset_name: &str) -> Result<String> {
     let url_marker = "\"browser_download_url\":\"";
     let url_start = search_region
         .find(url_marker)
-        .context("browser_download_url not found")?;
+        .context("browser_download_url not found in release JSON")?;
 
     let url_content = &search_region[url_start + url_marker.len()..];
     let url_end = url_content
         .find('"')
-        .context("Malformed browser_download_url")?;
+        .context("Malformed browser_download_url in release JSON")?;
 
     Ok(url_content[..url_end].to_string())
 }

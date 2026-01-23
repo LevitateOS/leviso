@@ -31,12 +31,12 @@
 pub mod pack;
 pub mod system;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 use crate::build::BuildContext;
+use crate::process;
 
 /// Build the complete squashfs system image.
 ///
@@ -85,12 +85,7 @@ fn check_host_tools() -> Result<()> {
     ];
 
     for (tool, package) in tools {
-        let status = Command::new("which")
-            .arg(tool)
-            .output()
-            .context(format!("Failed to check for {}", tool))?;
-
-        if !status.status.success() {
+        if !process::exists(tool) {
             bail!(
                 "{} not found. Install {} package.\n\
                  On Fedora: sudo dnf install {}\n\

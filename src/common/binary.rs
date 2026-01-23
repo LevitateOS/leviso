@@ -9,24 +9,26 @@ use std::collections::HashSet;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use crate::process::Cmd;
 
 /// Extract library dependencies from an ELF binary using readelf.
 ///
 /// This is architecture-independent - readelf reads the ELF headers directly
 /// without executing the binary, unlike ldd which uses the host dynamic linker.
 pub fn get_library_dependencies(binary_path: &Path) -> Result<Vec<String>> {
-    let output = Command::new("readelf")
-        .args(["-d", binary_path.to_str().unwrap()])
-        .output()
-        .context("Failed to run readelf - is binutils installed?")?;
+    let result = Cmd::new("readelf")
+        .args(["-d"])
+        .arg_path(binary_path)
+        .allow_fail() // Not all files are ELF binaries
+        .run()?;
 
-    if !output.status.success() {
+    if !result.success() {
         // Not an ELF binary or readelf failed - return empty list
         return Ok(Vec::new());
     }
 
-    parse_readelf_output(&String::from_utf8_lossy(&output.stdout))
+    parse_readelf_output(&result.stdout)
 }
 
 /// Parse readelf -d output to extract NEEDED library names.

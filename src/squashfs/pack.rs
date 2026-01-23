@@ -2,10 +2,11 @@
 //!
 //! Creates the final filesystem.squashfs from the staging directory.
 
-use anyhow::{bail, Context, Result};
+use anyhow::Result;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
+
+use crate::process::Cmd;
 
 /// Create a squashfs image from the staging directory.
 ///
@@ -24,24 +25,17 @@ pub fn create_squashfs(staging: &Path, output: &Path) -> Result<()> {
         fs::create_dir_all(parent)?;
     }
 
-    let status = Command::new("mksquashfs")
-        .args([
-            staging.to_str().unwrap(),
-            output.to_str().unwrap(),
-            "-comp",
-            "gzip", // Universal compatibility - all kernels support gzip
-            "-b",
-            "1M", // 1MB blocks for better compression
-            "-no-xattrs", // Skip extended attributes
-            "-noappend", // Always create fresh
-            "-progress", // Show progress
-        ])
-        .status()
-        .context("mksquashfs not found. Install squashfs-tools.")?;
-
-    if !status.success() {
-        bail!("mksquashfs failed");
-    }
+    // mksquashfs is interactive (shows progress), so use run_interactive
+    Cmd::new("mksquashfs")
+        .arg_path(staging)
+        .arg_path(output)
+        .args(["-comp", "gzip"]) // Universal compatibility - all kernels support gzip
+        .args(["-b", "1M"]) // 1MB blocks for better compression
+        .arg("-no-xattrs") // Skip extended attributes
+        .arg("-noappend") // Always create fresh
+        .arg("-progress") // Show progress
+        .error_msg("mksquashfs failed. Install squashfs-tools: sudo dnf install squashfs-tools")
+        .run_interactive()?;
 
     // Print size
     let metadata = fs::metadata(output)?;

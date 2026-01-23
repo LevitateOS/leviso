@@ -29,12 +29,13 @@
 //! 4. systemd (PID 1) takes over
 //! ```
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use std::env;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
-use std::process::Command;
+
+use crate::process::{shell, Cmd};
 
 /// Default busybox download URL (static x86_64 build).
 const DEFAULT_BUSYBOX_URL: &str =
@@ -161,20 +162,12 @@ fn copy_busybox(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
         println!("  Downloading static busybox from {}", url);
         fs::create_dir_all(&downloads_dir)?;
 
-        let status = Command::new("curl")
-            .args([
-                "-L",
-                "-o",
-                busybox_cache.to_str().unwrap(),
-                "--progress-bar",
-                &url,
-            ])
-            .status()
-            .context("curl not found. Install curl.")?;
-
-        if !status.success() {
-            bail!("Failed to download busybox");
-        }
+        Cmd::new("curl")
+            .args(["-L", "-o"])
+            .arg_path(&busybox_cache)
+            .args(["--progress-bar", &url])
+            .error_msg("Failed to download busybox. Install: sudo dnf install curl")
+            .run_interactive()?;
     }
 
     // Copy to initramfs
@@ -338,14 +331,7 @@ fn build_cpio(root: &Path, output: &Path) -> Result<()> {
         output.display()
     );
 
-    let status = Command::new("sh")
-        .args(["-c", &cpio_cmd])
-        .status()
-        .context("Failed to run cpio/gzip")?;
-
-    if !status.success() {
-        bail!("cpio/gzip failed");
-    }
+    shell(&cpio_cmd)?;
 
     Ok(())
 }

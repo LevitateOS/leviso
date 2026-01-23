@@ -5,9 +5,9 @@
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use super::context::BuildContext;
+use crate::process::shell_in;
 use crate::common::binary::copy_library_to;
 
 // Re-export commonly used functions
@@ -145,20 +145,13 @@ fn extract_binary_from_rpm(ctx: &BuildContext, binary: &str) -> Option<PathBuf> 
     let extract_dir = ctx.base_dir.join("output/rpm-tmp");
     let _ = fs::create_dir_all(&extract_dir);
 
-    let output = Command::new("sh")
-        .current_dir(&extract_dir)
-        .args([
-            "-c",
-            &format!(
-                "rpm2cpio '{}' | cpio -idm './{}'",
-                rpm_path.display(),
-                path_in_rpm
-            ),
-        ])
-        .output()
-        .ok()?;
+    let cmd = format!(
+        "rpm2cpio '{}' | cpio -idm './{}'",
+        rpm_path.display(),
+        path_in_rpm
+    );
 
-    if !output.status.success() {
+    if shell_in(&cmd, &extract_dir).is_err() {
         return None;
     }
 

@@ -147,14 +147,12 @@ pub fn run_iso(base_dir: &Path, disk_size: Option<String>) -> Result<()> {
     // Create disk if it doesn't exist
     if !disk_path.exists() {
         println!("  Creating {} virtual disk...", size);
-        let status = Command::new("qemu-img")
-            .args(["create", "-f", "qcow2", disk_path.to_str().unwrap(), &size])
-            .status()
-            .context("Failed to run qemu-img. Is QEMU installed?")?;
-
-        if !status.success() {
-            bail!("qemu-img create failed");
-        }
+        crate::process::Cmd::new("qemu-img")
+            .args(["create", "-f", "qcow2"])
+            .arg_path(&disk_path)
+            .arg(&size)
+            .error_msg("qemu-img create failed. Install: sudo dnf install qemu-img")
+            .run()?;
     }
 
     println!("  Disk: {}", disk_path.display());

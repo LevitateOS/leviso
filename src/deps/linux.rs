@@ -3,8 +3,8 @@
 use anyhow::{bail, Context, Result};
 use std::env;
 use std::path::PathBuf;
-use std::process::Command;
 
+use super::download;
 use super::DependencyResolver;
 
 /// Default git URL for LevitateOS Linux kernel fork.
@@ -40,7 +40,10 @@ impl LinuxSource {
     pub fn version(&self) -> Result<String> {
         let makefile = self.path.join("Makefile");
         if !makefile.exists() {
-            bail!("No Makefile in kernel source");
+            bail!(
+                "No Makefile in kernel source at {}",
+                self.path.display()
+            );
         }
 
         let content = std::fs::read_to_string(&makefile)?;
@@ -59,7 +62,10 @@ impl LinuxSource {
         }
 
         if version.is_empty() {
-            bail!("Could not parse kernel version from Makefile");
+            bail!(
+                "Could not parse kernel version from Makefile at {}",
+                makefile.display()
+            );
         }
 
         Ok(format!("{}.{}.{}", version, patchlevel, sublevel))
@@ -104,20 +110,24 @@ pub fn find_existing(resolver: &DependencyResolver) -> Option<LinuxSource> {
 pub fn resolve(resolver: &DependencyResolver) -> Result<LinuxSource> {
     // Check if already available
     if let Some(source) = find_existing(resolver) {
-        println!("  Linux source: {} ({})", source.path.display(), match source.source {
-            LinuxSourceType::EnvVar => "from LINUX_SOURCE",
-            LinuxSourceType::Submodule => "submodule",
-            LinuxSourceType::Downloaded => "downloaded",
-        });
+        println!(
+            "  Linux source: {} ({})",
+            source.path.display(),
+            match source.source {
+                LinuxSourceType::EnvVar => "from LINUX_SOURCE",
+                LinuxSourceType::Submodule => "submodule",
+                LinuxSourceType::Downloaded => "downloaded",
+            }
+        );
         return Ok(source);
     }
 
     // Need to download
-    download(resolver)
+    download_linux(resolver)
 }
 
 /// Download Linux kernel source via git clone.
-fn download(resolver: &DependencyResolver) -> Result<LinuxSource> {
+fn download_linux(resolver: &DependencyResolver) -> Result<LinuxSource> {
     let git_url = env::var("LINUX_GIT_URL").unwrap_or_else(|_| DEFAULT_GIT_URL.to_string());
     let dest = resolver.downloads_dir().join("linux");
 
@@ -125,24 +135,44 @@ fn download(resolver: &DependencyResolver) -> Result<LinuxSource> {
     println!("    URL: {}", git_url);
     println!("    Destination: {}", dest.display());
 
+    // Clean up existing invalid directory (broken clone, empty dir, etc.)
+    // A valid Linux kernel source has a Makefile at the root
+    if dest.exists() {
+        let has_makefile = dest.join("Makefile").exists();
+        let has_git = dest.join(".git").exists();
+
+        if !has_makefile {
+            // Invalid kernel source - remove it
+            println!("    Removing invalid existing directory (no Makefile)...");
+            std::fs::remove_dir_all(&dest)
+                .with_context(|| format!("Failed to remove invalid directory {}", dest.display()))?;
+        } else if has_git {
+            // Valid kernel source already exists - this shouldn't happen since find_existing checks
+            bail!(
+                "Linux kernel source already exists at {}. Use LINUX_SOURCE env var to point to it.",
+                dest.display()
+            );
+        }
+        // else: has Makefile but no .git - weird state, let git clone handle it
+    }
+
     // Shallow clone by default (much faster)
+    // Note: shallow clones break `git describe` and some build scripts that need history.
+    // Set LINUX_FULL_CLONE=1 if you need full git history for development.
     let shallow = env::var("LINUX_FULL_CLONE")
         .map(|v| v != "1" && v.to_lowercase() != "true")
         .unwrap_or(true);
 
-    let mut cmd = Command::new("git");
-    cmd.arg("clone");
     if shallow {
-        cmd.args(["--depth", "1"]);
         println!("    Mode: shallow clone (set LINUX_FULL_CLONE=1 for full history)");
+        println!("    Note: shallow clones break 'git describe' - use LINUX_FULL_CLONE=1 for kernel development");
+    } else {
+        println!("    Mode: full clone (this may take a while)");
     }
-    cmd.arg(&git_url);
-    cmd.arg(&dest);
 
-    let status = cmd.status().context("Failed to run git clone")?;
-    if !status.success() {
-        bail!("git clone failed");
-    }
+    // Use centralized git clone with proper error handling and timeout
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(download::git_clone(&git_url, &dest, shallow))?;
 
     let source = LinuxSource {
         path: dest,
@@ -150,9 +180,15 @@ fn download(resolver: &DependencyResolver) -> Result<LinuxSource> {
     };
 
     if !source.is_valid() {
-        bail!("Downloaded Linux source is invalid (no Makefile)");
+        bail!(
+            "Downloaded Linux source is invalid (no Makefile) at {}",
+            source.path.display()
+        );
     }
 
-    println!("    Downloaded kernel version: {}", source.version().unwrap_or_else(|_| "unknown".to_string()));
+    println!(
+        "    Downloaded kernel version: {}",
+        source.version().unwrap_or_else(|_| "unknown".to_string())
+    );
     Ok(source)
 }

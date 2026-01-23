@@ -12,7 +12,8 @@
 use anyhow::{bail, Context, Result};
 use std::fs;
 use std::path::Path;
-use std::process::Command;
+
+use crate::process::Cmd;
 
 /// Build the kernel from source.
 pub fn build_kernel(kernel_source: &Path, output_dir: &Path, base_dir: &Path) -> Result<String> {
@@ -46,18 +47,15 @@ pub fn build_kernel(kernel_source: &Path, output_dir: &Path, base_dir: &Path) ->
 
     let config_path = build_dir.join(".config");
 
+    let kernel_src_str = kernel_source.to_string_lossy();
+    let build_dir_arg = format!("O={}", build_dir.display());
+
     // Start with x86_64 defconfig
     println!("  Generating base config from defconfig...");
-    let defconfig = Command::new("make")
-        .args(["-C", kernel_source.to_str().unwrap()])
-        .arg(format!("O={}", build_dir.display()))
-        .arg("x86_64_defconfig")
-        .output()
-        .context("Failed to run make defconfig")?;
-
-    if !defconfig.status.success() {
-        bail!("make defconfig failed:\n{}", String::from_utf8_lossy(&defconfig.stderr));
-    }
+    Cmd::new("make")
+        .args(["-C", &kernel_src_str, &build_dir_arg, "x86_64_defconfig"])
+        .error_msg("make defconfig failed")
+        .run()?;
 
     // Apply our custom options
     println!("  Applying LevitateOS kernel config from kconfig...");
@@ -65,45 +63,27 @@ pub fn build_kernel(kernel_source: &Path, output_dir: &Path, base_dir: &Path) ->
 
     // Resolve dependencies
     println!("  Resolving config dependencies...");
-    let olddefconfig = Command::new("make")
-        .args(["-C", kernel_source.to_str().unwrap()])
-        .arg(format!("O={}", build_dir.display()))
-        .arg("olddefconfig")
-        .output()
-        .context("Failed to run make olddefconfig")?;
-
-    if !olddefconfig.status.success() {
-        bail!("make olddefconfig failed:\n{}", String::from_utf8_lossy(&olddefconfig.stderr));
-    }
+    Cmd::new("make")
+        .args(["-C", &kernel_src_str, &build_dir_arg, "olddefconfig"])
+        .error_msg("make olddefconfig failed")
+        .run()?;
 
     let cpus = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+    let jobs_arg = format!("-j{}", cpus);
 
-    // Build kernel
+    // Build kernel (interactive - user sees progress)
     println!("  Building kernel (this will take a while)...");
-    let build = Command::new("make")
-        .args(["-C", kernel_source.to_str().unwrap()])
-        .arg(format!("O={}", build_dir.display()))
-        .arg(format!("-j{}", cpus))
-        .output()
-        .context("Failed to run make")?;
+    Cmd::new("make")
+        .args(["-C", &kernel_src_str, &build_dir_arg, &jobs_arg])
+        .error_msg("Kernel build failed")
+        .run_interactive()?;
 
-    if !build.status.success() {
-        bail!("Kernel build failed:\n{}", String::from_utf8_lossy(&build.stderr));
-    }
-
-    // Build modules
+    // Build modules (interactive - user sees progress)
     println!("  Building modules...");
-    let modules = Command::new("make")
-        .args(["-C", kernel_source.to_str().unwrap()])
-        .arg(format!("O={}", build_dir.display()))
-        .arg(format!("-j{}", cpus))
-        .arg("modules")
-        .output()
-        .context("Failed to build modules")?;
-
-    if !modules.status.success() {
-        bail!("Module build failed:\n{}", String::from_utf8_lossy(&modules.stderr));
-    }
+    Cmd::new("make")
+        .args(["-C", &kernel_src_str, &build_dir_arg, &jobs_arg, "modules"])
+        .error_msg("Module build failed")
+        .run_interactive()?;
 
     let version = get_kernel_version(&build_dir)?;
     println!("  Kernel version: {}", version);
@@ -196,17 +176,13 @@ pub fn install_kernel(kernel_source: &Path, build_output: &Path, staging: &Path)
     println!("  Installed /boot/vmlinuz");
 
     println!("  Installing modules to /usr/lib/modules/{}...", version);
-    let modules_install = Command::new("make")
-        .args(["-C", kernel_source.to_str().unwrap()])
+    Cmd::new("make")
+        .args(["-C", &kernel_source.to_string_lossy()])
         .arg(format!("O={}", build_dir.display()))
         .arg(format!("INSTALL_MOD_PATH={}", staging.display()))
         .arg("modules_install")
-        .output()
-        .context("Failed to install modules")?;
-
-    if !modules_install.status.success() {
-        bail!("Module install failed:\n{}", String::from_utf8_lossy(&modules_install.stderr));
-    }
+        .error_msg("Module install failed")
+        .run_interactive()?;
 
     let _ = fs::remove_file(modules_dir.join("source"));
     let _ = fs::remove_file(modules_dir.join("build"));

@@ -9,6 +9,15 @@ use crate::build::context::BuildContext;
 
 const MOTD: &str = include_str!("../../../profile/etc/motd");
 
+// Live overlay files (applied only during live boot, not to installed systems)
+const LIVE_CONSOLE_AUTOLOGIN: &str =
+    include_str!("../../../profile/live-overlay/etc/systemd/system/console-autologin.service");
+const LIVE_SERIAL_CONSOLE: &str =
+    include_str!("../../../profile/live-overlay/etc/systemd/system/serial-console.service");
+const LIVE_GETTY_DISABLE: &str =
+    include_str!("../../../profile/live-overlay/etc/systemd/system/getty@tty1.service.d/live-disable.conf");
+const LIVE_SHADOW: &str = include_str!("../../../profile/live-overlay/etc/shadow");
+
 /// Create live overlay directory with autologin, serial console, empty root password.
 ///
 /// This is called by iso.rs during ISO creation. The overlay is applied ONLY
@@ -32,17 +41,7 @@ pub fn create_live_overlay_at(output_dir: &Path) -> Result<()> {
     // Console autologin service
     fs::write(
         systemd_dir.join("console-autologin.service"),
-        "[Unit]\n\
-         Description=Console Autologin\n\
-         After=systemd-user-sessions.service getty-pre.target\n\
-         Before=getty.target\n\n\
-         [Service]\n\
-         Environment=HOME=/root\nEnvironment=TERM=linux\n\
-         WorkingDirectory=/root\nExecStart=/bin/bash --login\n\
-         StandardInput=tty\nStandardOutput=tty\nStandardError=tty\n\
-         TTYPath=/dev/tty1\nTTYReset=yes\nTTYVHangup=yes\nTTYVTDisallocate=yes\n\
-         Type=idle\nRestart=always\nRestartSec=0\n\n\
-         [Install]\nWantedBy=getty.target\n",
+        LIVE_CONSOLE_AUTOLOGIN,
     )?;
 
     std::os::unix::fs::symlink(
@@ -53,24 +52,12 @@ pub fn create_live_overlay_at(output_dir: &Path) -> Result<()> {
     // Disable getty@tty1 during live boot
     let getty_override = systemd_dir.join("getty@tty1.service.d");
     fs::create_dir_all(&getty_override)?;
-    fs::write(
-        getty_override.join("live-disable.conf"),
-        "[Unit]\nConditionPathExists=!/live-boot-marker\n",
-    )?;
+    fs::write(getty_override.join("live-disable.conf"), LIVE_GETTY_DISABLE)?;
 
     // Serial console service
     fs::write(
         systemd_dir.join("serial-console.service"),
-        "[Unit]\n\
-         Description=Serial Console Shell\n\
-         After=basic.target\nConflicts=rescue.service emergency.service\n\n\
-         [Service]\n\
-         Environment=HOME=/root\nEnvironment=TERM=vt100\n\
-         WorkingDirectory=/root\nExecStart=/bin/bash --login\n\
-         StandardInput=tty\nStandardOutput=tty\nStandardError=tty\n\
-         TTYPath=/dev/ttyS0\nTTYReset=yes\nTTYVHangup=yes\nTTYVTDisallocate=no\n\
-         Type=idle\nRestart=always\nRestartSec=0\n\n\
-         [Install]\nWantedBy=multi-user.target\n",
+        LIVE_SERIAL_CONSOLE,
     )?;
 
     std::os::unix::fs::symlink(
@@ -79,14 +66,7 @@ pub fn create_live_overlay_at(output_dir: &Path) -> Result<()> {
     )?;
 
     // Shadow file with empty root password
-    fs::write(
-        overlay_dir.join("etc/shadow"),
-        "root::19000:0:99999:7:::\n\
-         bin:*:19000:0:99999:7:::\ndaemon:*:19000:0:99999:7:::\nnobody:*:19000:0:99999:7:::\n\
-         systemd-network:!*:19000::::::\nsystemd-resolve:!*:19000::::::\n\
-         systemd-timesync:!*:19000::::::\nsystemd-coredump:!*:19000::::::\n\
-         dbus:!*:19000::::::\nchrony:!*:19000::::::\n",
-    )?;
+    fs::write(overlay_dir.join("etc/shadow"), LIVE_SHADOW)?;
 
     fs::set_permissions(
         overlay_dir.join("etc/shadow"),

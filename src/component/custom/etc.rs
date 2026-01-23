@@ -16,11 +16,20 @@ const GSHADOW: &str = include_str!("../../../profile/etc/gshadow");
 const FSTAB: &str = include_str!("../../../profile/etc/fstab");
 const LOGIN_DEFS: &str = include_str!("../../../profile/etc/login.defs");
 const SUDOERS: &str = include_str!("../../../profile/etc/sudoers");
+const SUDO_CONF: &str = include_str!("../../../profile/etc/sudo.conf");
 const PROFILE: &str = include_str!("../../../profile/etc/profile");
 const BASHRC: &str = include_str!("../../../profile/etc/bashrc");
 const NSSWITCH: &str = include_str!("../../../profile/etc/nsswitch.conf");
 const SHELLS: &str = include_str!("../../../profile/etc/shells");
 const XDG_SH: &str = include_str!("../../../profile/etc/profile.d/xdg.sh");
+const HOSTS: &str = include_str!("../../../profile/etc/hosts");
+const ADJTIME: &str = include_str!("../../../profile/etc/adjtime");
+const LOCALE_CONF: &str = include_str!("../../../profile/etc/locale.conf");
+const VCONSOLE_CONF: &str = include_str!("../../../profile/etc/vconsole.conf");
+const SKEL_BASHRC: &str = include_str!("../../../profile/etc/skel/.bashrc");
+const SKEL_BASH_PROFILE: &str = include_str!("../../../profile/etc/skel/.bash_profile");
+const ROOT_BASHRC: &str = include_str!("../../../profile/root/.bashrc");
+const ROOT_BASH_PROFILE: &str = include_str!("../../../profile/root/.bash_profile");
 
 /// Create all /etc configuration files.
 pub fn create_etc_files(ctx: &BuildContext) -> Result<()> {
@@ -118,12 +127,7 @@ fn create_auth_config(ctx: &BuildContext) -> Result<()> {
     fs::set_permissions(etc.join("sudoers"), perms)?;
 
     fs::create_dir_all(etc.join("sudoers.d"))?;
-
-    fs::write(
-        etc.join("sudo.conf"),
-        "Plugin sudoers_policy sudoers.so\nPlugin sudoers_io sudoers.so\n\
-         Set disable_coredump true\nSet group_source static\n",
-    )?;
+    fs::write(etc.join("sudo.conf"), SUDO_CONF)?;
 
     Ok(())
 }
@@ -136,9 +140,9 @@ fn create_locale_config(ctx: &BuildContext) -> Result<()> {
         std::os::unix::fs::symlink("/usr/share/zoneinfo/UTC", &localtime)?;
     }
 
-    fs::write(etc.join("adjtime"), "0.0 0 0.0\n0\nUTC\n")?;
-    fs::write(etc.join("locale.conf"), "LANG=C.UTF-8\n")?;
-    fs::write(etc.join("vconsole.conf"), "KEYMAP=us\n")?;
+    fs::write(etc.join("adjtime"), ADJTIME)?;
+    fs::write(etc.join("locale.conf"), LOCALE_CONF)?;
+    fs::write(etc.join("vconsole.conf"), VCONSOLE_CONF)?;
 
     Ok(())
 }
@@ -146,11 +150,7 @@ fn create_locale_config(ctx: &BuildContext) -> Result<()> {
 fn create_network_config(ctx: &BuildContext) -> Result<()> {
     let etc = ctx.staging.join("etc");
 
-    fs::write(
-        etc.join("hosts"),
-        "127.0.0.1   localhost localhost.localdomain\n\
-         ::1         localhost localhost.localdomain ip6-localhost ip6-loopback\n",
-    )?;
+    fs::write(etc.join("hosts"), HOSTS)?;
 
     let resolv = etc.join("resolv.conf");
     if !resolv.exists() && !resolv.is_symlink() {
@@ -170,23 +170,12 @@ fn create_shell_config(ctx: &BuildContext) -> Result<()> {
     fs::write(etc.join("bashrc"), BASHRC)?;
 
     let root_home = ctx.staging.join("root");
-    fs::write(
-        root_home.join(".bashrc"),
-        "[ -f /etc/bashrc ] && . /etc/bashrc\nexport PS1='[\\u@\\h \\W]# '\n",
-    )?;
-    fs::write(
-        root_home.join(".bash_profile"),
-        "[ -f ~/.bashrc ] && . ~/.bashrc\n",
-    )?;
+    fs::write(root_home.join(".bashrc"), ROOT_BASHRC)?;
+    fs::write(root_home.join(".bash_profile"), ROOT_BASH_PROFILE)?;
 
-    fs::write(
-        etc.join("skel/.bashrc"),
-        "[ -f /etc/bashrc ] && . /etc/bashrc\n",
-    )?;
-    fs::write(
-        etc.join("skel/.bash_profile"),
-        "[ -f ~/.bashrc ] && . ~/.bashrc\n",
-    )?;
+    fs::create_dir_all(etc.join("skel"))?;
+    fs::write(etc.join("skel/.bashrc"), SKEL_BASHRC)?;
+    fs::write(etc.join("skel/.bash_profile"), SKEL_BASH_PROFILE)?;
 
     for xdg_dir in [".config", ".local/share", ".local/state", ".cache"] {
         let dir = etc.join("skel").join(xdg_dir);

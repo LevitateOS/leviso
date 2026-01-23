@@ -1,0 +1,6 @@
+# LevitateOS systemd-user - PAM configuration for systemd user sessions
+account include system-auth
+session required pam_loginuid.so
+session optional pam_keyinit.so force revoke
+-session optional pam_systemd.so
+session include system-auth

@@ -107,58 +107,36 @@ pub fn copy_keymaps(ctx: &BuildContext) -> Result<()> {
 pub fn copy_recipe(ctx: &BuildContext) -> Result<()> {
     println!("Copying recipe package manager...");
 
-    let recipe_path = match &ctx.recipe_binary {
-        Some(path) => {
-            if !path.exists() {
-                bail!(
-                    "Recipe binary explicitly specified but not found at: {}\n\
-                     Build it with: cd recipe && cargo build --release",
-                    path.display()
-                );
-            }
-            path.clone()
+    let recipe_path = if let Ok(env_path) = std::env::var("RECIPE_BINARY") {
+        let path = std::path::PathBuf::from(&env_path);
+        if path.exists() {
+            println!("  Using recipe from RECIPE_BINARY env var");
+            path
+        } else {
+            bail!(
+                "RECIPE_BINARY points to non-existent path: {}\n\
+                 Build it or update the env var.",
+                env_path
+            );
         }
-        None => {
-            if let Ok(env_path) = std::env::var("RECIPE_BINARY") {
-                let path = std::path::PathBuf::from(&env_path);
-                if path.exists() {
-                    println!("  Using recipe from RECIPE_BINARY env var");
-                    path
-                } else {
-                    bail!(
-                        "RECIPE_BINARY points to non-existent path: {}\n\
-                         Build it or update the env var.",
-                        env_path
-                    );
-                }
-            } else {
-                let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-                let search_paths = [
-                    // Monorepo layout: ../tools/recipe/
-                    manifest_dir.parent().unwrap().join("tools/recipe/target/release/recipe"),
-                    // Legacy layout: ../recipe/
-                    manifest_dir.parent().unwrap().join("recipe/target/release/recipe"),
-                ];
+    } else {
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let recipe_path = manifest_dir.parent().unwrap().join("tools/recipe/target/release/recipe");
 
-                match search_paths.iter().find(|p| p.exists()) {
-                    Some(path) => path.clone(),
-                    None => {
-                        bail!(
-                            "recipe binary not found. LevitateOS REQUIRES the package manager.\n\
-                             \n\
-                             For monorepo users:\n\
-                               cd ../recipe && cargo build --release\n\
-                             \n\
-                             For standalone users:\n\
-                               1. Clone recipe: git clone https://github.com/LevitateOS/recipe\n\
-                               2. Build it: cd recipe && cargo build --release\n\
-                               3. Set env var: export RECIPE_BINARY=/path/to/recipe/target/release/recipe\n\
-                             \n\
-                             DO NOT remove this check. An ISO without recipe is BROKEN."
-                        );
-                    }
-                }
-            }
+        if recipe_path.exists() {
+            recipe_path
+        } else {
+            bail!(
+                "recipe binary not found. LevitateOS REQUIRES the package manager.\n\
+                 \n\
+                 Build it:\n\
+                   cd tools/recipe && cargo build --release\n\
+                 \n\
+                 Or set env var:\n\
+                   export RECIPE_BINARY=/path/to/recipe/target/release/recipe\n\
+                 \n\
+                 DO NOT remove this check. An ISO without recipe is BROKEN."
+            );
         }
     };
 

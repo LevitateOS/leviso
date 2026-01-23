@@ -165,18 +165,6 @@ fn copy_iso_artifacts(paths: &IsoPaths, kernel_path: &Path) -> Result<()> {
         );
     }
 
-    // Copy tarball for installation
-    // NOTE: This is for the old tarball-based installation method.
-    // With squashfs-based installation (recstrap), the tarball is NOT required.
-    // recstrap extracts directly from the squashfs.
-    // Keeping this for backwards compatibility but it's optional now.
-    let base_tarball = paths.output_dir.join("levitateos-base.tar.xz");
-    if base_tarball.exists() {
-        println!("Copying base tarball for installation...");
-        fs::copy(&base_tarball, paths.iso_root.join("levitateos-base.tar.xz"))?;
-    }
-    // No warning needed - recstrap doesn't use the tarball
-
     Ok(())
 }
 

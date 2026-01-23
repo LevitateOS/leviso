@@ -10,6 +10,6 @@ pub mod component;
 pub mod config;
 pub mod process;
 
-// Re-export from extracted crates for API compatibility
+// Re-export extracted crates
 pub use leviso_deps as deps;
 pub use leviso_elf as elf;

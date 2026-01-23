@@ -1,123 +1,99 @@
 # leviso
 
-> **STOP. READ. THEN ACT.** E2E installation tests belong in `install-tests/`, NOT in `leviso/tests/`. See `tests/README.md`.
-
-Builds complete bootable LevitateOS ISOs with full hardware support. Extracts pre-built Rocky Linux 10 packages for builds in minutes instead of hour-long compilations. Produces hybrid UEFI/BIOS ISOs with squashfs live boot and base system tarball for installation.
+ISO builder for LevitateOS. Downloads Rocky Linux 10, extracts packages, builds squashfs, outputs bootable ISO.
 
 ## Status
 
-| Metric | Value |
-|--------|-------|
-| Stage | Alpha |
-| Target | x86_64 Linux |
-| Last verified | 2026-01-23 |
+**Alpha.** Boots in QEMU. Limited bare metal testing.
 
-### Works
+| Works | Doesn't work / Not tested |
+|-------|---------------------------|
+| QEMU boot (UEFI + BIOS) | Most bare metal hardware |
+| squashfs live root | Custom kernel (uses Rocky's) |
+| busybox initramfs | Secure boot |
+| Rocky package extraction | Non-x86_64 architectures |
 
-- Downloads and extracts Rocky Linux 10 packages
-- Builds squashfs live root filesystem
-- Creates initramfs with busybox init
-- Packages hybrid UEFI/BIOS ISO
-- QEMU testing (GUI and serial)
+## What It Does
 
-### Incomplete / Stubbed
+```
+Rocky Linux 10 ISO → extract packages → squashfs → initramfs → bootable ISO
+```
 
-- Kernel build from source (currently uses Rocky kernel)
-- Custom initramfs modules selection
+1. Downloads Rocky Linux 10 ISO (~2GB)
+2. Extracts rootfs via `unsquashfs`
+3. Copies binaries + library dependencies
+4. Builds squashfs live filesystem
+5. Creates busybox initramfs (~1MB)
+6. Packages ISO with xorriso
 
-### Known Issues
+## What It Produces
 
-- See parent repo issues
+| File | Size | Description |
+|------|------|-------------|
+| `levitateos.iso` | ~800MB | Bootable ISO (UEFI + BIOS) |
+| `filesystem.squashfs` | ~700MB | Compressed root filesystem |
+| `initramfs-tiny.cpio.gz` | ~1MB | Busybox init + kernel modules |
+| `levitateos-base.tar.xz` | ~400MB | Tarball for installation |
 
----
+Sizes are approximate. Actual sizes depend on package selection.
 
-## Author
-
-<!-- HUMAN WRITTEN - DO NOT MODIFY -->
-
-[Waiting for human input]
-
-<!-- END HUMAN WRITTEN -->
-
----
-
-## Quick Start
+## Usage
 
 ```bash
-cargo run -- build    # Full build
-cargo run -- run      # Test in QEMU
+cargo run -- build    # Full build (downloads ~2GB first run)
+cargo run -- run      # Boot in QEMU (GUI, UEFI)
+cargo run -- test     # Boot in QEMU (serial console)
 ```
 
-## What It Builds
+### Individual Steps
 
-- Kernel + tiny initramfs (busybox, boots squashfs+overlay)
-- 125+ utilities (coreutils, editors, networking, compression, system tools)
-- Full networking stack: NetworkManager, wpa_supplicant, iproute2
-- Complete WiFi firmware: Intel, Atheros, Realtek, Broadcom, MediaTek
-- All kernel modules and hardware firmware from Rocky
-- SquashFS-compressed live root filesystem
-- Base system tarball for installation (levitateos-base.tar.xz)
-- UEFI (GRUB) and BIOS (isolinux) boot support
-
-## Boot Architecture
-
-The live ISO uses a custom tiny initramfs (~1MB):
-1. GRUB/isolinux loads kernel + initramfs-tiny.cpio.gz
-2. Busybox init mounts ISO, finds `filesystem.squashfs`
-3. Sets up three-layer overlay:
-   - Lower: squashfs (base system, read-only)
-   - Middle: /live/overlay (live-specific configs like autologin)
-   - Upper: tmpfs (runtime writes)
-4. switch_root to overlay, systemd takes over as PID 1
-
-## Commands
-
-| Command | Purpose |
-|---------|---------|
-| `build` | Full build from scratch |
-| `download` | Fetch Rocky 10 ISO |
-| `extract` | Extract rootfs |
-| `initramfs` | Build initramfs |
-| `iso` | Package final ISO |
-| `test` | Quick debug (serial console) |
-| `run` | Full test (QEMU GUI, UEFI) |
-
-## Architecture
-
-```
-Downloads Rocky Linux 10
-        ↓
-Extracts rootfs + firmware
-        ↓
-Builds squashfs system image
-        ↓
-Creates initramfs (dracut)
-        ↓
-Packages final ISO
+```bash
+cargo run -- download   # Fetch Rocky ISO
+cargo run -- extract    # Extract rootfs
+cargo run -- initramfs  # Build initramfs
+cargo run -- iso        # Package final ISO
 ```
 
-## Directory Structure
+## Boot Sequence
+
+1. GRUB/isolinux loads kernel + initramfs
+2. Busybox init mounts ISO, finds squashfs
+3. Creates overlay: squashfs (ro) + tmpfs (rw)
+4. `switch_root` to overlay
+5. systemd starts as PID 1
+
+## Directory Layout
 
 ```
-downloads/           # Downloaded dependencies (gitignored)
-├── rocky.iso        # Rocky Linux 10 ISO
-├── iso-contents/    # Extracted ISO (kernel, EFI files)
-├── rootfs/          # Extracted squashfs (userspace binaries)
-└── syslinux-6.03/   # Syslinux for BIOS boot
+downloads/           # Cached downloads (gitignored)
+├── rocky.iso
+├── rootfs/          # Extracted squashfs
+└── iso-contents/    # EFI files, kernel
 
-output/              # Build outputs (gitignored)
-├── initramfs-tiny-root/ # Unpacked initramfs contents
-├── initramfs-tiny.cpio.gz # Tiny initramfs (~1MB, busybox + modules)
-├── filesystem.squashfs  # Live root filesystem (squashfs-compressed)
-├── levitateos-base.tar.xz # Base system tarball for installation
-├── efiboot.img      # EFI boot image for ISO
-├── iso-root/        # ISO contents before packaging
-│   └── live/overlay/    # Live-specific configs (autologin, serial-console)
-└── levitateos.iso   # Final bootable ISO
+output/              # Build artifacts (gitignored)
+├── filesystem.squashfs
+├── initramfs-tiny.cpio.gz
+├── levitateos-base.tar.xz
+└── levitateos.iso
 
 profile/
-└── init_tiny        # Init script (busybox, mounts squashfs + 3-layer overlay)
+└── init_tiny        # Busybox init script
 ```
+
+## Requirements
+
+- Rust 1.75+
+- unsquashfs (squashfs-tools)
+- xorriso
+- mksquashfs
+- 20GB free disk space
+
+## Known Issues
+
+- Uses Rocky's kernel, not custom-built
+- No secure boot support
+- Kernel module selection is hardcoded
+- WiFi firmware included but not tested on real hardware
 
 ## License
 

@@ -1185,6 +1185,9 @@ fn copy_recipe(ctx: &BuildContext) -> Result<()> {
             } else {
                 let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
                 let search_paths = [
+                    // Monorepo layout: ../tools/recipe/
+                    manifest_dir.parent().unwrap().join("tools/recipe/target/release/recipe"),
+                    // Legacy layout: ../recipe/
                     manifest_dir.parent().unwrap().join("recipe/target/release/recipe"),
                 ];
 

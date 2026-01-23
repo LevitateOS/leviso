@@ -2,13 +2,16 @@
 //!
 //! This is the single place where all build operations are implemented.
 //! No more copy-paste patterns across 14 files.
+//!
+//! ALL operations are required. If something is listed, it must exist.
+//! There is no "optional" - this is a daily driver OS, not a toy.
 
 use anyhow::{bail, Context, Result};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-use super::{Component, Dest, Op, Req};
+use super::{Component, Dest, Op};
 use crate::build::context::BuildContext;
 use crate::build::libdeps::{
     copy_bash, copy_binary_with_libs, copy_dir_tree, copy_file, copy_sbin_binary_with_libs,
@@ -52,19 +55,19 @@ fn execute_op(ctx: &BuildContext, op: &Op) -> Result<()> {
         }
 
         // ─────────────────────────────────────────────────────────────────
-        // Binary operations
+        // Binary operations - ALL REQUIRED
         // ─────────────────────────────────────────────────────────────────
-        Op::Bin(name, dest, req) => {
+        Op::Bin(name, dest) => {
             let found = match dest {
                 Dest::Bin => copy_binary_with_libs(ctx, name, "usr/bin")?,
                 Dest::Sbin => copy_sbin_binary_with_libs(ctx, name)?,
             };
-            if !found && *req == Req::Required {
-                bail!("{} not found - REQUIRED", name);
+            if !found {
+                bail!("{} not found", name);
             }
         }
 
-        Op::Bins(names, dest, req) => {
+        Op::Bins(names, dest) => {
             let mut missing = Vec::new();
             for name in *names {
                 let found = match dest {
@@ -75,8 +78,8 @@ fn execute_op(ctx: &BuildContext, op: &Op) -> Result<()> {
                     missing.push(*name);
                 }
             }
-            if !missing.is_empty() && *req == Req::Required {
-                bail!("Binaries missing: {} - ALL are required", missing.join(", "));
+            if !missing.is_empty() {
+                bail!("Missing binaries: {}", missing.join(", "));
             }
         }
 
@@ -147,12 +150,12 @@ fn execute_op(ctx: &BuildContext, op: &Op) -> Result<()> {
         }
 
         // ─────────────────────────────────────────────────────────────────
-        // File operations
+        // File operations - ALL REQUIRED
         // ─────────────────────────────────────────────────────────────────
-        Op::CopyFile(path, req) => {
+        Op::CopyFile(path) => {
             let found = copy_file(ctx, path)?;
-            if !found && *req == Req::Required {
-                bail!("{} not found - REQUIRED", path);
+            if !found {
+                bail!("{} not found", path);
             }
         }
 

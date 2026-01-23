@@ -126,8 +126,8 @@ pub fn find_existing(resolver: &DependencyResolver, tool: Tool) -> Option<ToolBi
         }
     }
 
-    // 2. Check submodule at ../tool_name
-    let submodule = resolver.monorepo_dir().join(tool.name());
+    // 2. Check submodule at ../tools/tool_name (monorepo layout)
+    let submodule = resolver.monorepo_dir().join("tools").join(tool.name());
     if submodule.join("Cargo.toml").exists() {
         let binary = submodule.join("target").join(profile).join(tool.name());
         if binary.exists() {
@@ -138,6 +138,20 @@ pub fn find_existing(resolver: &DependencyResolver, tool: Tool) -> Option<ToolBi
             });
         }
         // Submodule exists but not built - will need to build
+        return None;
+    }
+
+    // 2b. Legacy: check at ../tool_name
+    let legacy_submodule = resolver.monorepo_dir().join(tool.name());
+    if legacy_submodule.join("Cargo.toml").exists() {
+        let binary = legacy_submodule.join("target").join(profile).join(tool.name());
+        if binary.exists() {
+            return Some(ToolBinary {
+                path: binary,
+                source: ToolSourceType::BuiltFromSubmodule,
+                tool,
+            });
+        }
         return None;
     }
 
@@ -166,10 +180,16 @@ pub fn resolve(resolver: &DependencyResolver, tool: Tool) -> Result<ToolBinary> 
         return build_from_crate(tool, &crate_path, release_build, ToolSourceType::BuiltFromEnvVar);
     }
 
-    // 2. Check submodule at ../tool_name
-    let submodule = resolver.monorepo_dir().join(tool.name());
+    // 2. Check submodule at ../tools/tool_name (monorepo layout)
+    let submodule = resolver.monorepo_dir().join("tools").join(tool.name());
     if submodule.join("Cargo.toml").exists() {
         return build_from_crate(tool, &submodule, release_build, ToolSourceType::BuiltFromSubmodule);
+    }
+
+    // 2b. Legacy: check at ../tool_name
+    let legacy_submodule = resolver.monorepo_dir().join(tool.name());
+    if legacy_submodule.join("Cargo.toml").exists() {
+        return build_from_crate(tool, &legacy_submodule, release_build, ToolSourceType::BuiltFromSubmodule);
     }
 
     // 3. Download from GitHub releases

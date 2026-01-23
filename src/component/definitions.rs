@@ -17,9 +17,9 @@
 //! 9. Final - welcome message, recstrap
 
 use super::{
-    bin_optional, bins_required, copy_file_optional, copy_file_required, copy_tree, custom, dir,
-    dirs, enable_getty, enable_multi_user, enable_sockets, enable_sysinit, group, sbins_required,
-    symlink, units, user, Component, CustomOp, Op, Phase,
+    bin, bins, copy_file, copy_tree, custom, dir, dirs, enable_getty, enable_multi_user,
+    enable_sockets, enable_sysinit, group, sbins, symlink, units, user, Component, CustomOp, Op,
+    Phase,
 };
 
 // =============================================================================
@@ -245,8 +245,8 @@ pub static COREUTILS: Component = Component {
     name: "coreutils",
     phase: Phase::Binaries,
     ops: &[
-        bins_required(BIN_UTILS),
-        bins_required(AUTH_BIN),
+        bins(BIN_UTILS),
+        bins(AUTH_BIN),
     ],
 };
 
@@ -254,8 +254,8 @@ pub static SBIN_BINARIES: Component = Component {
     name: "sbin",
     phase: Phase::Binaries,
     ops: &[
-        sbins_required(SBIN_UTILS),
-        sbins_required(AUTH_SBIN),
+        sbins(SBIN_UTILS),
+        sbins(AUTH_SBIN),
     ],
 };
 
@@ -405,7 +405,7 @@ pub static DBUS: Component = Component {
     phase: Phase::Dbus,
     ops: &[
         dir("run/dbus"),
-        bins_required(DBUS_BINARIES),
+        bins(DBUS_BINARIES),
         copy_tree("usr/share/dbus-1"),
         copy_tree("etc/dbus-1"),
         units(DBUS_UNITS),
@@ -440,11 +440,10 @@ pub static NETWORK: Component = Component {
     phase: Phase::Services,
     ops: &[
         // NetworkManager
-        sbins_required(NM_SBIN),
-        bins_required(NM_REQUIRED),
-        bin_optional("nmtui"),
+        sbins(NM_SBIN),
+        bins(NM_REQUIRED),
         // wpa_supplicant
-        sbins_required(WPA_SBIN),
+        sbins(WPA_SBIN),
         // Helpers and plugins
         copy_tree("usr/libexec"),
         copy_tree("usr/lib64/NetworkManager"),
@@ -452,8 +451,8 @@ pub static NETWORK: Component = Component {
         copy_tree("etc/NetworkManager"),
         copy_tree("etc/wpa_supplicant"),
         // D-Bus policies (REQUIRED)
-        copy_file_required("usr/share/dbus-1/system.d/org.freedesktop.NetworkManager.conf"),
-        copy_file_required("etc/dbus-1/system.d/wpa_supplicant.conf"),
+        copy_file("usr/share/dbus-1/system.d/org.freedesktop.NetworkManager.conf"),
+        copy_file("etc/dbus-1/system.d/wpa_supplicant.conf"),
         // Units
         units(NM_UNITS),
         units(WPA_UNITS),
@@ -474,9 +473,9 @@ pub static CHRONY: Component = Component {
     ops: &[
         dir("var/lib/chrony"),
         dir("var/run/chrony"),
-        copy_file_optional("etc/chrony.conf"),
-        copy_file_optional("etc/sysconfig/chronyd"),
-        copy_file_optional("usr/lib/systemd/ntp-units.d/50-chronyd.list"),
+        copy_file("etc/chrony.conf"),
+        copy_file("etc/sysconfig/chronyd"),
+        copy_file("usr/lib/systemd/ntp-units.d/50-chronyd.list"),
         enable_multi_user("chronyd.service"),
         user("chrony", 992, 987, "/var/lib/chrony", "/sbin/nologin"),
         group("chrony", 987),
@@ -502,13 +501,13 @@ pub static OPENSSH: Component = Component {
     name: "openssh",
     phase: Phase::Services,
     ops: &[
-        sbins_required(SSH_SERVER),
-        bins_required(SSH_CLIENT),
+        sbins(SSH_SERVER),
+        bins(SSH_CLIENT),
         copy_tree("usr/libexec/openssh"),
         copy_tree("etc/ssh"),
-        copy_file_required("etc/pam.d/sshd"),
+        copy_file("etc/pam.d/sshd"),
         units(SSH_UNITS),
-        copy_file_optional("etc/sysconfig/sshd"),
+        copy_file("etc/sysconfig/sshd"),
         copy_tree("etc/crypto-policies"),
         copy_tree("usr/share/crypto-policies"),
         dir("var/empty/sshd"),

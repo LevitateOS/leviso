@@ -89,6 +89,9 @@ pub enum Phase {
 ///
 /// Each variant represents a single atomic operation. The executor
 /// handles the actual implementation, ensuring consistent behavior.
+///
+/// ALL operations are required. If something is listed, it must exist.
+/// There is no "optional" - this is a daily driver OS, not a toy.
 #[derive(Debug, Clone)]
 pub enum Op {
     // ─────────────────────────────────────────────────────────────────────
@@ -104,13 +107,13 @@ pub enum Op {
     Dirs(&'static [&'static str]),
 
     // ─────────────────────────────────────────────────────────────────────
-    // Binary operations
+    // Binary operations - ALL REQUIRED, build fails if missing
     // ─────────────────────────────────────────────────────────────────────
-    /// Copy a binary to /usr/bin with library dependencies.
-    Bin(&'static str, Dest, Req),
+    /// Copy a binary with library dependencies. Fails if not found.
+    Bin(&'static str, Dest),
 
-    /// Copy multiple binaries to /usr/bin.
-    Bins(&'static [&'static str], Dest, Req),
+    /// Copy multiple binaries. Fails if ANY are missing.
+    Bins(&'static [&'static str], Dest),
 
     /// Copy bash shell specifically (special handling).
     Bash,
@@ -122,10 +125,10 @@ pub enum Op {
     SudoLibs(&'static [&'static str]),
 
     // ─────────────────────────────────────────────────────────────────────
-    // File operations
+    // File operations - ALL REQUIRED, build fails if missing
     // ─────────────────────────────────────────────────────────────────────
-    /// Copy a single file from source to staging.
-    CopyFile(&'static str, Req),
+    /// Copy a single file from source to staging. Fails if not found.
+    CopyFile(&'static str),
 
     /// Copy a directory tree from source to staging.
     CopyTree(&'static str),
@@ -183,15 +186,6 @@ pub enum Dest {
     Bin,
     /// /usr/sbin
     Sbin,
-}
-
-/// Whether a resource is required or optional.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Req {
-    /// Build fails if missing.
-    Required,
-    /// Silently skip if missing.
-    Optional,
 }
 
 /// Systemd target for enabling units.
@@ -288,34 +282,24 @@ pub const fn dirs(paths: &'static [&'static str]) -> Op {
     Op::Dirs(paths)
 }
 
-/// Copy a required binary to /usr/bin.
-pub const fn bin_required(name: &'static str) -> Op {
-    Op::Bin(name, Dest::Bin, Req::Required)
+/// Copy a binary to /usr/bin. Fails if not found.
+pub const fn bin(name: &'static str) -> Op {
+    Op::Bin(name, Dest::Bin)
 }
 
-/// Copy an optional binary to /usr/bin.
-pub const fn bin_optional(name: &'static str) -> Op {
-    Op::Bin(name, Dest::Bin, Req::Optional)
+/// Copy a binary to /usr/sbin. Fails if not found.
+pub const fn sbin(name: &'static str) -> Op {
+    Op::Bin(name, Dest::Sbin)
 }
 
-/// Copy a required binary to /usr/sbin.
-pub const fn sbin_required(name: &'static str) -> Op {
-    Op::Bin(name, Dest::Sbin, Req::Required)
+/// Copy multiple binaries to /usr/bin. Fails if ANY are missing.
+pub const fn bins(names: &'static [&'static str]) -> Op {
+    Op::Bins(names, Dest::Bin)
 }
 
-/// Copy an optional binary to /usr/sbin.
-pub const fn sbin_optional(name: &'static str) -> Op {
-    Op::Bin(name, Dest::Sbin, Req::Optional)
-}
-
-/// Copy multiple required binaries to /usr/bin.
-pub const fn bins_required(names: &'static [&'static str]) -> Op {
-    Op::Bins(names, Dest::Bin, Req::Required)
-}
-
-/// Copy multiple required binaries to /usr/sbin.
-pub const fn sbins_required(names: &'static [&'static str]) -> Op {
-    Op::Bins(names, Dest::Sbin, Req::Required)
+/// Copy multiple binaries to /usr/sbin. Fails if ANY are missing.
+pub const fn sbins(names: &'static [&'static str]) -> Op {
+    Op::Bins(names, Dest::Sbin)
 }
 
 /// Copy a directory tree.
@@ -323,14 +307,9 @@ pub const fn copy_tree(path: &'static str) -> Op {
     Op::CopyTree(path)
 }
 
-/// Copy a required file.
-pub const fn copy_file_required(path: &'static str) -> Op {
-    Op::CopyFile(path, Req::Required)
-}
-
-/// Copy an optional file.
-pub const fn copy_file_optional(path: &'static str) -> Op {
-    Op::CopyFile(path, Req::Optional)
+/// Copy a file. Fails if not found.
+pub const fn copy_file(path: &'static str) -> Op {
+    Op::CopyFile(path)
 }
 
 /// Copy systemd unit files.

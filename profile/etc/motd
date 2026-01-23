@@ -5,11 +5,11 @@
  | |__|  __/\ V / | | || (_| | ||  __/ |_| |___) |
  |_____\___| \_/  |_|\__\__,_|\__\___|\___/|____/
 
- Hi, welcome to Levitate. This is the author writing.
+ Hi, welcome to the LevitateOS Installer. This is the author writing.
 
-  Thank you for your interest in LevitateOS, hopefully the first vibe-coded Linux distro. If you're running this in a VM or on bare metal, this is still in pre-release so bugs are very much expected. Please kindly use the issues tab at lecitateOS/levitateOS on github after encountering something odd.
+  Thank you for your interest in LevitateOS, hopefully the first vibe-coded Linux distro. If you're running this in a VM or on bare metal, this is still in pre-release so bugs are very much expected. Please kindly use the issues tab at levitateOS/levitateOS on github after encountering something odd.
 
-  I expect there to be TUI on the right side of your screen that guides your through this manual installation. (if not, then I guess you have a good reason to make an issue lmao)
+  I expect there to be TUI on the right side of your screen that guides you through this manual installation. (if not, then I guess you have a good reason to make an issue lmao)
 
  For networking:
    nmcli device wifi list           # List WiFi networks

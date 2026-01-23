@@ -855,6 +855,32 @@ archiso provides checksum files so users can verify their download.
 - [ ] Conflict detection
 - [ ] Provides/replaces support
 
+### 8.4 Future: Recipe as Universal Dependency Manager
+
+> **Goal:** Replace leviso's custom DependencyResolver with `recipe` for ALL build dependencies.
+
+Currently, leviso has a hardcoded DependencyResolver that downloads:
+- Linux kernel source (git clone from kernel.org)
+- Rocky ISO (curl from Rocky mirrors)
+- recstrap, recfstab, recchroot (GitHub releases)
+- recipe binary (manual build required)
+
+**Future state:** ALL of these should be installable via `recipe`:
+```bash
+recipe install linux-source      # Kernel source tree
+recipe install rocky-iso         # Rocky ISO for RPM extraction
+recipe install leviso-tools      # recstrap, recfstab, recchroot, recipe
+```
+
+**Benefits:**
+- Single tool for all dependency management
+- Consistent versioning and updates
+- Reproducible builds (recipe lockfile)
+- No hardcoded GitHub URLs in leviso
+- Standalone users get same experience as monorepo users
+
+**Priority:** P2 (after recipe package manager is fully functional)
+
 ---
 
 ## 9. DEVELOPMENT (Optional but Expected)

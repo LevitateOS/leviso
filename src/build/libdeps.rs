@@ -189,3 +189,82 @@ fn find_rpm_by_pattern(packages_dir: &Path, pattern: &str) -> Option<PathBuf> {
     }
     None
 }
+
+/// Copy systemd unit files from source to staging.
+/// Returns the number of units copied.
+pub fn copy_systemd_units(ctx: &BuildContext, units: &[&str]) -> Result<usize> {
+    let src_dir = ctx.source.join("usr/lib/systemd/system");
+    let dst_dir = ctx.staging.join("usr/lib/systemd/system");
+    fs::create_dir_all(&dst_dir)?;
+
+    let mut copied = 0;
+    for unit in units {
+        let src = src_dir.join(unit);
+        let dst = dst_dir.join(unit);
+        if src.exists() && !dst.exists() {
+            fs::copy(&src, &dst)?;
+            copied += 1;
+        }
+    }
+    Ok(copied)
+}
+
+/// Copy a directory tree from source to staging.
+/// Creates parent directories as needed. Skips files that already exist.
+pub fn copy_dir_tree(ctx: &BuildContext, rel_path: &str) -> Result<usize> {
+    let src = ctx.source.join(rel_path);
+    let dst = ctx.staging.join(rel_path);
+
+    if !src.is_dir() {
+        return Ok(0);
+    }
+
+    fs::create_dir_all(&dst)?;
+    let mut count = 0;
+
+    for entry in fs::read_dir(&src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if src_path.is_dir() {
+            let sub_rel = format!("{}/{}", rel_path, entry.file_name().to_string_lossy());
+            count += copy_dir_tree(ctx, &sub_rel)?;
+        } else if src_path.is_symlink() {
+            if !dst_path.exists() && !dst_path.is_symlink() {
+                let target = fs::read_link(&src_path)?;
+                std::os::unix::fs::symlink(&target, &dst_path)?;
+                count += 1;
+            }
+        } else if !dst_path.exists() {
+            fs::copy(&src_path, &dst_path)?;
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
+/// Copy a single file from source to staging.
+/// Creates parent directories as needed. Returns false if source doesn't exist.
+pub fn copy_file(ctx: &BuildContext, rel_path: &str) -> Result<bool> {
+    let src = ctx.source.join(rel_path);
+    let dst = ctx.staging.join(rel_path);
+
+    if !src.exists() {
+        return Ok(false);
+    }
+
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    if !dst.exists() {
+        if src.is_symlink() {
+            let target = fs::read_link(&src)?;
+            std::os::unix::fs::symlink(&target, &dst)?;
+        } else {
+            fs::copy(&src, &dst)?;
+        }
+    }
+    Ok(true)
+}

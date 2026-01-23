@@ -1,12 +1,10 @@
 //! PAM configuration for installed system.
-//!
-//! Real PAM authentication (not permissive like live environment).
-//! Uses pam_unix for local password authentication.
 
 use anyhow::Result;
 use std::fs;
 
 use super::context::BuildContext;
+use super::libdeps::copy_dir_tree;
 
 /// Set up PAM configuration for installed system.
 pub fn setup_pam(ctx: &BuildContext) -> Result<()> {
@@ -15,205 +13,59 @@ pub fn setup_pam(ctx: &BuildContext) -> Result<()> {
     let pam_dir = ctx.staging.join("etc/pam.d");
     fs::create_dir_all(&pam_dir)?;
 
-    // /etc/pam.d/system-auth - base authentication stack
-    fs::write(
-        pam_dir.join("system-auth"),
-        r#"#%PAM-1.0
-# System authentication configuration
+    // system-auth
+    fs::write(pam_dir.join("system-auth"), PAM_SYSTEM_AUTH)?;
 
-auth        required      pam_env.so
-auth        sufficient    pam_unix.so try_first_pass nullok
-auth        required      pam_deny.so
+    // password-auth (same as system-auth for simple setup)
+    fs::write(pam_dir.join("password-auth"), PAM_SYSTEM_AUTH)?;
 
-account     required      pam_unix.so
+    // login
+    fs::write(pam_dir.join("login"), PAM_LOGIN)?;
 
-password    requisite     pam_pwquality.so try_first_pass local_users_only retry=3 authtok_type=
-password    sufficient    pam_unix.so try_first_pass use_authtok nullok sha512 shadow
-password    required      pam_deny.so
-
-session     optional      pam_keyinit.so revoke
-session     required      pam_limits.so
-session     required      pam_unix.so
-"#,
-    )?;
-
-    // /etc/pam.d/password-auth - password authentication
-    fs::write(
-        pam_dir.join("password-auth"),
-        r#"#%PAM-1.0
-# Password authentication configuration
-
-auth        required      pam_env.so
-auth        sufficient    pam_unix.so try_first_pass nullok
-auth        required      pam_deny.so
-
-account     required      pam_unix.so
-
-password    requisite     pam_pwquality.so try_first_pass local_users_only retry=3 authtok_type=
-password    sufficient    pam_unix.so try_first_pass use_authtok nullok sha512 shadow
-password    required      pam_deny.so
-
-session     optional      pam_keyinit.so revoke
-session     required      pam_limits.so
-session     required      pam_unix.so
-"#,
-    )?;
-
-    // /etc/pam.d/login - console login
-    fs::write(
-        pam_dir.join("login"),
-        r#"#%PAM-1.0
-# Login authentication configuration
-
-auth       requisite    pam_nologin.so
-auth       include      system-auth
-
-account    required     pam_access.so
-account    include      system-auth
-
-password   include      system-auth
-
-session    required     pam_loginuid.so
-session    optional     pam_keyinit.so force revoke
-session    include      system-auth
-session    required     pam_namespace.so
-session    optional     pam_lastlog.so showfailed
-session    optional     pam_motd.so
-"#,
-    )?;
-
-    // /etc/pam.d/passwd - password change
-    fs::write(
-        pam_dir.join("passwd"),
-        r#"#%PAM-1.0
-# Password change configuration
-
-auth       include      system-auth
-account    include      system-auth
-password   substack     system-auth
-"#,
-    )?;
-
-    // /etc/pam.d/su - su command
-    fs::write(
-        pam_dir.join("su"),
-        r#"#%PAM-1.0
-# su authentication configuration
-
-auth       sufficient   pam_rootok.so
-auth       required     pam_unix.so
-
-account    sufficient   pam_rootok.so
-account    required     pam_unix.so
-
-session    required     pam_unix.so
-"#,
-    )?;
-
-    // /etc/pam.d/sudo - sudo command
-    fs::write(
-        pam_dir.join("sudo"),
-        r#"#%PAM-1.0
-# sudo authentication configuration
-
-auth       include      system-auth
-account    include      system-auth
-password   include      system-auth
-session    optional     pam_keyinit.so revoke
-session    required     pam_limits.so
-"#,
-    )?;
-
-    // /etc/pam.d/chpasswd - batch password change
-    fs::write(
-        pam_dir.join("chpasswd"),
-        r#"#%PAM-1.0
-# chpasswd configuration
-
-auth       sufficient   pam_rootok.so
-auth       required     pam_unix.so
-
-account    required     pam_unix.so
-
-password   include      system-auth
-"#,
-    )?;
-
-    // /etc/pam.d/other - fallback for unconfigured services
-    fs::write(
-        pam_dir.join("other"),
-        r#"#%PAM-1.0
-# Fallback PAM configuration
-
-auth        required      pam_deny.so
-account     required      pam_deny.so
-password    required      pam_deny.so
-session     required      pam_deny.so
-"#,
-    )?;
-
-    // /etc/pam.d/systemd-user - systemd user sessions
-    fs::write(
-        pam_dir.join("systemd-user"),
-        r#"#%PAM-1.0
-# systemd user session configuration
-
-account    include      system-auth
-session    required     pam_loginuid.so
-session    optional     pam_keyinit.so force revoke
-session    include      system-auth
-"#,
-    )?;
+    // passwd, su, sudo, chpasswd, other, systemd-user
+    fs::write(pam_dir.join("passwd"), "auth include system-auth\naccount include system-auth\npassword substack system-auth\n")?;
+    fs::write(pam_dir.join("su"), "auth sufficient pam_rootok.so\nauth required pam_unix.so\naccount sufficient pam_rootok.so\naccount required pam_unix.so\nsession required pam_unix.so\n")?;
+    fs::write(pam_dir.join("sudo"), "auth include system-auth\naccount include system-auth\npassword include system-auth\nsession optional pam_keyinit.so revoke\nsession required pam_limits.so\n")?;
+    fs::write(pam_dir.join("chpasswd"), "auth sufficient pam_rootok.so\nauth required pam_unix.so\naccount required pam_unix.so\npassword include system-auth\n")?;
+    fs::write(pam_dir.join("other"), "auth required pam_deny.so\naccount required pam_deny.so\npassword required pam_deny.so\nsession required pam_deny.so\n")?;
+    fs::write(pam_dir.join("systemd-user"), "account include system-auth\nsession required pam_loginuid.so\nsession optional pam_keyinit.so force revoke\nsession include system-auth\n")?;
 
     println!("  Created PAM configuration files");
     Ok(())
 }
 
+const PAM_SYSTEM_AUTH: &str = "\
+auth required pam_env.so
+auth sufficient pam_unix.so try_first_pass nullok
+auth required pam_deny.so
+account required pam_unix.so
+password requisite pam_pwquality.so try_first_pass local_users_only retry=3
+password sufficient pam_unix.so try_first_pass use_authtok nullok sha512 shadow
+password required pam_deny.so
+session optional pam_keyinit.so revoke
+session required pam_limits.so
+session required pam_unix.so
+";
+
+const PAM_LOGIN: &str = "\
+auth requisite pam_nologin.so
+auth include system-auth
+account required pam_access.so
+account include system-auth
+password include system-auth
+session required pam_loginuid.so
+session optional pam_keyinit.so force revoke
+session include system-auth
+session required pam_namespace.so
+session optional pam_lastlog.so showfailed
+session optional pam_motd.so
+";
+
 /// Copy PAM modules from source rootfs.
 pub fn copy_pam_modules(ctx: &BuildContext) -> Result<()> {
     println!("Copying PAM modules...");
-
-    let modules_src = ctx.source.join("usr/lib64/security");
-    let modules_dst = ctx.staging.join("usr/lib64/security");
-
-    if modules_src.exists() {
-        fs::create_dir_all(&modules_dst)?;
-
-        // Copy essential PAM modules
-        let essential_modules = [
-            "pam_unix.so",
-            "pam_deny.so",
-            "pam_permit.so",
-            "pam_env.so",
-            "pam_nologin.so",
-            "pam_securetty.so",
-            "pam_limits.so",
-            "pam_access.so",
-            "pam_namespace.so",
-            "pam_lastlog.so",
-            "pam_motd.so",
-            "pam_keyinit.so",
-            "pam_loginuid.so",
-            "pam_rootok.so",
-            "pam_pwquality.so",
-            "pam_faillock.so",
-            "pam_shells.so",
-            "pam_succeed_if.so",
-            "pam_systemd.so",
-            "pam_systemd_home.so",
-        ];
-
-        for module in essential_modules {
-            let src = modules_src.join(module);
-            let dst = modules_dst.join(module);
-            if src.exists() {
-                fs::copy(&src, &dst)?;
-            }
-        }
-
-        println!("  Copied PAM modules");
-    }
-
+    let count = copy_dir_tree(ctx, "usr/lib64/security")?;
+    println!("  Copied {} PAM modules", count);
     Ok(())
 }
 
@@ -224,78 +76,17 @@ pub fn create_security_config(ctx: &BuildContext) -> Result<()> {
     let security_dir = ctx.staging.join("etc/security");
     fs::create_dir_all(&security_dir)?;
 
-    // /etc/security/limits.conf
-    fs::write(
-        security_dir.join("limits.conf"),
-        r#"# /etc/security/limits.conf
-#
-# <domain>  <type>  <item>  <value>
-#
-
-# Default limits
+    fs::write(security_dir.join("limits.conf"), "\
 *               soft    core            0
 *               hard    nofile          1048576
 *               soft    nofile          1024
 root            soft    nofile          1048576
-"#,
-    )?;
+")?;
 
-    // /etc/security/access.conf
-    fs::write(
-        security_dir.join("access.conf"),
-        r#"# /etc/security/access.conf
-#
-# Login access control table
-#
-
-# Allow root from console
-+:root:LOCAL
-
-# Allow all other users from anywhere (default)
-+:ALL:ALL
-"#,
-    )?;
-
-    // /etc/security/namespace.conf
-    fs::write(
-        security_dir.join("namespace.conf"),
-        r#"# /etc/security/namespace.conf
-#
-# Polyinstantiation configuration
-#
-
-# $HOME    $HOME                        user      root
-# /tmp     /tmp-inst/                   level     root
-# /var/tmp /var/tmp/tmp-inst/           level     root
-"#,
-    )?;
-
-    // /etc/security/pam_env.conf
-    fs::write(
-        security_dir.join("pam_env.conf"),
-        r#"# /etc/security/pam_env.conf
-#
-# Environment variables for PAM sessions
-#
-
-# PATH is set in /etc/profile
-"#,
-    )?;
-
-    // /etc/security/pwquality.conf
-    fs::write(
-        security_dir.join("pwquality.conf"),
-        r#"# Password quality configuration
-#
-# Minimal requirements for passwords
-
-# Minimum password length
-minlen = 8
-
-# Minimum number of character classes (uppercase, lowercase, digits, special)
-minclass = 1
-"#,
-    )?;
+    fs::write(security_dir.join("access.conf"), "+:root:LOCAL\n+:ALL:ALL\n")?;
+    fs::write(security_dir.join("namespace.conf"), "# Polyinstantiation config\n")?;
+    fs::write(security_dir.join("pam_env.conf"), "# Environment variables\n")?;
+    fs::write(security_dir.join("pwquality.conf"), "minlen = 8\nminclass = 1\n")?;
 
     println!("  Created security configuration");
     Ok(())

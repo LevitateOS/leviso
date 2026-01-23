@@ -43,6 +43,7 @@ systemd-timesync:x:194:194:systemd Time Synchronization:/:/usr/sbin/nologin
 systemd-coredump:x:195:195:systemd Core Dumper:/:/usr/sbin/nologin
 dbus:x:81:81:System message bus:/:/usr/sbin/nologin
 chrony:x:996:993::/var/lib/chrony:/usr/sbin/nologin
+sshd:x:74:74:Privilege-separated SSH:/var/empty/sshd:/usr/sbin/nologin
 "#,
     )?;
 
@@ -59,6 +60,7 @@ systemd-timesync:!*:19000::::::
 systemd-coredump:!*:19000::::::
 dbus:!*:19000::::::
 chrony:!*:19000::::::
+sshd:!*:19000::::::
 "#,
     )?;
 
@@ -90,6 +92,7 @@ systemd-timesync:x:194:
 systemd-coredump:x:195:
 dbus:x:81:
 chrony:x:993:
+sshd:x:74:
 "#,
     )?;
 
@@ -115,6 +118,7 @@ systemd-timesync:!::
 systemd-coredump:!::
 dbus:!::
 chrony:!::
+sshd:!::
 "#,
     )?;
 

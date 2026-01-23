@@ -1,6 +1,4 @@
 //! Systemd setup.
-//!
-//! Handles unit files, services, getty, udev, and D-Bus configuration.
 
 use anyhow::Result;
 use std::fs;
@@ -8,6 +6,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use super::context::BuildContext;
+use super::libdeps::{copy_dir_tree, copy_systemd_units as copy_units};
 
 /// Essential systemd unit files.
 const ESSENTIAL_UNITS: &[&str] = &[
@@ -42,6 +41,9 @@ const ESSENTIAL_UNITS: &[&str] = &[
     "systemd-resolved.service", "systemd-networkd-wait-online.service",
     // Services - misc
     "dbus.service", "dbus-broker.service", "chronyd.service",
+    // Services - SSH (remote installation/rescue)
+    "sshd.service", "sshd@.service", "sshd.socket",
+    "sshd-keygen.target", "sshd-keygen@.service",
     // Sockets
     "systemd-journald.socket", "systemd-journald-dev-log.socket",
     "systemd-journald-audit.socket",
@@ -71,21 +73,7 @@ const UDEV_HELPERS: &[&str] = &[
 /// Copy systemd unit files.
 pub fn copy_systemd_units(ctx: &BuildContext) -> Result<()> {
     println!("Copying systemd units...");
-
-    let unit_src = ctx.source.join("usr/lib/systemd/system");
-    let unit_dst = ctx.staging.join("usr/lib/systemd/system");
-    fs::create_dir_all(&unit_dst)?;
-
-    let mut copied = 0;
-    for unit in ESSENTIAL_UNITS {
-        let src = unit_src.join(unit);
-        let dst = unit_dst.join(unit);
-        if src.exists() {
-            fs::copy(&src, &dst)?;
-            copied += 1;
-        }
-    }
-
+    let copied = copy_units(ctx, ESSENTIAL_UNITS)?;
     println!("  Copied {}/{} unit files", copied, ESSENTIAL_UNITS.len());
     Ok(())
 }
@@ -149,37 +137,11 @@ pub fn set_default_target(ctx: &BuildContext) -> Result<()> {
 }
 
 /// Copy D-Bus configuration files and enable the D-Bus socket.
-///
-/// Note: For full D-Bus setup (binaries, units, users), use `dbus::setup_dbus`.
-/// This function handles the systemd-related D-Bus configuration only.
 pub fn copy_dbus_configs(ctx: &BuildContext) -> Result<()> {
     println!("Copying D-Bus configs...");
 
-    // Copy D-Bus system configuration
-    let dbus_src = ctx.source.join("usr/share/dbus-1/system.d");
-    let dbus_dst = ctx.staging.join("usr/share/dbus-1/system.d");
-
-    if dbus_src.exists() {
-        fs::create_dir_all(&dbus_dst)?;
-        for entry in fs::read_dir(&dbus_src)? {
-            let entry = entry?;
-            fs::copy(entry.path(), dbus_dst.join(entry.file_name()))?;
-        }
-    }
-
-    // Copy D-Bus system services
-    let services_src = ctx.source.join("usr/share/dbus-1/system-services");
-    let services_dst = ctx.staging.join("usr/share/dbus-1/system-services");
-
-    if services_src.exists() {
-        fs::create_dir_all(&services_dst)?;
-        for entry in fs::read_dir(&services_src)? {
-            let entry = entry?;
-            if entry.path().is_file() {
-                fs::copy(entry.path(), services_dst.join(entry.file_name()))?;
-            }
-        }
-    }
+    copy_dir_tree(ctx, "usr/share/dbus-1/system.d")?;
+    copy_dir_tree(ctx, "usr/share/dbus-1/system-services")?;
 
     // Enable D-Bus socket
     let sockets_wants = ctx.staging.join("etc/systemd/system/sockets.target.wants");
@@ -198,17 +160,8 @@ pub fn copy_dbus_configs(ctx: &BuildContext) -> Result<()> {
 pub fn copy_udev_rules(ctx: &BuildContext) -> Result<()> {
     println!("Copying udev rules...");
 
-    // Copy rules
-    let rules_src = ctx.source.join("usr/lib/udev/rules.d");
-    let rules_dst = ctx.staging.join("usr/lib/udev/rules.d");
-
-    if rules_src.exists() {
-        fs::create_dir_all(&rules_dst)?;
-        for entry in fs::read_dir(&rules_src)? {
-            let entry = entry?;
-            fs::copy(entry.path(), rules_dst.join(entry.file_name()))?;
-        }
-    }
+    copy_dir_tree(ctx, "usr/lib/udev/rules.d")?;
+    copy_dir_tree(ctx, "usr/lib/udev/hwdb.d")?;
 
     // Copy helpers
     let udev_src = ctx.source.join("usr/lib/udev");
@@ -220,22 +173,7 @@ pub fn copy_udev_rules(ctx: &BuildContext) -> Result<()> {
         let dst = udev_dst.join(helper);
         if src.exists() && !dst.exists() {
             fs::copy(&src, &dst)?;
-            let mut perms = fs::metadata(&dst)?.permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&dst, perms)?;
-        }
-    }
-
-    // Copy hwdb.d
-    let hwdb_src = udev_src.join("hwdb.d");
-    let hwdb_dst = udev_dst.join("hwdb.d");
-    if hwdb_src.is_dir() {
-        fs::create_dir_all(&hwdb_dst)?;
-        for entry in fs::read_dir(&hwdb_src)? {
-            let entry = entry?;
-            if entry.path().is_file() {
-                fs::copy(entry.path(), hwdb_dst.join(entry.file_name()))?;
-            }
+            fs::set_permissions(&dst, fs::Permissions::from_mode(0o755))?;
         }
     }
 
@@ -246,10 +184,7 @@ pub fn copy_udev_rules(ctx: &BuildContext) -> Result<()> {
     for socket in ["systemd-udevd-control.socket", "systemd-udevd-kernel.socket"] {
         let link = sysinit_wants.join(socket);
         if !link.exists() {
-            std::os::unix::fs::symlink(
-                format!("/usr/lib/systemd/system/{}", socket),
-                &link,
-            )?;
+            std::os::unix::fs::symlink(format!("/usr/lib/systemd/system/{}", socket), &link)?;
         }
     }
 
@@ -268,19 +203,9 @@ pub fn copy_udev_rules(ctx: &BuildContext) -> Result<()> {
 /// Copy tmpfiles.d configuration.
 pub fn copy_tmpfiles(ctx: &BuildContext) -> Result<()> {
     println!("Copying tmpfiles.d...");
-
-    let src = ctx.source.join("usr/lib/tmpfiles.d");
-    let dst = ctx.staging.join("usr/lib/tmpfiles.d");
-
-    if src.exists() {
-        fs::create_dir_all(&dst)?;
-        for entry in fs::read_dir(&src)? {
-            let entry = entry?;
-            if entry.path().is_file() {
-                fs::copy(entry.path(), dst.join(entry.file_name()))?;
-            }
-        }
-        println!("  Copied tmpfiles.d");
+    let count = copy_dir_tree(ctx, "usr/lib/tmpfiles.d")?;
+    if count > 0 {
+        println!("  Copied {} tmpfiles.d entries", count);
     }
     Ok(())
 }
@@ -288,38 +213,43 @@ pub fn copy_tmpfiles(ctx: &BuildContext) -> Result<()> {
 /// Copy sysctl.d configuration.
 pub fn copy_sysctl(ctx: &BuildContext) -> Result<()> {
     println!("Copying sysctl.d...");
-
-    let src = ctx.source.join("usr/lib/sysctl.d");
-    let dst = ctx.staging.join("usr/lib/sysctl.d");
-
-    if src.exists() {
-        fs::create_dir_all(&dst)?;
-        for entry in fs::read_dir(&src)? {
-            let entry = entry?;
-            if entry.path().is_file() {
-                fs::copy(entry.path(), dst.join(entry.file_name()))?;
-            }
-        }
-        println!("  Copied sysctl.d");
+    let count = copy_dir_tree(ctx, "usr/lib/sysctl.d")?;
+    if count > 0 {
+        println!("  Copied {} sysctl.d entries", count);
     }
     Ok(())
 }
 
+/// Configure systemd for live environment (archiso parity).
+pub fn setup_live_systemd_configs(ctx: &BuildContext) -> Result<()> {
+    println!("Setting up live systemd configs...");
+
+    // Volatile journal storage
+    let journald_dir = ctx.staging.join("etc/systemd/journald.conf.d");
+    fs::create_dir_all(&journald_dir)?;
+    fs::write(
+        journald_dir.join("volatile.conf"),
+        "[Journal]\nStorage=volatile\nRuntimeMaxUse=64M\n",
+    )?;
+
+    // Do-not-suspend config
+    let logind_dir = ctx.staging.join("etc/systemd/logind.conf.d");
+    fs::create_dir_all(&logind_dir)?;
+    fs::write(
+        logind_dir.join("do-not-suspend.conf"),
+        "[Login]\nHandleSuspendKey=ignore\nHandleHibernateKey=ignore\n\
+         HandleLidSwitch=ignore\nHandleLidSwitchExternalPower=ignore\nIdleAction=ignore\n",
+    )?;
+
+    println!("  Created live systemd configs");
+    Ok(())
+}
+
 /// Create live overlay directory with live-specific configs.
-///
-/// These configs are ONLY applied during live boot (via init_tiny overlay).
-/// They are NOT extracted to installed systems by recstrap.
-///
-/// Contents:
-/// - console-autologin.service: Root autologin on tty1 (like archiso)
-/// - serial-console.service: Serial console for QEMU testing
-/// - etc/shadow: Root with empty password for live boot
 pub fn create_live_overlay(output_dir: &Path) -> Result<()> {
     println!("Creating live overlay directory...");
 
     let overlay_dir = output_dir.join("live-overlay");
-
-    // Clean up previous overlay if it exists
     if overlay_dir.exists() {
         fs::remove_dir_all(&overlay_dir)?;
     }
@@ -328,129 +258,74 @@ pub fn create_live_overlay(output_dir: &Path) -> Result<()> {
     let getty_wants = systemd_dir.join("getty.target.wants");
     let multi_user_wants = systemd_dir.join("multi-user.target.wants");
 
-    // Create directory structure
     fs::create_dir_all(&getty_wants)?;
     fs::create_dir_all(&multi_user_wants)?;
     fs::create_dir_all(overlay_dir.join("etc"))?;
 
-    // === Console Autologin Service ===
-    // Like archiso - live ISO boots directly to root shell on tty1
-    let console_service = systemd_dir.join("console-autologin.service");
+    // Console autologin service
     fs::write(
-        &console_service,
-        r#"[Unit]
-Description=Console Autologin
-After=systemd-user-sessions.service getty-pre.target
-Before=getty.target
-
-[Service]
-Environment=HOME=/root
-Environment=TERM=linux
-WorkingDirectory=/root
-ExecStart=/bin/bash --login
-StandardInput=tty
-StandardOutput=tty
-StandardError=tty
-TTYPath=/dev/tty1
-TTYReset=yes
-TTYVHangup=yes
-TTYVTDisallocate=yes
-Type=idle
-Restart=always
-RestartSec=0
-
-[Install]
-WantedBy=getty.target
-"#,
+        systemd_dir.join("console-autologin.service"),
+        "[Unit]\n\
+         Description=Console Autologin\n\
+         After=systemd-user-sessions.service getty-pre.target\n\
+         Before=getty.target\n\n\
+         [Service]\n\
+         Environment=HOME=/root\nEnvironment=TERM=linux\n\
+         WorkingDirectory=/root\nExecStart=/bin/bash --login\n\
+         StandardInput=tty\nStandardOutput=tty\nStandardError=tty\n\
+         TTYPath=/dev/tty1\nTTYReset=yes\nTTYVHangup=yes\nTTYVTDisallocate=yes\n\
+         Type=idle\nRestart=always\nRestartSec=0\n\n\
+         [Install]\nWantedBy=getty.target\n",
     )?;
 
-    // Enable autologin (symlink in getty.target.wants)
     std::os::unix::fs::symlink(
         "../console-autologin.service",
         getty_wants.join("console-autologin.service"),
     )?;
 
-    // Create a drop-in to disable getty@tty1 during live boot
-    // This prevents the normal login prompt from competing with autologin
-    let getty_override_dir = systemd_dir.join("getty@tty1.service.d");
-    fs::create_dir_all(&getty_override_dir)?;
+    // Disable getty@tty1 during live boot
+    let getty_override = systemd_dir.join("getty@tty1.service.d");
+    fs::create_dir_all(&getty_override)?;
     fs::write(
-        getty_override_dir.join("live-disable.conf"),
-        r#"# Disable getty@tty1 during live boot - console-autologin.service handles tty1
-# The ! means "condition fails if path exists" - so getty won't start during live boot
-[Unit]
-ConditionPathExists=!/live-boot-marker
-"#,
+        getty_override.join("live-disable.conf"),
+        "[Unit]\nConditionPathExists=!/live-boot-marker\n",
     )?;
 
-    // Create a marker file that only exists during live boot
-    // (init_tiny will create /live-boot-marker before switch_root)
-    // This is how we conditionally disable getty@tty1
-
-    // === Serial Console Service ===
-    // For QEMU testing with -serial
-    let serial_service = systemd_dir.join("serial-console.service");
+    // Serial console service
     fs::write(
-        &serial_service,
-        r#"[Unit]
-Description=Serial Console Shell
-After=basic.target
-Conflicts=rescue.service emergency.service
-
-[Service]
-Environment=HOME=/root
-Environment=TERM=vt100
-WorkingDirectory=/root
-ExecStart=/bin/bash --login
-StandardInput=tty
-StandardOutput=tty
-StandardError=tty
-TTYPath=/dev/ttyS0
-TTYReset=yes
-TTYVHangup=yes
-TTYVTDisallocate=no
-Type=idle
-Restart=always
-RestartSec=0
-
-[Install]
-WantedBy=multi-user.target
-"#,
+        systemd_dir.join("serial-console.service"),
+        "[Unit]\n\
+         Description=Serial Console Shell\n\
+         After=basic.target\nConflicts=rescue.service emergency.service\n\n\
+         [Service]\n\
+         Environment=HOME=/root\nEnvironment=TERM=vt100\n\
+         WorkingDirectory=/root\nExecStart=/bin/bash --login\n\
+         StandardInput=tty\nStandardOutput=tty\nStandardError=tty\n\
+         TTYPath=/dev/ttyS0\nTTYReset=yes\nTTYVHangup=yes\nTTYVTDisallocate=no\n\
+         Type=idle\nRestart=always\nRestartSec=0\n\n\
+         [Install]\nWantedBy=multi-user.target\n",
     )?;
 
-    // Enable serial console
     std::os::unix::fs::symlink(
         "../serial-console.service",
         multi_user_wants.join("serial-console.service"),
     )?;
 
-    // === Shadow file with empty root password ===
-    // During live boot, this overlays the base system's /etc/shadow (which has root:!)
-    // Result: root has empty password, can login without password
+    // Shadow file with empty root password
     fs::write(
         overlay_dir.join("etc/shadow"),
-        r#"root::19000:0:99999:7:::
-bin:*:19000:0:99999:7:::
-daemon:*:19000:0:99999:7:::
-nobody:*:19000:0:99999:7:::
-systemd-network:!*:19000::::::
-systemd-resolve:!*:19000::::::
-systemd-timesync:!*:19000::::::
-systemd-coredump:!*:19000::::::
-dbus:!*:19000::::::
-chrony:!*:19000::::::
-"#,
+        "root::19000:0:99999:7:::\n\
+         bin:*:19000:0:99999:7:::\ndaemon:*:19000:0:99999:7:::\nnobody:*:19000:0:99999:7:::\n\
+         systemd-network:!*:19000::::::\nsystemd-resolve:!*:19000::::::\n\
+         systemd-timesync:!*:19000::::::\nsystemd-coredump:!*:19000::::::\n\
+         dbus:!*:19000::::::\nchrony:!*:19000::::::\n",
     )?;
 
-    // Set proper permissions on shadow
-    let mut perms = fs::metadata(overlay_dir.join("etc/shadow"))?.permissions();
-    perms.set_mode(0o600);
-    fs::set_permissions(overlay_dir.join("etc/shadow"), perms)?;
+    fs::set_permissions(
+        overlay_dir.join("etc/shadow"),
+        fs::Permissions::from_mode(0o600),
+    )?;
 
-    println!("  Created live overlay with:");
-    println!("    - console-autologin.service (root autologin on tty1)");
-    println!("    - serial-console.service (serial shell for QEMU)");
-    println!("    - /etc/shadow (root with empty password)");
-
+    println!("  Created live overlay");
     Ok(())
 }

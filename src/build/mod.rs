@@ -21,6 +21,7 @@ pub mod filesystem;
 pub mod kernel;
 pub mod modules;
 pub mod network;
+pub mod openssh;
 pub mod pam;
 pub mod recipe;
 pub mod systemd;

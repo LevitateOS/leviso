@@ -65,6 +65,7 @@ LevitateOS aims for parity with archiso - the Arch Linux installation ISO. This 
 | **docs-tui (levitate-docs)** | ✅ Auto-launches with tmux on tty1 |
 | **tmux split-screen** | ✅ Shell left, docs right |
 | **Keyboard shortcuts** | ✅ Shift+Tab switch, Ctrl+←/→ resize, F1 help |
+| **QEMU Performance** | ✅ KVM acceleration + 4 cores + 1920x1080 |
 | Intel/AMD microcode | ✅ Included in firmware |
 | LUKS encryption (cryptsetup) | ✅ Included |
 | LVM (lvm2) | ✅ Included |
@@ -79,7 +80,7 @@ LevitateOS aims for parity with archiso - the Arch Linux installation ISO. This 
 
 | Category | Count | Priority | Notes |
 |----------|-------|----------|-------|
-| docs-tui Integration | ✅ DONE | P0 | Shell+docs split screen working |
+| docs-tui Integration | ✅ DONE | P0 | Shell+docs split screen working (TUI UX refinements pending) |
 | Microcode | ✅ DONE | P0 | Intel/AMD included in firmware |
 | Encryption/Storage | 1 remaining | P0 | btrfs-progs needs RPM |
 | Hardware Detection | 1 remaining | P1 | lsusb needs RPM |

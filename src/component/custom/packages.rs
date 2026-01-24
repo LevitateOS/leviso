@@ -235,6 +235,17 @@ pub fn copy_docs_tui(ctx: &BuildContext) -> Result<()> {
         .with_context(|| format!("Failed to copy levitate-docs from {:?}", docs_tui_path))?;
     make_executable(&dest)?;
 
+    // Copy glibc libraries required by the Bun-compiled binary
+    // These may not be copied by other binaries (which use the Rocky rootfs binaries)
+    use crate::build::libdeps::copy_library;
+    let required_libs = ["libpthread.so.0", "libdl.so.2", "libm.so.6"];
+    for lib in required_libs {
+        if let Err(e) = copy_library(ctx, lib) {
+            // Non-fatal - library might already exist or be provided by libc
+            println!("  Note: {} - {}", lib, e);
+        }
+    }
+
     let size_mb = fs::metadata(&dest)?.len() as f64 / 1_000_000.0;
     println!("  Copied levitate-docs to /usr/bin/levitate-docs ({:.1} MB)", size_mb);
     Ok(())

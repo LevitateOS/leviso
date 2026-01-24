@@ -26,6 +26,6 @@ exec tmux new-session -d -s live \; \
     bind-key -n C-Left resize-pane -L 5 \; \
     bind-key -n C-Right resize-pane -R 5 \; \
     bind-key -n F1 display-message 'Shift+Tab: switch panes | Ctrl+←/→: resize | In docs: ↑↓ navigate, j/k scroll, q quit docs' \; \
-    split-window -h 'levitate-docs' \; \
+    split-window -h 'echo "Loading documentation..." && levitate-docs' \; \
     select-pane -t 0 \; \
     attach-session -t live

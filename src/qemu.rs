@@ -50,10 +50,17 @@ impl QemuBuilder {
     fn build(self) -> Command {
         let mut cmd = Command::new("qemu-system-x86_64");
 
-        // CPU: Use "max" to get all features TCG supports without warnings.
-        // Skylake-Client causes TCG warnings about unsupported features (pcid, hle, rtm, etc.)
-        // "max" provides x86-64-v3+ features that Rocky 10 needs, without the noise.
-        cmd.args(["-cpu", QEMU_CPU_MODE]);
+        // Enable KVM acceleration if available (massive performance boost)
+        let kvm_available = std::path::Path::new("/dev/kvm").exists();
+        if kvm_available {
+            cmd.args(["-enable-kvm", "-cpu", "host"]);
+        } else {
+            // Fallback to TCG emulation with "max" CPU features
+            cmd.args(["-cpu", QEMU_CPU_MODE]);
+        }
+
+        // SMP: 4 cores for reasonable performance
+        cmd.args(["-smp", "4"]);
 
         // Memory (4G - LevitateOS is a daily driver OS, not a toy)
         cmd.args(["-m", &format!("{}G", QEMU_MEMORY_GB)]);
@@ -150,6 +157,14 @@ pub fn run_iso(base_dir: &Path, disk_size: Option<String>) -> Result<()> {
 
     println!("Running ISO in QEMU GUI...");
     println!("  ISO: {}", iso_path.display());
+
+    // Check KVM availability
+    let kvm_available = std::path::Path::new("/dev/kvm").exists();
+    if kvm_available {
+        println!("  Acceleration: KVM (hardware virtualization)");
+    } else {
+        println!("  Acceleration: TCG (software emulation - slower)");
+    }
 
     // Use virtio-gpu - kernel has CONFIG_DRM_VIRTIO_GPU=y
     // Note: "std" VGA requires efifb/simpledrm for UEFI boot which the kernel lacks

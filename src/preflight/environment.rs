@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::process::Cmd;
+use distro_builder::process::Cmd;
 
 use super::types::CheckResult;
 use super::validators::{validate_init_script, validate_kconfig};

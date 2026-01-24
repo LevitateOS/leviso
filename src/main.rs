@@ -14,7 +14,6 @@ mod component;
 mod config;
 mod extract;
 mod preflight;
-mod process;
 mod qemu;
 mod rebuild;
 mod timing;
@@ -107,6 +106,8 @@ enum ShowTarget {
     Config,
     /// Show squashfs contents
     Squashfs,
+    /// Show build status (what needs rebuilding)
+    Status,
 }
 
 #[derive(Subcommand)]
@@ -192,6 +193,7 @@ fn main() -> Result<()> {
             let show_target = match what {
                 ShowTarget::Config => commands::show::ShowTarget::Config,
                 ShowTarget::Squashfs => commands::show::ShowTarget::Squashfs,
+                ShowTarget::Status => commands::show::ShowTarget::Status,
             };
             commands::cmd_show(&base_dir, show_target, &config, &resolver)?;
         }

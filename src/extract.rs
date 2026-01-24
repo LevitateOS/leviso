@@ -3,7 +3,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
-use crate::process::{shell_in, Cmd};
+use distro_builder::process::{shell_in, Cmd};
 
 /// RPMs to extract and merge into the rootfs.
 /// The install.img (Anaconda installer) is missing utilities that users expect.

@@ -33,7 +33,7 @@ use distro_spec::levitate::{
     XORRISO_PARTITION_OFFSET, XORRISO_FS_FLAGS,
 };
 use crate::component::custom::create_live_overlay_at;
-use crate::process::Cmd;
+use distro_builder::process::Cmd;
 
 /// Get ISO volume label from environment or use default.
 /// Used for boot device detection (root=LABEL=X).

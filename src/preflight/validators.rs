@@ -8,7 +8,7 @@
 
 use std::path::Path;
 
-use crate::process::Cmd;
+use distro_builder::process::Cmd;
 
 /// Validate Rocky ISO is complete (not a partial download).
 ///

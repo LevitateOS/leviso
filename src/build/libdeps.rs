@@ -7,7 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::context::BuildContext;
-use crate::process::shell_in;
+use distro_builder::process::shell_in;
 use leviso_elf::copy_library_to;
 
 // Re-export commonly used functions

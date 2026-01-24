@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::Path;
 
-use crate::process::Cmd;
+use distro_builder::process::Cmd;
 
 /// Build the kernel from source.
 pub fn build_kernel(kernel_source: &Path, output_dir: &Path, base_dir: &Path) -> Result<String> {

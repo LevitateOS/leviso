@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::build::context::BuildContext;
-use crate::process::Cmd;
+use distro_builder::process::Cmd;
 
 /// Module metadata files needed by modprobe.
 const MODULE_METADATA_FILES: &[&str] = &[

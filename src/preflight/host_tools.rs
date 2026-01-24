@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::process;
+use distro_builder::process;
 
 use super::types::CheckResult;
 

@@ -6,7 +6,7 @@ use std::fs;
 use leviso_elf::{copy_dir_recursive, make_executable};
 
 use crate::build::context::BuildContext;
-use crate::process::shell_in;
+use distro_builder::process::shell_in;
 
 const RECIPE_CONF: &str = include_str!("../../../profile/etc/recipe.conf");
 const RECIPE_SH: &str = include_str!("../../../profile/etc/profile.d/recipe.sh");

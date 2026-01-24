@@ -13,6 +13,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 walkdir = "2"
 distro-spec = { path = "../distro-spec" }
+distro-builder = { path = "../distro-builder" }
 
 # Extracted crates
 leviso-deps = { path = "../leviso-deps" }

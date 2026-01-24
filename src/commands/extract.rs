@@ -4,7 +4,7 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 use crate::extract;
-use crate::process::Cmd;
+use distro_builder::process::Cmd;
 use leviso_deps::DependencyResolver;
 
 /// Extract target for the extract command.

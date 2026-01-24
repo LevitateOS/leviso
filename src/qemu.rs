@@ -2,6 +2,7 @@ use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use distro_builder::process::Cmd;
 use distro_spec::levitate::{
     ISO_FILENAME,
     QEMU_MEMORY_GB, QEMU_DISK_GB,
@@ -55,7 +56,7 @@ impl QemuBuilder {
         if kvm_available {
             cmd.args(["-enable-kvm", "-cpu", "host"]);
         } else {
-            // Fallback to TCG emulation with "max" CPU features
+            // Fallback to TCG software emulation (no KVM)
             cmd.args(["-cpu", QEMU_CPU_MODE]);
         }
 
@@ -177,7 +178,7 @@ pub fn run_iso(base_dir: &Path, disk_size: Option<String>) -> Result<()> {
     // Create disk if it doesn't exist
     if !disk_path.exists() {
         println!("  Creating {} virtual disk...", size);
-        crate::process::Cmd::new("qemu-img")
+        Cmd::new("qemu-img")
             .args(["create", "-f", "qcow2"])
             .arg_path(&disk_path)
             .arg(&size)

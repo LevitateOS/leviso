@@ -35,7 +35,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-use crate::process::{shell, Cmd};
+use distro_builder::process::{shell, Cmd};
 use distro_spec::levitate::{
     // Modules
     BOOT_MODULES,

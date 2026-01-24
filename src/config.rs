@@ -55,10 +55,27 @@ impl Config {
     /// Call DependencyResolver::new() first to ensure .env is loaded.
     pub fn load() -> Self {
         // dotenvy should already be loaded by DependencyResolver
-        dotenvy::dotenv().ok();
+        // Log if .env file loading fails (file missing is OK, read errors are not)
+        if let Err(e) = dotenvy::dotenv() {
+            match e {
+                dotenvy::Error::Io(ref io_err) if io_err.kind() == std::io::ErrorKind::NotFound => {
+                    // .env file not found - this is fine, not all projects use one
+                }
+                _ => {
+                    eprintln!("  [WARN] Failed to load .env file: {}", e);
+                }
+            }
+        }
 
-        let kernel_localversion = env::var("KERNEL_LOCALVERSION")
-            .unwrap_or_else(|_| "-levitate".to_string());
+        let kernel_localversion = match env::var("KERNEL_LOCALVERSION") {
+            Ok(v) => v,
+            Err(_) => {
+                let default = "-levitate".to_string();
+                // Only log if there's something custom expected (don't spam on normal runs)
+                // For now, silent default is acceptable for this non-critical value
+                default
+            }
+        };
 
         // Parse extra modules from comma-separated list
         let extra_modules = env::var("EXTRA_MODULES")

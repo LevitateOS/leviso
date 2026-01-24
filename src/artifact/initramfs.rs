@@ -49,10 +49,12 @@ use distro_spec::levitate::{
     BUSYBOX_URL_ENV,
     INITRAMFS_BUILD_DIR,
     INITRAMFS_DIRS,
-    INITRAMFS_OUTPUT,
+    INITRAMFS_LIVE_OUTPUT,
+    INITRAMFS_INSTALLED_OUTPUT,
     // Compression
     CPIO_GZIP_LEVEL,
 };
+use distro_spec::shared::chroot::CHROOT_BIND_MOUNTS;
 
 
 /// Get busybox download URL from environment or use default.
@@ -75,7 +77,7 @@ pub fn build_tiny_initramfs(base_dir: &Path) -> Result<()> {
 
     let output_dir = base_dir.join("output");
     let initramfs_root = output_dir.join(INITRAMFS_BUILD_DIR);
-    let output_cpio = output_dir.join(INITRAMFS_OUTPUT);
+    let output_cpio = output_dir.join(INITRAMFS_LIVE_OUTPUT);
 
     // Clean previous build
     if initramfs_root.exists() {
@@ -95,7 +97,7 @@ pub fn build_tiny_initramfs(base_dir: &Path) -> Result<()> {
     create_init_script(base_dir, &initramfs_root)?;
 
     // Build cpio archive to a temporary file (Atomic Artifacts)
-    let temp_cpio = output_dir.join(format!("{}.tmp", INITRAMFS_OUTPUT));
+    let temp_cpio = output_dir.join(format!("{}.tmp", INITRAMFS_LIVE_OUTPUT));
     build_cpio(&initramfs_root, &temp_cpio)?;
 
     // Verify the temporary artifact is valid (could extend this with cpio check)
@@ -366,6 +368,174 @@ fn build_cpio(root: &Path, output: &Path) -> Result<()> {
     shell(&cpio_cmd)?;
 
     Ok(())
+}
+
+/// Build a full initramfs for installed systems using dracut.
+///
+/// This is different from the "tiny" initramfs used for live boot:
+/// - Tiny initramfs: Mounts squashfs from ISO, uses busybox
+/// - Install initramfs: Boots from real disk, uses dracut with full systemd
+///
+/// By pre-building this during ISO creation, we save 2-3 minutes during installation.
+/// The initramfs is generic (no hostonly) so it works on any hardware.
+pub fn build_install_initramfs(base_dir: &Path) -> Result<()> {
+    println!("=== Building Install Initramfs (dracut) ===\n");
+
+    let output_dir = base_dir.join("output");
+    let squashfs_root = output_dir.join("squashfs-root");
+    let output_file = output_dir.join(INITRAMFS_INSTALLED_OUTPUT);
+
+    // Verify squashfs-root exists (we need dracut and kernel modules from it)
+    if !squashfs_root.exists() {
+        bail!(
+            "squashfs-root not found at {}.\n\
+             Run 'leviso build squashfs' first.",
+            squashfs_root.display()
+        );
+    }
+
+    // Find kernel version from modules directory
+    let modules_dir = squashfs_root.join("usr/lib/modules");
+    let kernel_version = fs::read_dir(&modules_dir)?
+        .filter_map(|e| e.ok())
+        .find(|e| e.path().is_dir())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .context("No kernel modules found in squashfs-root")?;
+
+    println!("  Kernel version: {}", kernel_version);
+
+    // Verify dracut exists in squashfs-root
+    let dracut_bin = squashfs_root.join("usr/bin/dracut");
+    if !dracut_bin.exists() {
+        bail!(
+            "dracut not found in squashfs-root at {}.\n\
+             The base system must include dracut.",
+            dracut_bin.display()
+        );
+    }
+
+    // Build initramfs using dracut in a chroot environment
+    println!("  Running dracut to build install initramfs...");
+
+    // Create output path inside squashfs-root (dracut writes there, we copy out)
+    let chroot_output = format!("/tmp/{}", INITRAMFS_INSTALLED_OUTPUT);
+
+    // Run dracut with same options as installation would use
+    // --no-hostonly: Include all drivers, not just current hardware
+    // --omit: Skip modules that have missing deps or aren't needed
+    let dracut_cmd = format!(
+        "dracut --force --no-hostonly \
+         --omit 'fips bluetooth crypt nfs rdma systemd-sysusers systemd-journald systemd-initrd dracut-systemd' \
+         {} {}",
+        chroot_output, kernel_version
+    );
+
+    // Run dracut in chroot with proper bind mounts
+    // Dracut needs /proc, /sys, /dev to detect hardware and build initramfs
+    let squashfs_root_str = squashfs_root.to_str()
+        .context("squashfs_root path is not valid UTF-8")?;
+
+    run_in_chroot(squashfs_root_str, &dracut_cmd)?;
+
+    // Copy the generated initramfs out of squashfs-root
+    let generated_initramfs = squashfs_root.join(format!("tmp/{}", INITRAMFS_INSTALLED_OUTPUT));
+    if !generated_initramfs.exists() {
+        bail!(
+            "dracut did not create initramfs at {}",
+            generated_initramfs.display()
+        );
+    }
+
+    fs::copy(&generated_initramfs, &output_file)?;
+    fs::remove_file(&generated_initramfs)?; // Clean up
+
+    let size = fs::metadata(&output_file)?.len();
+    println!("\n=== Install Initramfs Complete ===");
+    println!("  Output: {}", output_file.display());
+    println!("  Size: {} MB", size / 1024 / 1024);
+
+    Ok(())
+}
+
+/// Run a command in a chroot environment with proper bind mounts.
+///
+/// Sets up /dev, /dev/pts, /proc, /sys, /run before entering chroot,
+/// and cleans up afterwards (even on failure).
+fn run_in_chroot(chroot_root: &str, command: &str) -> Result<()> {
+    // Mounts we'll set up (subset of CHROOT_BIND_MOUNTS - only what dracut needs)
+    // We skip efivars since it may not exist and dracut doesn't need it
+    let mounts_to_setup: Vec<_> = CHROOT_BIND_MOUNTS
+        .iter()
+        .filter(|m| !m.source.contains("efivars"))
+        .collect();
+
+    // Create mount point directories
+    for mount in &mounts_to_setup {
+        let target = format!("{}{}", chroot_root, mount.target);
+        if let Err(e) = fs::create_dir_all(&target) {
+            // Only fail if directory doesn't exist after attempted creation
+            if !std::path::Path::new(&target).exists() {
+                bail!("Failed to create mount point {}: {}", target, e);
+            }
+            // Otherwise, error was likely "already exists" or similar - safe to ignore
+        }
+    }
+
+    // Set up bind mounts
+    println!("  Setting up chroot environment...");
+    let mut mounted: Vec<String> = Vec::new();
+
+    for mount in &mounts_to_setup {
+        let target = mount.full_target(chroot_root);
+
+        // Check if source exists (e.g., /dev/pts may not exist in minimal environments)
+        if !Path::new(mount.source).exists() {
+            if mount.required {
+                // Clean up already-mounted paths before failing
+                cleanup_mounts(&mounted);
+                bail!("Required mount source {} does not exist", mount.source);
+            }
+            continue;
+        }
+
+        let mount_result = shell(&mount.mount_command(chroot_root));
+        if mount_result.is_err() {
+            if mount.required {
+                cleanup_mounts(&mounted);
+                bail!("Failed to mount {} to {}", mount.source, target);
+            }
+            // Non-required mount failed, continue
+            continue;
+        }
+
+        mounted.push(target);
+    }
+
+    // Run the command in chroot
+    println!("  Running command in chroot...");
+    let chroot_result = Cmd::new("chroot")
+        .arg(chroot_root)
+        .args(["/bin/sh", "-c", command])
+        .run();
+
+    // Always clean up mounts, even if command failed
+    cleanup_mounts(&mounted);
+
+    // Now check if the command succeeded
+    chroot_result.context("Command failed in chroot")?;
+
+    Ok(())
+}
+
+/// Unmount paths in reverse order.
+/// Logs warnings on failure but doesn't fail - cleanup must complete.
+fn cleanup_mounts(mounted: &[String]) {
+    for target in mounted.iter().rev() {
+        if let Err(e) = shell(&format!("umount {}", target)) {
+            eprintln!("  [WARN] Failed to unmount {}: {}", target, e);
+            eprintln!("         Stale mounts may break subsequent builds.");
+        }
+    }
 }
 
 /// Generate init script from template with distro-spec values.

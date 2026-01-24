@@ -100,18 +100,36 @@ pub fn check_dependencies(base_dir: &Path) -> Result<Vec<CheckResult>> {
     }
 
     // Recipe binary
-    let recipe_binary = std::env::var("RECIPE_BINARY")
-        .map(std::path::PathBuf::from)
-        .ok()
-        .or_else(|| {
-            let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            let submodule = manifest_dir.parent()?.join("recipe/target/release/recipe");
-            if submodule.exists() {
-                Some(submodule)
-            } else {
-                None
+    // Check env var first, then fall back to default location
+    let recipe_binary = match std::env::var("RECIPE_BINARY") {
+        Ok(path_str) => {
+            let path = std::path::PathBuf::from(&path_str);
+            // Warn if env var is set but path doesn't exist (user error)
+            if !path.exists() {
+                eprintln!(
+                    "  [WARN] RECIPE_BINARY env var set to {} but file does not exist",
+                    path_str
+                );
             }
-        });
+            Some(path)
+        }
+        Err(std::env::VarError::NotPresent) => {
+            // Env var not set - use default location
+            let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            manifest_dir
+                .parent()
+                .map(|p| p.join("recipe/target/release/recipe"))
+                .filter(|p| p.exists())
+        }
+        Err(std::env::VarError::NotUnicode(s)) => {
+            // Env var exists but invalid Unicode - warn user
+            eprintln!(
+                "  [WARN] RECIPE_BINARY env var contains invalid Unicode: {:?}",
+                s
+            );
+            None
+        }
+    };
 
     // ANTI-CHEAT: verify recipe binary is executable, not just exists
     match recipe_binary {

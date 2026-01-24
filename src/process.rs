@@ -29,6 +29,35 @@ impl CommandResult {
         self.status.code().unwrap_or(-1)
     }
 
+    /// Get a human-readable exit description.
+    /// Returns "exit code N" for normal exits, or "killed by SIGNAL" for signal termination.
+    pub fn exit_description(&self) -> String {
+        if let Some(code) = self.status.code() {
+            format!("exit code {}", code)
+        } else {
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::ExitStatusExt;
+                if let Some(signal) = self.status.signal() {
+                    let signal_name = match signal {
+                        1 => "SIGHUP",
+                        2 => "SIGINT",
+                        3 => "SIGQUIT",
+                        6 => "SIGABRT",
+                        9 => "SIGKILL",
+                        11 => "SIGSEGV",
+                        13 => "SIGPIPE",
+                        14 => "SIGALRM",
+                        15 => "SIGTERM",
+                        _ => "unknown signal",
+                    };
+                    return format!("killed by {} (signal {})", signal_name, signal);
+                }
+            }
+            "terminated by signal".to_string()
+        }
+    }
+
     /// Get stdout, trimmed of whitespace.
     pub fn stdout_trimmed(&self) -> &str {
         self.stdout.trim()
@@ -133,10 +162,11 @@ impl Cmd {
                 .unwrap_or_else(|| format!("'{}' failed", self.program));
 
             let stderr = result.stderr_trimmed();
+            let exit_desc = result.exit_description();
             if stderr.is_empty() {
-                bail!("{} (exit code {})", prefix, result.code());
+                bail!("{} ({})", prefix, exit_desc);
             } else {
-                bail!("{} (exit code {}):\n{}", prefix, result.code(), stderr);
+                bail!("{} ({}):\n{}", prefix, exit_desc, stderr);
             }
         }
 
@@ -169,10 +199,39 @@ impl Cmd {
             let prefix = self
                 .error_prefix
                 .unwrap_or_else(|| format!("'{}' failed", self.program));
-            bail!("{} (exit code {})", prefix, status.code().unwrap_or(-1));
+            let exit_desc = exit_description_from_status(&status);
+            bail!("{} ({})", prefix, exit_desc);
         }
 
         Ok(status)
+    }
+}
+
+/// Get a human-readable exit description from an ExitStatus.
+fn exit_description_from_status(status: &ExitStatus) -> String {
+    if let Some(code) = status.code() {
+        format!("exit code {}", code)
+    } else {
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::ExitStatusExt;
+            if let Some(signal) = status.signal() {
+                let signal_name = match signal {
+                    1 => "SIGHUP",
+                    2 => "SIGINT",
+                    3 => "SIGQUIT",
+                    6 => "SIGABRT",
+                    9 => "SIGKILL",
+                    11 => "SIGSEGV",
+                    13 => "SIGPIPE",
+                    14 => "SIGALRM",
+                    15 => "SIGTERM",
+                    _ => "unknown signal",
+                };
+                return format!("killed by {} (signal {})", signal_name, signal);
+            }
+        }
+        "terminated by signal".to_string()
     }
 }
 

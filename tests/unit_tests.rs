@@ -236,7 +236,7 @@ fn test_read_uid_from_rootfs_exists() {
     create_mock_rootfs(&env.rootfs);
 
     // Test reading dbus user (from mock passwd)
-    let result = users::read_uid_from_rootfs(&env.rootfs, "dbus");
+    let result = users::read_uid_from_rootfs(&env.rootfs, "dbus").unwrap();
     assert!(result.is_some());
     let (uid, gid) = result.unwrap();
     assert_eq!(uid, 81);
@@ -259,7 +259,7 @@ fn test_read_uid_from_rootfs_not_found() {
     let env = TestEnv::new();
     create_mock_rootfs(&env.rootfs);
 
-    let result = users::read_uid_from_rootfs(&env.rootfs, "nonexistent");
+    let result = users::read_uid_from_rootfs(&env.rootfs, "nonexistent").unwrap();
     assert!(result.is_none());
 }
 
@@ -279,7 +279,7 @@ fn test_read_gid_from_rootfs_exists() {
     let env = TestEnv::new();
     create_mock_rootfs(&env.rootfs);
 
-    let result = users::read_gid_from_rootfs(&env.rootfs, "dbus");
+    let result = users::read_gid_from_rootfs(&env.rootfs, "dbus").unwrap();
     assert!(result.is_some());
     assert_eq!(result.unwrap(), 81);
 }

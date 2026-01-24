@@ -17,7 +17,8 @@ use distro_spec::levitate::{
     // Squashfs
     SQUASHFS_NAME, SQUASHFS_ISO_PATH,
     // Boot files
-    KERNEL_ISO_PATH, INITRAMFS_ISO_PATH,
+    KERNEL_ISO_PATH, INITRAMFS_LIVE_ISO_PATH,
+    INITRAMFS_LIVE_OUTPUT, INITRAMFS_INSTALLED_OUTPUT, INITRAMFS_INSTALLED_ISO_PATH,
     // ISO structure
     ISO_BOOT_DIR, ISO_LIVE_DIR, ISO_EFI_DIR,
     LIVE_OVERLAY_ISO_PATH,
@@ -45,7 +46,8 @@ struct IsoPaths {
     iso_contents: PathBuf,
     output_dir: PathBuf,
     squashfs: PathBuf,
-    initramfs: PathBuf,
+    initramfs_live: PathBuf,
+    initramfs_installed: PathBuf,
     iso_output: PathBuf,
     iso_root: PathBuf,
 }
@@ -58,7 +60,8 @@ impl IsoPaths {
             iso_contents: extract_dir.join("iso-contents"),
             output_dir: output_dir.clone(),
             squashfs: output_dir.join(SQUASHFS_NAME),
-            initramfs: output_dir.join(distro_spec::levitate::INITRAMFS_OUTPUT),
+            initramfs_live: output_dir.join(INITRAMFS_LIVE_OUTPUT),
+            initramfs_installed: output_dir.join(INITRAMFS_INSTALLED_OUTPUT),
             iso_output: output_dir.join(ISO_FILENAME),
             iso_root: output_dir.join("iso-root"),
         }
@@ -171,11 +174,11 @@ fn validate_iso_inputs(paths: &IsoPaths) -> Result<()> {
         );
     }
 
-    if !paths.initramfs.exists() {
+    if !paths.initramfs_live.exists() {
         bail!(
-            "Tiny initramfs not found at {}.\n\
+            "Live initramfs not found at {}.\n\
              Run 'leviso build initramfs' first.",
-            paths.initramfs.display()
+            paths.initramfs_live.display()
         );
     }
 
@@ -185,10 +188,22 @@ fn validate_iso_inputs(paths: &IsoPaths) -> Result<()> {
 
     if staging_boot.exists() && staging_modules.exists() {
         // Find module directory version
-        let modules_version = fs::read_dir(&staging_modules)?
-            .filter_map(|e| e.ok())
-            .find(|e| e.path().is_dir())
-            .map(|e| e.file_name().to_string_lossy().to_string());
+        let mut modules_version = None;
+        for entry in fs::read_dir(&staging_modules)? {
+            match entry {
+                Ok(e) if e.path().is_dir() => {
+                    modules_version = Some(e.file_name().to_string_lossy().to_string());
+                    break;
+                }
+                Ok(_) => {} // Not a directory, skip
+                Err(e) => {
+                    eprintln!(
+                        "  [WARN] Error reading staging modules directory entry: {}",
+                        e
+                    );
+                }
+            }
+        }
 
         if let Some(version) = modules_version {
             println!("  [CHECK] Staging kernel modules version: {}", version);
@@ -230,9 +245,21 @@ fn setup_iso_structure(paths: &IsoPaths) -> Result<()> {
 
 /// Stage 4: Copy kernel, initramfs, squashfs, and live overlay to ISO.
 fn copy_iso_artifacts(paths: &IsoPaths, kernel_path: &Path) -> Result<()> {
-    // Copy kernel and initramfs
+    // Copy kernel and live initramfs (tiny - for live boot)
     fs::copy(kernel_path, paths.iso_root.join(KERNEL_ISO_PATH))?;
-    fs::copy(&paths.initramfs, paths.iso_root.join(INITRAMFS_ISO_PATH))?;
+    fs::copy(&paths.initramfs_live, paths.iso_root.join(INITRAMFS_LIVE_ISO_PATH))?;
+
+    // Copy installed initramfs (full dracut - boots the daily driver OS)
+    // This is REQUIRED - copied to installed systems instead of running dracut
+    if !paths.initramfs_installed.exists() {
+        bail!(
+            "Installed initramfs not found at {}.\n\
+             Run 'leviso build' to generate it.",
+            paths.initramfs_installed.display()
+        );
+    }
+    println!("Copying installed initramfs to ISO...");
+    fs::copy(&paths.initramfs_installed, paths.iso_root.join(INITRAMFS_INSTALLED_ISO_PATH))?;
 
     // Copy squashfs to /live/
     println!("Copying squashfs to ISO...");
@@ -300,9 +327,9 @@ menuentry '{} (Debug)' {{
     initrdefi /{}
 }}
 "#,
-        OS_NAME, KERNEL_ISO_PATH, label, SERIAL_CONSOLE, VGA_CONSOLE, SELINUX_DISABLE, INITRAMFS_ISO_PATH,
-        OS_NAME, KERNEL_ISO_PATH, label, SERIAL_CONSOLE, VGA_CONSOLE, SELINUX_DISABLE, INITRAMFS_ISO_PATH,
-        OS_NAME, KERNEL_ISO_PATH, label, SERIAL_CONSOLE, VGA_CONSOLE, SELINUX_DISABLE, INITRAMFS_ISO_PATH,
+        OS_NAME, KERNEL_ISO_PATH, label, SERIAL_CONSOLE, VGA_CONSOLE, SELINUX_DISABLE, INITRAMFS_LIVE_ISO_PATH,
+        OS_NAME, KERNEL_ISO_PATH, label, SERIAL_CONSOLE, VGA_CONSOLE, SELINUX_DISABLE, INITRAMFS_LIVE_ISO_PATH,
+        OS_NAME, KERNEL_ISO_PATH, label, SERIAL_CONSOLE, VGA_CONSOLE, SELINUX_DISABLE, INITRAMFS_LIVE_ISO_PATH,
     );
     fs::write(paths.iso_root.join(ISO_EFI_DIR).join("grub.cfg"), grub_cfg)?;
 
@@ -382,8 +409,13 @@ fn generate_iso_checksum(iso_path: &Path) -> Result<()> {
 fn print_iso_summary(iso_output: &Path) {
     println!("\n=== Squashfs ISO Created ===");
     println!("  Output: {}", iso_output.display());
-    if let Ok(meta) = fs::metadata(iso_output) {
-        println!("  Size: {} MB", meta.len() / 1024 / 1024);
+    match fs::metadata(iso_output) {
+        Ok(meta) => {
+            println!("  Size: {} MB", meta.len() / 1024 / 1024);
+        }
+        Err(e) => {
+            eprintln!("  [WARN] Could not read ISO size: {}", e);
+        }
     }
     println!("  Label: {}", iso_label());
     println!("\nTo run in QEMU:");

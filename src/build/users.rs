@@ -7,33 +7,73 @@ use std::path::Path;
 use distro_spec::levitate::ROOT_SHELL;
 
 /// Read a UID from the rootfs passwd file.
-pub fn read_uid_from_rootfs(rootfs: &Path, username: &str) -> Option<(u32, u32)> {
+///
+/// Returns:
+/// - Ok(Some((uid, gid))) if user found
+/// - Ok(None) if user not found or file doesn't exist
+/// - Err if file exists but is corrupted/unreadable
+pub fn read_uid_from_rootfs(rootfs: &Path, username: &str) -> Result<Option<(u32, u32)>> {
     let passwd_path = rootfs.join("etc/passwd");
-    if let Ok(content) = fs::read_to_string(&passwd_path) {
-        for line in content.lines() {
-            let parts: Vec<&str> = line.split(':').collect();
-            if parts.len() >= 4 && parts[0] == username {
-                let uid = parts[2].parse().ok()?;
-                let gid = parts[3].parse().ok()?;
-                return Some((uid, gid));
-            }
+
+    // File not existing is fine - user just doesn't exist
+    if !passwd_path.exists() {
+        return Ok(None);
+    }
+
+    let content = fs::read_to_string(&passwd_path)
+        .with_context(|| format!("Failed to read passwd file at {}", passwd_path.display()))?;
+
+    for line in content.lines() {
+        let parts: Vec<&str> = line.split(':').collect();
+        if parts.len() >= 4 && parts[0] == username {
+            let uid: u32 = parts[2].parse().with_context(|| {
+                format!(
+                    "Corrupted passwd file: invalid UID '{}' for user '{}' at {}",
+                    parts[2], username, passwd_path.display()
+                )
+            })?;
+            let gid: u32 = parts[3].parse().with_context(|| {
+                format!(
+                    "Corrupted passwd file: invalid GID '{}' for user '{}' at {}",
+                    parts[3], username, passwd_path.display()
+                )
+            })?;
+            return Ok(Some((uid, gid)));
         }
     }
-    None
+    Ok(None)
 }
 
 /// Read a GID from the rootfs group file.
-pub fn read_gid_from_rootfs(rootfs: &Path, groupname: &str) -> Option<u32> {
+///
+/// Returns:
+/// - Ok(Some(gid)) if group found
+/// - Ok(None) if group not found or file doesn't exist
+/// - Err if file exists but is corrupted/unreadable
+pub fn read_gid_from_rootfs(rootfs: &Path, groupname: &str) -> Result<Option<u32>> {
     let group_path = rootfs.join("etc/group");
-    if let Ok(content) = fs::read_to_string(&group_path) {
-        for line in content.lines() {
-            let parts: Vec<&str> = line.split(':').collect();
-            if parts.len() >= 3 && parts[0] == groupname {
-                return parts[2].parse().ok();
-            }
+
+    // File not existing is fine - group just doesn't exist
+    if !group_path.exists() {
+        return Ok(None);
+    }
+
+    let content = fs::read_to_string(&group_path)
+        .with_context(|| format!("Failed to read group file at {}", group_path.display()))?;
+
+    for line in content.lines() {
+        let parts: Vec<&str> = line.split(':').collect();
+        if parts.len() >= 3 && parts[0] == groupname {
+            let gid: u32 = parts[2].parse().with_context(|| {
+                format!(
+                    "Corrupted group file: invalid GID '{}' for group '{}' at {}",
+                    parts[2], groupname, group_path.display()
+                )
+            })?;
+            return Ok(Some(gid));
         }
     }
-    None
+    Ok(None)
 }
 
 /// Ensure a user exists in passwd file.
@@ -47,10 +87,21 @@ pub fn ensure_user(
     shell: &str,
 ) -> Result<()> {
     let passwd_path = staging.join("etc/passwd");
-    let mut passwd = fs::read_to_string(&passwd_path).unwrap_or_default();
+
+    // Read existing passwd file
+    // - If file doesn't exist, start with empty string (first user)
+    // - If file exists but unreadable, FAIL FAST (don't silently overwrite)
+    let mut passwd = if passwd_path.exists() {
+        fs::read_to_string(&passwd_path)
+            .with_context(|| format!("Failed to read passwd file at {}", passwd_path.display()))?
+    } else {
+        String::new()
+    };
 
     if !passwd.contains(&format!("{}:", username)) {
-        let (uid, gid) = read_uid_from_rootfs(source, username).unwrap_or((default_uid, default_gid));
+        // Try to get UID/GID from source rootfs, fall back to defaults if user doesn't exist
+        let (uid, gid) = read_uid_from_rootfs(source, username)?
+            .unwrap_or((default_uid, default_gid));
         let entry = format!("{}:x:{}:{}:{}:{}:{}\n", username, uid, gid, username, home, shell);
         passwd.push_str(&entry);
         fs::write(&passwd_path, passwd)
@@ -67,10 +118,21 @@ pub fn ensure_group(
     default_gid: u32,
 ) -> Result<()> {
     let group_path = staging.join("etc/group");
-    let mut group = fs::read_to_string(&group_path).unwrap_or_default();
+
+    // Read existing group file
+    // - If file doesn't exist, start with empty string (first group)
+    // - If file exists but unreadable, FAIL FAST (don't silently overwrite)
+    let mut group = if group_path.exists() {
+        fs::read_to_string(&group_path)
+            .with_context(|| format!("Failed to read group file at {}", group_path.display()))?
+    } else {
+        String::new()
+    };
 
     if !group.contains(&format!("{}:", groupname)) {
-        let gid = read_gid_from_rootfs(source, groupname).unwrap_or(default_gid);
+        // Try to get GID from source rootfs, fall back to default if group doesn't exist
+        let gid = read_gid_from_rootfs(source, groupname)?
+            .unwrap_or(default_gid);
         let entry = format!("{}:x:{}:\n", groupname, gid);
         group.push_str(&entry);
         fs::write(&group_path, group)

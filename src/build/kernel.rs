@@ -92,7 +92,22 @@ pub fn build_kernel(kernel_source: &Path, output_dir: &Path, base_dir: &Path) ->
         println!("  [SKIP] Config unchanged, reusing existing .config");
     }
 
-    let cpus = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+    // Always run olddefconfig to handle new kernel options without prompting
+    // This is needed even when kconfig is unchanged because the kernel source
+    // may have been updated with new config options.
+    println!("  Resolving any new config options...");
+    Cmd::new("make")
+        .args(["-C", &kernel_src_str, &build_dir_arg, "olddefconfig"])
+        .error_msg("make olddefconfig failed")
+        .run()?;
+
+    let cpus = match std::thread::available_parallelism() {
+        Ok(n) => n.get(),
+        Err(e) => {
+            eprintln!("  [WARN] Could not detect CPU count ({}), using 4 cores", e);
+            4
+        }
+    };
     let jobs_arg = format!("-j{}", cpus);
 
     // Build kernel (interactive - user sees progress)
@@ -118,7 +133,14 @@ pub fn build_kernel(kernel_source: &Path, output_dir: &Path, base_dir: &Path) ->
 
 /// Apply kernel configuration options from kconfig content.
 fn apply_kernel_config(config_path: &Path, kconfig: &str) -> Result<()> {
-    let mut config = fs::read_to_string(config_path).unwrap_or_default();
+    // FAIL FAST: If config file exists but is unreadable, that's a real error
+    // Don't silently treat corrupted/unreadable config as empty
+    let mut config = if config_path.exists() {
+        fs::read_to_string(config_path)
+            .with_context(|| format!("Failed to read kernel config at {}", config_path.display()))?
+    } else {
+        String::new()
+    };
 
     for line in kconfig.lines() {
         let line = line.trim();
@@ -247,11 +269,32 @@ pub fn install_kernel(kernel_source: &Path, build_output: &Path, staging: &Path)
     let _ = fs::remove_file(modules_dir.join("source"));
     let _ = fs::remove_file(modules_dir.join("build"));
 
-    let module_count = walkdir::WalkDir::new(&modules_dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map(|ext| ext == "ko" || ext == "xz" || ext == "gz").unwrap_or(false))
-        .count();
+    let mut module_count = 0;
+    let mut walk_errors = 0;
+    for entry in walkdir::WalkDir::new(&modules_dir) {
+        match entry {
+            Ok(e) => {
+                // Count files with kernel module extensions (.ko, .ko.xz, .ko.gz)
+                if e.path()
+                    .extension()
+                    .map(|ext| ext == "ko" || ext == "xz" || ext == "gz")
+                    .unwrap_or(false)
+                {
+                    module_count += 1;
+                }
+            }
+            Err(e) => {
+                walk_errors += 1;
+                eprintln!("  [WARN] Error reading module entry: {}", e);
+            }
+        }
+    }
+    if walk_errors > 0 {
+        eprintln!(
+            "  [WARN] {} errors encountered while counting modules (count may be inaccurate)",
+            walk_errors
+        );
+    }
     println!("  Installed {} kernel modules", module_count);
 
     // Final Integrity Check: Does the installed module directory match the version?

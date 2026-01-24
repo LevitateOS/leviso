@@ -50,7 +50,16 @@ pub fn copy_wifi_firmware(ctx: &BuildContext) -> Result<()> {
                     let dst = firmware_dst.join(&*name);
                     if !dst.exists() {
                         fs::copy(&path, &dst)?;
-                        total += fs::metadata(&dst).map(|m| m.len()).unwrap_or(0);
+                        match fs::metadata(&dst) {
+                            Ok(m) => total += m.len(),
+                            Err(e) => {
+                                eprintln!(
+                                    "  [WARN] Failed to get size of {}: {}",
+                                    dst.display(),
+                                    e
+                                );
+                            }
+                        }
                     }
                 }
             }

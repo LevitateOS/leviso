@@ -241,8 +241,21 @@ pub fn copy_docs_tui(ctx: &BuildContext) -> Result<()> {
     let required_libs = ["libpthread.so.0", "libdl.so.2", "libm.so.6"];
     for lib in required_libs {
         if let Err(e) = copy_library(ctx, lib) {
-            // Non-fatal - library might already exist or be provided by libc
-            println!("  Note: {} - {}", lib, e);
+            // Copy failed - but library might already exist in staging
+            // Check lib64 and lib directories
+            let lib64_path = ctx.staging.join("usr/lib64").join(lib);
+            let lib_path = ctx.staging.join("usr/lib").join(lib);
+            if lib64_path.exists() || lib_path.exists() {
+                println!("  Note: {} copy skipped - already exists", lib);
+            } else {
+                // Library is REQUIRED and doesn't exist - this is a real error
+                bail!(
+                    "Required library '{}' not found and copy failed: {}\n\
+                     The Bun binary (levitate-docs) requires this library.\n\
+                     Check that the Rocky rootfs contains glibc.",
+                    lib, e
+                );
+            }
         }
     }
 

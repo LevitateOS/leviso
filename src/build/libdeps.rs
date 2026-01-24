@@ -169,13 +169,58 @@ fn extract_binary_from_rpm(ctx: &BuildContext, binary: &str) -> Option<PathBuf> 
 }
 
 /// Find an RPM file matching a glob pattern.
+///
+/// Logs warnings on I/O errors but returns None (to allow fallback chains).
 fn find_rpm_by_pattern(packages_dir: &Path, pattern: &str) -> Option<PathBuf> {
-    for entry in fs::read_dir(packages_dir).ok()? {
-        let entry = entry.ok()?;
+    let dir_entries = match fs::read_dir(packages_dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            eprintln!(
+                "  [WARN] Failed to read packages directory {}: {}",
+                packages_dir.display(),
+                e
+            );
+            return None;
+        }
+    };
+
+    for entry in dir_entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                eprintln!(
+                    "  [WARN] Failed to read directory entry in {}: {}",
+                    packages_dir.display(),
+                    e
+                );
+                continue;
+            }
+        };
         let subdir = entry.path();
         if subdir.is_dir() {
-            for rpm_entry in fs::read_dir(&subdir).ok()? {
-                let rpm_entry = rpm_entry.ok()?;
+            let subdir_entries = match fs::read_dir(&subdir) {
+                Ok(entries) => entries,
+                Err(e) => {
+                    eprintln!(
+                        "  [WARN] Failed to read subdirectory {}: {}",
+                        subdir.display(),
+                        e
+                    );
+                    continue;
+                }
+            };
+            for rpm_entry in subdir_entries {
+                let rpm_entry = match rpm_entry {
+                    Ok(e) => e,
+                    Err(e) => {
+                        eprintln!(
+                            "  [WARN] Failed to read RPM entry in {}: {}",
+                            subdir.display(),
+                            e
+                        );
+                        continue;
+                    }
+                };
                 let rpm_name = rpm_entry.file_name();
                 let rpm_name_str = rpm_name.to_string_lossy();
                 let prefix = pattern.trim_end_matches("*.rpm").trim_end_matches("-*.rpm");

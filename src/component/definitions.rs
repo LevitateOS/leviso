@@ -550,6 +550,7 @@ pub static FINAL: Component = Component {
     ops: &[
         custom(CustomOp::CreateWelcomeMessage),
         custom(CustomOp::CopyRecstrap),
+        custom(CustomOp::CopyDocsTui),
     ],
 };
 

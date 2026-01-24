@@ -188,3 +188,54 @@ pub fn create_dracut_config(ctx: &BuildContext) -> Result<()> {
     println!("  Created /etc/dracut.conf.d/levitate.conf");
     Ok(())
 }
+
+/// Copy the docs-tui binary (levitate-docs).
+///
+/// This provides terminal-based documentation for the live ISO.
+/// Built with: cd docs/tui && bun build --compile --minify --outfile levitate-docs src/index.tsx
+pub fn copy_docs_tui(ctx: &BuildContext) -> Result<()> {
+    println!("Copying docs-tui (levitate-docs)...");
+
+    let docs_tui_path = if let Ok(env_path) = std::env::var("DOCS_TUI_BINARY") {
+        let path = std::path::PathBuf::from(&env_path);
+        if path.exists() {
+            println!("  Using levitate-docs from DOCS_TUI_BINARY env var");
+            path
+        } else {
+            bail!(
+                "DOCS_TUI_BINARY points to non-existent path: {}\n\
+                 Build it or update the env var.",
+                env_path
+            );
+        }
+    } else {
+        let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let docs_tui_path = manifest_dir.parent().unwrap().join("docs/tui/levitate-docs");
+
+        if docs_tui_path.exists() {
+            docs_tui_path
+        } else {
+            bail!(
+                "levitate-docs binary not found at {}.\n\
+                 \n\
+                 Build it:\n\
+                   cd docs/tui && bun build --compile --minify --outfile levitate-docs src/index.tsx\n\
+                 \n\
+                 Or set env var:\n\
+                   export DOCS_TUI_BINARY=/path/to/levitate-docs\n\
+                 \n\
+                 The docs TUI shows installation instructions in the live ISO.",
+                docs_tui_path.display()
+            );
+        }
+    };
+
+    let dest = ctx.staging.join("usr/bin/levitate-docs");
+    fs::copy(&docs_tui_path, &dest)
+        .with_context(|| format!("Failed to copy levitate-docs from {:?}", docs_tui_path))?;
+    make_executable(&dest)?;
+
+    let size_mb = fs::metadata(&dest)?.len() as f64 / 1_000_000.0;
+    println!("  Copied levitate-docs to /usr/bin/levitate-docs ({:.1} MB)", size_mb);
+    Ok(())
+}

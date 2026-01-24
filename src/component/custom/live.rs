@@ -17,6 +17,7 @@ const LIVE_CONSOLE_AUTOLOGIN: &str =
 const LIVE_SERIAL_CONSOLE: &str =
     include_str!("../../../profile/live-overlay/etc/systemd/system/serial-console.service");
 const LIVE_SHADOW: &str = include_str!("../../../profile/live-overlay/etc/shadow");
+const LIVE_DOCS_SH: &str = include_str!("../../../profile/live-overlay/etc/profile.d/live-docs.sh");
 
 /// Create live overlay directory with autologin, serial console, empty root password.
 ///
@@ -67,6 +68,11 @@ pub fn create_live_overlay_at(output_dir: &Path) -> Result<()> {
         overlay_dir.join("etc/shadow"),
         fs::Permissions::from_mode(0o600),
     )?;
+
+    // Profile.d script to auto-launch tmux with docs-tui
+    let profile_d = overlay_dir.join("etc/profile.d");
+    fs::create_dir_all(&profile_d)?;
+    fs::write(profile_d.join("live-docs.sh"), LIVE_DOCS_SH)?;
 
     println!("  Created live overlay");
     Ok(())

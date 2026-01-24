@@ -321,6 +321,8 @@ pub enum CustomOp {
     SetupLiveSystemdConfigs,
     /// Create dracut config.
     CreateDracutConfig,
+    /// Copy docs-tui binary.
+    CopyDocsTui,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

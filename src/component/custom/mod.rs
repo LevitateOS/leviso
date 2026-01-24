@@ -59,5 +59,6 @@ pub fn execute(ctx: &BuildContext, op: CustomOp) -> Result<()> {
         CustomOp::CopyRecipe => packages::copy_recipe(ctx),
         CustomOp::SetupRecipeConfig => packages::setup_recipe_config(ctx),
         CustomOp::CreateDracutConfig => packages::create_dracut_config(ctx),
+        CustomOp::CopyDocsTui => packages::copy_docs_tui(ctx),
     }
 }

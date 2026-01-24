@@ -494,6 +494,8 @@ pub static ETC_CONFIG: Component = Component {
         custom(CustomOp::CopyTimezoneData),
         custom(CustomOp::CopyLocales),
         custom(CustomOp::DisableSelinux),
+        // Terminal support (required for tmux, levitate-docs, ncurses apps)
+        copy_tree("usr/share/terminfo"),
     ],
 };
 

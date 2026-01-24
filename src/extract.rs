@@ -84,8 +84,25 @@ const SUPPLEMENTARY_RPMS: &[&str] = &[
     // === NETWORK TOOLS ===
     // nmtui: TUI for NetworkManager (user-friendly WiFi configuration)
     "NetworkManager-tui",
+    "NetworkManager-wifi",   // Added: WiFi support for NetworkManager
     "newt",   // libnewt.so - required by nmtui
     "slang",  // libslang.so - required by newt
+    "ethtool", // Added: Network hardware diagnostics
+    "wireless-regdb", // Added: Wireless regulatory database
+
+    // === HARDWARE SUPPORT ===
+    "bluez",          // Added: Bluetooth stack
+    "bluez-libs",
+    "pciutils",       // Added: lspci (duplicate but good to have)
+    "usbutils",       // Added: lsusb
+    "alsa-utils",     // Added: Audio tools (amixer, alsamixer)
+    "libdrm",         // Added: Direct Rendering Manager
+    "mesa-dri-drivers", // Added: Basic GPU drivers for Intel/AMD
+
+    // === TERMINAL TOOLS ===
+    "tmux",           // Added: Terminal multiplexer
+    "htop",           // Added: System monitor
+    "vim-minimal",    // Added: vim editor (vi is tiny)
 ];
 
 /// Extract Rocky ISO from a specific path.

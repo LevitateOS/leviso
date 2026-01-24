@@ -94,8 +94,17 @@ pub fn build_tiny_initramfs(base_dir: &Path) -> Result<()> {
     // Create init script
     create_init_script(base_dir, &initramfs_root)?;
 
-    // Build cpio archive
-    build_cpio(&initramfs_root, &output_cpio)?;
+    // Build cpio archive to a temporary file (Atomic Artifacts)
+    let temp_cpio = output_dir.join(format!("{}.tmp", INITRAMFS_OUTPUT));
+    build_cpio(&initramfs_root, &temp_cpio)?;
+
+    // Verify the temporary artifact is valid (could extend this with cpio check)
+    if !temp_cpio.exists() || fs::metadata(&temp_cpio)?.len() < 1024 {
+        bail!("Initramfs build produced invalid or empty file");
+    }
+
+    // Atomic rename to final destination
+    fs::rename(&temp_cpio, &output_cpio)?;
 
     let size = fs::metadata(&output_cpio)?.len();
     println!("\n=== Tiny Initramfs Complete ===");
@@ -182,32 +191,43 @@ fn copy_busybox(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
 
 /// Copy boot kernel modules to the initramfs.
 ///
-/// Rocky kernel has these as modules, not built-in:
-/// - CDROM: sr_mod, cdrom, isofs, virtio_scsi
-/// - Filesystems: loop, squashfs, overlay
+/// For CUSTOM kernels: Boot-critical modules (squashfs, overlay, loop) are built-in.
+///                     Only non-essential modules need to be copied.
+/// For ROCKY kernels: All boot modules are loadable and must be copied.
 fn copy_boot_modules(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
     println!("Copying boot kernel modules...");
 
-    let rootfs = base_dir.join("downloads/rootfs");
+    // PRIORITY 1: Check for custom-built kernel modules in output/staging
+    let custom_modules_path = base_dir.join("output/staging/usr/lib/modules");
+    let rocky_modules_path = base_dir.join("downloads/rootfs/usr/lib/modules");
+    let vmlinuz_path = base_dir.join("output/staging/boot/vmlinuz");
 
-    // Find the kernel modules directory
-    let modules_dir = rootfs.join("usr/lib/modules");
-    if !modules_dir.exists() {
-        // FAIL FAST - CDROM modules are REQUIRED for ISO boot on the Rocky kernel.
-        // The Rocky kernel has CDROM support as modules (sr_mod, cdrom, isofs).
-        // Without these, the initramfs cannot mount the ISO.
-        // DO NOT change this to a warning.
+    let (modules_dir, is_custom_kernel) = if custom_modules_path.exists() {
+        // ANTI-CHEAT: Ensure the kernel binary ACTUALLY exists if we use custom modules
+        if !vmlinuz_path.exists() {
+            bail!("Custom modules found but vmlinuz is missing from staging.\n\
+                   This indicates a broken or partial kernel build.\n\
+                   Refusing to build initramfs with half-built kernel.");
+        }
+        println!("  Using CUSTOM kernel modules from {}", custom_modules_path.display());
+        (custom_modules_path, true)
+    } else if rocky_modules_path.exists() {
+        println!("  Using ROCKY kernel modules from {}", rocky_modules_path.display());
+        (rocky_modules_path, false)
+    } else {
         bail!(
-            "No kernel modules found at {}.\n\
+            "No kernel modules found. Expected at:\n\
+             - {}\n\
+             - {}\n\
              \n\
              CDROM kernel modules (sr_mod, cdrom, isofs) are REQUIRED.\n\
-             The Rocky kernel has CDROM support as modules, not built-in.\n\
              Without them, the ISO cannot boot.\n\
              \n\
-             DO NOT change this to a warning. FAIL FAST.",
-            modules_dir.display()
+             Run 'leviso build kernel' or 'leviso extract rocky' first.",
+            custom_modules_path.display(),
+            rocky_modules_path.display()
         );
-    }
+    };
 
     // Find the kernel version directory (e.g., 6.12.0-124.8.1.el10_1.x86_64)
     let kernel_version = fs::read_dir(&modules_dir)?
@@ -234,18 +254,52 @@ fn copy_boot_modules(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
     let kmod_dst = initramfs_root.join("lib/modules").join(&kver);
     fs::create_dir_all(&kmod_dst)?;
 
-    // Copy each boot module - ALL are required
-    let mut copied = 0;
-    let mut missing = Vec::new();
-    for module in BOOT_MODULES {
-        let src = kmod_src.join(module);
-        if src.exists() {
-            let dst = kmod_dst.join(module);
-            fs::create_dir_all(dst.parent().unwrap())?;
-            fs::copy(&src, &dst)?;
-            copied += 1;
+    // Load modules.builtin to check for built-in modules (custom kernel only)
+    let builtin_modules: std::collections::HashSet<String> = if is_custom_kernel {
+        let builtin_path = kmod_src.join("modules.builtin");
+        if builtin_path.exists() {
+            fs::read_to_string(&builtin_path)?
+                .lines()
+                .map(|s| s.to_string())
+                .collect()
         } else {
-            missing.push(*module);
+            std::collections::HashSet::new()
+        }
+    } else {
+        std::collections::HashSet::new()
+    };
+
+    // Copy each boot module - ALL are required (unless built-in)
+    let mut copied = 0;
+    let mut builtin_count = 0;
+    let mut missing = Vec::new();
+    for module_path in BOOT_MODULES {
+        // Try to find the module with different extensions
+        // distro-spec now provides extension-less paths, but we handle both just in case
+        let base_path = module_path.trim_end_matches(".ko.xz").trim_end_matches(".ko.gz").trim_end_matches(".ko");
+
+        // Check if module is built-in (for custom kernels)
+        let builtin_key = format!("{}.ko", base_path);
+        if is_custom_kernel && builtin_modules.contains(&builtin_key) {
+            builtin_count += 1;
+            continue; // Module is compiled into kernel, no file to copy
+        }
+
+        let mut found = false;
+        for ext in [".ko", ".ko.xz", ".ko.gz"] {
+            let src = kmod_src.join(format!("{}{}", base_path, ext));
+            if src.exists() {
+                let dst = kmod_dst.join(format!("{}{}", base_path, ext));
+                fs::create_dir_all(dst.parent().unwrap())?;
+                fs::copy(&src, &dst)?;
+                copied += 1;
+                found = true;
+                break;
+            }
+        }
+
+        if !found {
+            missing.push(*module_path);
         }
     }
 
@@ -265,7 +319,12 @@ fn copy_boot_modules(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
         );
     }
 
-    println!("  Copied {}/{} boot modules", copied, BOOT_MODULES.len());
+    if builtin_count > 0 {
+        println!("  {} boot modules are built-in to kernel (no copy needed)", builtin_count);
+    }
+    if copied > 0 {
+        println!("  Copied {} boot modules", copied);
+    }
     Ok(())
 }
 
@@ -320,7 +379,7 @@ fn generate_init_script(base_dir: &Path) -> Result<String> {
     let module_names: Vec<&str> = BOOT_MODULES
         .iter()
         .filter_map(|m| m.rsplit('/').next())
-        .map(|m| m.trim_end_matches(".ko.xz").trim_end_matches(".ko.gz"))
+        .map(|m| m.trim_end_matches(".ko.xz").trim_end_matches(".ko.gz").trim_end_matches(".ko"))
         .collect();
 
     Ok(template

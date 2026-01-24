@@ -8,6 +8,7 @@ use anyhow::Result;
 use super::definitions::*;
 use super::executor;
 use crate::build::context::BuildContext;
+use crate::timing::Timer;
 
 /// Build the complete system into the staging directory.
 ///
@@ -25,44 +26,62 @@ pub fn build_system(ctx: &BuildContext) -> Result<()> {
     println!("Building complete system for squashfs...");
 
     // Phase 1: Filesystem
+    let t = Timer::start("Filesystem");
     executor::execute(ctx, &FILESYSTEM)?;
+    t.finish();
 
     // Phase 2: Binaries
+    let t = Timer::start("Binaries");
     executor::execute(ctx, &SHELL)?;
     executor::execute(ctx, &COREUTILS)?;
     executor::execute(ctx, &SBIN_BINARIES)?;
     executor::execute(ctx, &SYSTEMD_BINS)?;
+    t.finish();
 
     // Phase 3: Systemd
+    let t = Timer::start("Systemd");
     executor::execute(ctx, &SYSTEMD_UNITS)?;
     executor::execute(ctx, &GETTY)?;
     executor::execute(ctx, &UDEV)?;
     executor::execute(ctx, &TMPFILES)?;
     executor::execute(ctx, &LIVE_SYSTEMD)?;
+    t.finish();
 
     // Phase 4: D-Bus (using Service abstraction)
+    let t = Timer::start("D-Bus");
     executor::execute(ctx, &DBUS_SVC)?;
+    t.finish();
 
     // Phase 5: Services (using Service abstraction where applicable)
+    let t = Timer::start("Services");
     executor::execute(ctx, &NETWORK)?;  // Has custom ops, keeping as Component
     executor::execute(ctx, &CHRONY_SVC)?;
     executor::execute(ctx, &OPENSSH_SVC)?;
     executor::execute(ctx, &PAM)?;
     executor::execute(ctx, &MODULES)?;
+    t.finish();
 
     // Phase 6: Config
+    let t = Timer::start("Config");
     executor::execute(ctx, &ETC_CONFIG)?;
+    t.finish();
 
     // Phase 7: Packages
+    let t = Timer::start("Packages");
     executor::execute(ctx, &RECIPE)?;
     executor::execute(ctx, &DRACUT)?;
     executor::execute(ctx, &BOOTLOADER)?;
+    t.finish();
 
     // Phase 8: Firmware
+    let t = Timer::start("Firmware");
     executor::execute(ctx, &FIRMWARE)?;
+    t.finish();
 
     // Phase 9: Final
+    let t = Timer::start("Final");
     executor::execute(ctx, &FINAL)?;
+    t.finish();
 
     println!("System build complete.");
     Ok(())

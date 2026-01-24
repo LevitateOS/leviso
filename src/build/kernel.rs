@@ -191,8 +191,15 @@ pub fn install_kernel(kernel_source: &Path, build_output: &Path, staging: &Path)
     let version = get_kernel_version(&build_dir)?;
     println!("Installing kernel {} to staging...", version);
 
-    let boot_dir = staging.join("boot");
-    let modules_dir = staging.join("usr/lib/modules").join(&version);
+    // Atomic Installation: Install to a temporary directory first
+    let temp_staging = staging.parent().unwrap().join("staging.tmp");
+    if temp_staging.exists() {
+        fs::remove_dir_all(&temp_staging)?;
+    }
+    fs::create_dir_all(&temp_staging)?;
+
+    let boot_dir = temp_staging.join("boot");
+    let modules_dir = temp_staging.join("usr/lib/modules").join(&version);
     fs::create_dir_all(&boot_dir)?;
     fs::create_dir_all(&modules_dir)?;
 
@@ -204,10 +211,38 @@ pub fn install_kernel(kernel_source: &Path, build_output: &Path, staging: &Path)
     Cmd::new("make")
         .args(["-C", &kernel_source.to_string_lossy()])
         .arg(format!("O={}", build_dir.display()))
-        .arg(format!("INSTALL_MOD_PATH={}", staging.display()))
+        .arg(format!("INSTALL_MOD_PATH={}", temp_staging.display()))
         .arg("modules_install")
         .error_msg("Module install failed")
         .run_interactive()?;
+
+    // Fix UsrMerge: make modules_install puts files in /lib/modules,
+    // but we want them in /usr/lib/modules.
+    let lib_modules = temp_staging.join("lib/modules");
+    let usr_lib_modules = temp_staging.join("usr/lib/modules");
+    
+    if lib_modules.exists() {
+        println!("  Moving modules from lib/modules to usr/lib/modules...");
+        // Ensure destination parent exists
+        fs::create_dir_all(&usr_lib_modules)?;
+        
+        // Move the content (e.g., 6.12.0-levitate directory)
+        for entry in fs::read_dir(&lib_modules)? {
+            let entry = entry?;
+            let name = entry.file_name();
+            let src = entry.path();
+            let dst = usr_lib_modules.join(&name);
+            
+            if dst.exists() {
+                fs::remove_dir_all(&dst)?;
+            }
+            fs::rename(&src, &dst)?;
+        }
+        // Remove the empty lib/modules
+        let _ = fs::remove_dir_all(&lib_modules);
+        // Remove lib if empty
+        let _ = fs::remove_dir(temp_staging.join("lib"));
+    }
 
     let _ = fs::remove_file(modules_dir.join("source"));
     let _ = fs::remove_file(modules_dir.join("build"));
@@ -215,9 +250,20 @@ pub fn install_kernel(kernel_source: &Path, build_output: &Path, staging: &Path)
     let module_count = walkdir::WalkDir::new(&modules_dir)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map(|ext| ext == "ko" || ext == "xz").unwrap_or(false))
+        .filter(|e| e.path().extension().map(|ext| ext == "ko" || ext == "xz" || ext == "gz").unwrap_or(false))
         .count();
     println!("  Installed {} kernel modules", module_count);
+
+    // Final Integrity Check: Does the installed module directory match the version?
+    if !temp_staging.join("usr/lib/modules").join(&version).exists() {
+        bail!("Kernel installation failed: modules directory for version {} not found in staging", version);
+    }
+
+    // Atomic Swap: rename temp_staging to staging
+    if staging.exists() {
+        fs::remove_dir_all(staging)?;
+    }
+    fs::rename(&temp_staging, staging)?;
 
     Ok(version)
 }

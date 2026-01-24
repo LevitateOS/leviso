@@ -9,6 +9,7 @@ pub mod build;
 pub mod component;
 pub mod config;
 pub mod process;
+pub mod timing;
 
 // Re-export extracted crates
 pub use leviso_deps as deps;

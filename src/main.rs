@@ -17,6 +17,7 @@ mod preflight;
 mod process;
 mod qemu;
 mod rebuild;
+mod timing;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};

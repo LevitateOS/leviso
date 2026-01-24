@@ -18,6 +18,10 @@ pub use leviso_elf::{
 /// Extra library paths (includes sudo private libs).
 const EXTRA_LIB_PATHS: &[&str] = &["usr/libexec/sudo"];
 
+/// Private library directories that should preserve their subdirectory structure.
+/// For LevitateOS (systemd-based), this is ["systemd"].
+const PRIVATE_LIB_DIRS: &[&str] = &["systemd"];
+
 /// Known RPM locations for binaries not in the minimal rootfs.
 const RPM_BINARY_SOURCES: &[(&str, &str, &str)] = &[
     ("passwd", "shadow-utils-*.rpm", "usr/bin/passwd"),
@@ -33,6 +37,7 @@ pub fn copy_library(ctx: &BuildContext, lib_name: &str) -> Result<()> {
         "usr/lib64",
         "usr/lib",
         EXTRA_LIB_PATHS,
+        PRIVATE_LIB_DIRS,
     )
 }
 

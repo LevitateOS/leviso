@@ -165,6 +165,14 @@ const BIN_UTILS: &[&str] = &[
     "dracut",
     // === GLIBC UTILITIES ===
     "getent", "ldd",
+    // === CHECKSUMS ===
+    "base64", "md5sum", "sha256sum", "sha512sum",
+    // === TERMINAL MULTIPLEXER ===
+    "tmux",
+    // === NETWORK DIAGNOSTICS ===
+    "dig", "nslookup", "tracepath",
+    // === BINARY INSPECTION ===
+    "strings", "hexdump",
 ];
 
 /// Authentication binaries for /usr/bin.
@@ -197,6 +205,16 @@ const SBIN_UTILS: &[&str] = &[
     "agetty", "login", "sulogin", "nologin", "chronyd",
     // === SQUASHFS-TOOLS ===
     "unsquashfs",
+    // === CRYPTSETUP (LUKS) ===
+    "cryptsetup",
+    // === LVM ===
+    "lvm",
+    // === HARDWARE DETECTION ===
+    "dmidecode", "ethtool",
+    // === XFS ===
+    "mkfs.xfs", "xfs_repair",
+    // === DISK HEALTH ===
+    "smartctl", "hdparm", "nvme",
 ];
 
 /// Authentication binaries for /usr/sbin.

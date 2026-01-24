@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use std::path::Path;
+use std::time::Instant;
 
 use distro_spec::levitate::{INITRAMFS_OUTPUT, ISO_FILENAME, SQUASHFS_NAME};
 
@@ -9,6 +10,7 @@ use crate::artifact;
 use crate::config::Config;
 use crate::extract;
 use crate::rebuild;
+use crate::timing::Timer;
 use leviso_deps::DependencyResolver;
 
 /// Build target for the build command.
@@ -45,6 +47,7 @@ pub fn cmd_build(
 /// Skips anything already built, rebuilds only on changes.
 fn build_full(base_dir: &Path, resolver: &DependencyResolver, config: &Config) -> Result<()> {
     println!("=== Full LevitateOS Build ===\n");
+    let build_start = Instant::now();
 
     // 1. Download Rocky if needed
     if !base_dir.join("downloads/iso-contents/BaseOS").exists() {
@@ -61,8 +64,10 @@ fn build_full(base_dir: &Path, resolver: &DependencyResolver, config: &Config) -
     // 3. Build kernel (skip if built and kconfig unchanged)
     if rebuild::kernel_needs_rebuild(base_dir) {
         println!("\nBuilding kernel...");
+        let t = Timer::start("Kernel");
         build_kernel(base_dir, &linux.path, config, false)?;
         rebuild::cache_kconfig_hash(base_dir);
+        t.finish();
     } else {
         println!("\n[SKIP] Kernel already built (kconfig unchanged)");
     }
@@ -70,8 +75,10 @@ fn build_full(base_dir: &Path, resolver: &DependencyResolver, config: &Config) -
     // 4. Build squashfs (skip if inputs unchanged)
     if rebuild::squashfs_needs_rebuild(base_dir) {
         println!("\nBuilding squashfs system image...");
+        let t = Timer::start("Squashfs");
         artifact::build_squashfs(base_dir)?;
         rebuild::cache_squashfs_hash(base_dir);
+        t.finish();
     } else {
         println!("\n[SKIP] Squashfs already built (inputs unchanged)");
     }
@@ -79,8 +86,10 @@ fn build_full(base_dir: &Path, resolver: &DependencyResolver, config: &Config) -
     // 5. Build tiny initramfs (skip if inputs unchanged)
     if rebuild::initramfs_needs_rebuild(base_dir) {
         println!("\nBuilding tiny initramfs...");
+        let t = Timer::start("Initramfs");
         artifact::build_tiny_initramfs(base_dir)?;
         rebuild::cache_initramfs_hash(base_dir);
+        t.finish();
     } else {
         println!("\n[SKIP] Initramfs already built (inputs unchanged)");
     }
@@ -88,7 +97,9 @@ fn build_full(base_dir: &Path, resolver: &DependencyResolver, config: &Config) -
     // 6. Build ISO (skip if components unchanged)
     if rebuild::iso_needs_rebuild(base_dir) {
         println!("\nBuilding ISO...");
+        let t = Timer::start("ISO");
         artifact::create_squashfs_iso(base_dir)?;
+        t.finish();
     } else {
         println!("\n[SKIP] ISO already built (components unchanged)");
     }
@@ -96,7 +107,12 @@ fn build_full(base_dir: &Path, resolver: &DependencyResolver, config: &Config) -
     // 7. Verify hardware compatibility
     verify_hardware_compat(base_dir)?;
 
-    println!("\n=== Build Complete ===");
+    let total = build_start.elapsed().as_secs_f64();
+    if total >= 60.0 {
+        println!("\n=== Build Complete ({:.1}m) ===", total / 60.0);
+    } else {
+        println!("\n=== Build Complete ({:.1}s) ===", total);
+    }
     println!("  ISO: output/{}", ISO_FILENAME);
     println!("  Squashfs: output/{}", SQUASHFS_NAME);
     println!("\nNext: leviso run");
@@ -107,11 +123,12 @@ fn build_full(base_dir: &Path, resolver: &DependencyResolver, config: &Config) -
 /// Verify hardware compatibility against all profiles.
 fn verify_hardware_compat(base_dir: &Path) -> Result<()> {
     println!("\n=== Hardware Compatibility Verification ===");
-    
+
     let output_dir = base_dir.join("output");
+    // Firmware is installed to squashfs-root during squashfs build, not staging
     let checker = hardware_compat::HardwareCompatChecker::new(
         output_dir.join("kernel-build/.config"),
-        output_dir.join("staging/usr/lib/firmware"),
+        output_dir.join("squashfs-root/usr/lib/firmware"),
     );
 
     let all_profiles = hardware_compat::profiles::get_all_profiles();

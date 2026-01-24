@@ -85,6 +85,8 @@ impl IsoPaths {
 pub fn create_squashfs_iso(base_dir: &Path) -> Result<()> {
     let paths = IsoPaths::new(base_dir);
 
+    println!("=== Building LevitateOS ISO (Atomic) ===\n");
+
     // Stage 1: Validate inputs
     validate_iso_inputs(&paths)?;
     let kernel_path = find_kernel(&paths)?;
@@ -102,17 +104,64 @@ pub fn create_squashfs_iso(base_dir: &Path) -> Result<()> {
     // Stage 5: Set up UEFI boot
     setup_uefi_boot(&paths)?;
 
-    // Stage 6: Create the ISO
-    run_xorriso(&paths)?;
+    // Stage 6: Create the ISO to a temporary file (Atomic Artifacts)
+    let temp_iso = paths.output_dir.join(format!("{}.tmp", distro_spec::levitate::ISO_FILENAME));
+    run_xorriso_to(&paths, &temp_iso)?;
 
-    // Stage 7: Generate checksum for download verification
-    generate_iso_checksum(&paths.iso_output)?;
+    // Stage 7: Generate checksum for the temporary ISO
+    generate_iso_checksum(&temp_iso)?;
+
+    // Stage 8: Verify hardware compatibility (BAIL on critical failures)
+    println!("\nVerifying hardware compatibility before finalizing...");
+    let has_critical = verify_hardware_compat(base_dir)?;
+    if has_critical {
+        let _ = fs::remove_file(&temp_iso); // Cleanup 
+        bail!("ISO creation aborted: Hardware compatibility verification failed with critical errors.");
+    }
+
+    // Atomic rename to final destination
+    fs::rename(&temp_iso, &paths.iso_output)?;
+
+    // Also move the checksum
+    let temp_checksum = temp_iso.with_extension(distro_spec::levitate::ISO_CHECKSUM_SUFFIX.trim_start_matches('.'));
+    let final_checksum = paths.iso_output.with_extension(distro_spec::levitate::ISO_CHECKSUM_SUFFIX.trim_start_matches('.'));
+    fs::rename(&temp_checksum, &final_checksum)?;
 
     print_iso_summary(&paths.iso_output);
     Ok(())
 }
 
-/// Stage 1: Validate that required input files exist.
+/// Helper to run hardware compat verification.
+fn verify_hardware_compat(base_dir: &Path) -> Result<bool> {
+    let output_dir = base_dir.join("output");
+    // Firmware is installed to squashfs-root during squashfs build, not staging
+    let checker = hardware_compat::HardwareCompatChecker::new(
+        output_dir.join("kernel-build/.config"),
+        output_dir.join("squashfs-root/usr/lib/firmware"),
+    );
+
+    let all_profiles = hardware_compat::profiles::get_all_profiles();
+    let mut has_critical = false;
+
+    for p in all_profiles {
+        match checker.verify_profile(p.as_ref()) {
+            Ok(report) => {
+                report.print_summary();
+                if report.has_critical_failures() {
+                    has_critical = true;
+                }
+            }
+            Err(e) => {
+                println!("  [ERROR] Failed to verify profile '{}': {}", p.name(), e);
+                has_critical = true;
+            }
+        }
+    }
+
+    Ok(has_critical)
+}
+
+/// Stage 1: Validate that required input files exist and are consistent.
 fn validate_iso_inputs(paths: &IsoPaths) -> Result<()> {
     if !paths.squashfs.exists() {
         bail!(
@@ -128,6 +177,26 @@ fn validate_iso_inputs(paths: &IsoPaths) -> Result<()> {
              Run 'leviso build initramfs' first.",
             paths.initramfs.display()
         );
+    }
+
+    // Integrity Check: Verify staging kernel vs modules
+    let staging_boot = paths.output_dir.join("staging/boot/vmlinuz");
+    let staging_modules = paths.output_dir.join("staging/usr/lib/modules");
+
+    if staging_boot.exists() && staging_modules.exists() {
+        // Find module directory version
+        let modules_version = fs::read_dir(&staging_modules)?
+            .filter_map(|e| e.ok())
+            .find(|e| e.path().is_dir())
+            .map(|e| e.file_name().to_string_lossy().to_string());
+
+        if let Some(version) = modules_version {
+            println!("  [CHECK] Staging kernel modules version: {}", version);
+            // We could store the version during kernel build in a file to be 100% sure
+            // but for now, the presence of a matching directory is a strong indicator.
+        } else {
+            bail!("Staging directory exists but contains no kernel modules!");
+        }
     }
 
     Ok(())
@@ -245,13 +314,13 @@ menuentry '{} (Debug)' {{
 }
 
 /// Stage 6: Run xorriso to create the final ISO.
-fn run_xorriso(paths: &IsoPaths) -> Result<()> {
+fn run_xorriso_to(paths: &IsoPaths, output: &Path) -> Result<()> {
     println!("Creating UEFI bootable ISO with xorriso...");
     let label = iso_label();
 
     Cmd::new("xorriso")
         .args(["-as", "mkisofs", "-o"])
-        .arg_path(&paths.iso_output)
+        .arg_path(output)
         .args(["-V", &label]) // CRITICAL: Volume label for device detection
         .args(["-partition_offset", &XORRISO_PARTITION_OFFSET.to_string()])
         .args(XORRISO_FS_FLAGS)

@@ -307,9 +307,15 @@ fn setup_uefi_boot(paths: &IsoPaths) -> Result<()> {
 
     // Create GRUB config with root=LABEL for device detection
     // selinux=0 disables SELinux (we don't ship policies)
+    // Serial terminal is configured for automated testing (install-tests)
     let label = iso_label();
     let grub_cfg = format!(
-        r#"set default=0
+        r#"# Serial console for automated testing
+serial --speed=115200 --unit=0 --word=8 --parity=no --stop=1
+terminal_input serial console
+terminal_output serial console
+
+set default=0
 set timeout=5
 
 menuentry '{}' {{

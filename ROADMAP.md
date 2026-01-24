@@ -3,8 +3,8 @@
 > **DOCUMENTATION NOTE:** This roadmap will be used to create the installation guide
 > and user documentation. Keep descriptions clear, complete, and user-facing.
 
-**Version:** 1.1
-**Last Updated:** 2026-01-22
+**Version:** 1.2
+**Last Updated:** 2026-01-24
 **Goal:** Everything a user needs to use LevitateOS as their primary operating system, competing directly with Arch Linux.
 
 ---
@@ -19,10 +19,13 @@ LevitateOS aims for parity with archiso - the Arch Linux installation ISO. This 
 
 | Gap | Impact | Status |
 |-----|--------|--------|
-| **Intel/AMD microcode** | CPU bugs, security vulnerabilities | NOT IN BUILD |
-| **cryptsetup (LUKS)** | No encrypted disk support | NOT IN BUILD |
-| **lvm2** | No LVM support | NOT IN BUILD |
-| **btrfs-progs** | No Btrfs support | NOT IN BUILD |
+| ~~Intel/AMD microcode~~ | ~~CPU bugs, security vulnerabilities~~ | ✅ INCLUDED (firmware) |
+| ~~cryptsetup (LUKS)~~ | ~~No encrypted disk support~~ | ✅ ADDED 2026-01-24 |
+| ~~lvm2~~ | ~~No LVM support~~ | ✅ ADDED 2026-01-24 |
+| **btrfs-progs** | No Btrfs support | NOT IN ROCKY ROOTFS (needs RPM) |
+| ~~docs-tui~~ | ~~No on-screen installation docs~~ | ✅ ADDED 2026-01-24 |
+| ~~tmux~~ | ~~No split-screen for docs~~ | ✅ ADDED 2026-01-24 |
+| ~~terminfo~~ | ~~Terminal apps fail~~ | ✅ ADDED 2026-01-24 |
 
 ### P1 - Important Gaps
 
@@ -32,14 +35,18 @@ LevitateOS aims for parity with archiso - the Arch Linux installation ISO. This 
 | ~~do-not-suspend config~~ | ~~Live session may sleep during install~~ | ✅ CONFIGURED |
 | ~~SSH server (sshd)~~ | ~~No remote installation/rescue~~ | ✅ AVAILABLE |
 | ~~pciutils (lspci)~~ | ~~Cannot identify PCI hardware~~ | ✅ INCLUDED |
-| usbutils (lsusb) | Cannot identify USB devices | NOT IN BUILD |
-| dmidecode | Cannot read BIOS/DMI info | NOT IN BUILD |
-| ethtool | Cannot diagnose NICs | NOT IN BUILD |
+| **usbutils (lsusb)** | Cannot identify USB devices | NOT IN ROCKY ROOTFS (needs RPM) |
+| ~~dmidecode~~ | ~~Cannot read BIOS/DMI info~~ | ✅ ADDED 2026-01-24 |
+| ~~ethtool~~ | ~~Cannot diagnose NICs~~ | ✅ ADDED 2026-01-24 |
 | ~~gdisk/sgdisk~~ | ~~Only fdisk for GPT~~ | N/A - NOT IN ROCKY 10.1 (parted/sfdisk sufficient) |
-| iwd | Only wpa_supplicant for WiFi | NOT IN BUILD |
-| wireless-regdb | WiFi may violate regulations | NOT IN BUILD |
-| sof-firmware | Modern laptop sound may not work | NOT IN BUILD |
+| **iwd** | Only wpa_supplicant for WiFi | NOT IN ROCKY ROOTFS (needs RPM) |
+| **wireless-regdb** | WiFi may violate regulations | NOT IN ROCKY ROOTFS (needs RPM) |
+| **sof-firmware** | Modern laptop sound may not work | NOT IN ROCKY ROOTFS (needs RPM) |
 | ~~ISO SHA512 checksum~~ | ~~Users cannot verify downloads~~ | ✅ GENERATED |
+| ~~checksums (md5/sha256/sha512)~~ | ~~Cannot verify file integrity~~ | ✅ ADDED 2026-01-24 |
+| ~~network diag (dig/nslookup/tracepath)~~ | ~~Cannot debug DNS/routing~~ | ✅ ADDED 2026-01-24 |
+| ~~disk health (smartctl/hdparm/nvme)~~ | ~~Cannot check drive health~~ | ✅ ADDED 2026-01-24 |
+| ~~XFS (mkfs.xfs/xfs_repair)~~ | ~~No XFS support~~ | ✅ ADDED 2026-01-24 |
 
 ### What's Working (Verified)
 
@@ -55,6 +62,41 @@ LevitateOS aims for parity with archiso - the Arch Linux installation ISO. This 
 | recchroot (arch-chroot equivalent) | ✅ Implemented |
 | systemd as PID 1 | ✅ Verified |
 | Serial console | ✅ Enabled |
+| **docs-tui (levitate-docs)** | ✅ Auto-launches with tmux on tty1 |
+| **tmux split-screen** | ✅ Shell left, docs right |
+| **Keyboard shortcuts** | ✅ Shift+Tab switch, Ctrl+←/→ resize, F1 help |
+| Intel/AMD microcode | ✅ Included in firmware |
+| LUKS encryption (cryptsetup) | ✅ Included |
+| LVM (lvm2) | ✅ Included |
+| Hardware detection (dmidecode, ethtool) | ✅ Included |
+| Disk health (smartctl, hdparm, nvme) | ✅ Included |
+| XFS filesystem | ✅ Included |
+| Checksums (base64, md5sum, sha256sum, sha512sum) | ✅ Included |
+| Network diagnostics (dig, nslookup, tracepath) | ✅ Included |
+| Binary inspection (strings, hexdump) | ✅ Included |
+
+### Remaining Work Summary
+
+| Category | Count | Priority | Notes |
+|----------|-------|----------|-------|
+| docs-tui Integration | ✅ DONE | P0 | Shell+docs split screen working |
+| Microcode | ✅ DONE | P0 | Intel/AMD included in firmware |
+| Encryption/Storage | 1 remaining | P0 | btrfs-progs needs RPM |
+| Hardware Detection | 1 remaining | P1 | lsusb needs RPM |
+| Networking | 3 remaining | P1 | iwd, wireless-regdb, sof-firmware need RPM |
+| Shell UX | ✅ DONE | P1 | tmux, terminfo included |
+| Package Manager | 5 | P1 | recipe commands not fully implemented |
+| Filesystems | ✅ DONE | P2 | XFS added, ext4/fat32 working |
+| Network Tools | ✅ DONE | P2 | dig, nslookup, tracepath added |
+| Disk Health | ✅ DONE | P2 | smartctl, hdparm, nvme added |
+| Real HW Testing | 10 | P1 | Needs testing on physical hardware |
+
+**Items requiring RPM extraction (not in Rocky rootfs):**
+- `btrfs-progs` - Btrfs filesystem tools
+- `usbutils` (lsusb) - USB device identification
+- `iwd` - Alternative WiFi daemon
+- `wireless-regdb` - WiFi regulatory database
+- `sof-firmware` - Intel Sound Open Firmware
 
 ---
 
@@ -357,7 +399,7 @@ archiso has a KMS hook for proper graphics mode switching.
 - [x] Welcome message with install instructions (/etc/motd)
 
 ### Documentation
-- [ ] `levitate-docs` TUI documentation viewer (requires Node.js - post-install via recipe)
+- [x] `levitate-docs` TUI documentation viewer (standalone binary, auto-launches on live boot)
 
 ---
 

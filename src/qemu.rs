@@ -92,7 +92,16 @@ impl QemuBuilder {
 
         // Display options
         if let Some(vga) = &self.vga {
-            cmd.args(["-vga", vga]);
+            if vga == "virtio" {
+                // Use virtio-gpu-gl with explicit resolution for 1920x1080 display
+                // virtio-vga doesn't support xres/yres, but virtio-gpu-gl does
+                cmd.args([
+                    "-display", "gtk,gl=on",
+                    "-device", "virtio-gpu-gl,xres=1920,yres=1080",
+                ]);
+            } else {
+                cmd.args(["-vga", vga]);
+            }
             // Add serial port even in GUI mode so kernel messages are captured
             // Kernel cmdline in grub.cfg has console=ttyS0 which needs a serial device
             cmd.args(["-serial", &format!("file:{}", QEMU_SERIAL_LOG)]);

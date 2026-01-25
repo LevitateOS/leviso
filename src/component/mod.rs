@@ -323,6 +323,8 @@ pub enum CustomOp {
     CreateDracutConfig,
     /// Copy docs-tui binary.
     CopyDocsTui,
+    /// Generate SSH host keys during build.
+    CreateSshHostKeys,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

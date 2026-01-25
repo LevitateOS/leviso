@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 
 use distro_spec::levitate::{
-    EFIBOOT_FILENAME, INITRAMFS_BUILD_DIR, INITRAMFS_FILENAME, INITRAMFS_OUTPUT, ISO_CHECKSUM_SUFFIX,
+    EFIBOOT_FILENAME, INITRAMFS_BUILD_DIR, INITRAMFS_FILENAME, INITRAMFS_LIVE_OUTPUT, ISO_CHECKSUM_SUFFIX,
     ISO_FILENAME, SQUASHFS_NAME,
 };
 
@@ -68,9 +68,9 @@ pub fn clean_iso(base_dir: &Path) -> Result<()> {
     let iso = base_dir.join("output").join(ISO_FILENAME);
     let checksum = base_dir.join("output").join(format!("{}{}", ISO_FILENAME, ISO_CHECKSUM_SUFFIX));
     let initramfs = base_dir.join("output").join(INITRAMFS_FILENAME);
-    let initramfs_tiny = base_dir.join("output").join(INITRAMFS_OUTPUT);
+    let initramfs_live = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
     let initramfs_dir = base_dir.join("output/initramfs");
-    let initramfs_tiny_root = base_dir.join("output").join(INITRAMFS_BUILD_DIR);
+    let initramfs_live_root = base_dir.join("output").join(INITRAMFS_BUILD_DIR);
     let efiboot = base_dir.join("output").join(EFIBOOT_FILENAME);
     let live_overlay = base_dir.join("output/live-overlay");
     let initramfs_hash = base_dir.join("output/.initramfs-inputs.hash");
@@ -95,9 +95,9 @@ pub fn clean_iso(base_dir: &Path) -> Result<()> {
         cleaned = true;
     }
 
-    if initramfs_tiny.exists() {
-        println!("Removing initramfs-tiny.cpio.gz...");
-        fs::remove_file(&initramfs_tiny)?;
+    if initramfs_live.exists() {
+        println!("Removing initramfs-live.cpio.gz...");
+        fs::remove_file(&initramfs_live)?;
         cleaned = true;
     }
 
@@ -107,9 +107,9 @@ pub fn clean_iso(base_dir: &Path) -> Result<()> {
         cleaned = true;
     }
 
-    if initramfs_tiny_root.exists() {
-        println!("Removing initramfs-tiny-root directory...");
-        fs::remove_dir_all(&initramfs_tiny_root)?;
+    if initramfs_live_root.exists() {
+        println!("Removing initramfs-live-root directory...");
+        fs::remove_dir_all(&initramfs_live_root)?;
         cleaned = true;
     }
 

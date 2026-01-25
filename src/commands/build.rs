@@ -4,7 +4,7 @@ use anyhow::Result;
 use std::path::Path;
 use std::time::Instant;
 
-use distro_spec::levitate::{INITRAMFS_OUTPUT, ISO_FILENAME, SQUASHFS_NAME};
+use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, INITRAMFS_INSTALLED_OUTPUT, ISO_FILENAME, SQUASHFS_NAME};
 
 use crate::artifact;
 use crate::config::Config;
@@ -61,15 +61,24 @@ fn build_full(base_dir: &Path, resolver: &DependencyResolver, config: &Config) -
     // 2. Resolve Linux source (auto-detects submodule or downloads)
     let linux = resolver.linux()?;
 
-    // 3. Build kernel (skip if built and kconfig unchanged)
-    if rebuild::kernel_needs_rebuild(base_dir) {
+    // 3. Build kernel (compile + install, skip what's already done)
+    let needs_compile = rebuild::kernel_needs_compile(base_dir);
+    let needs_install = rebuild::kernel_needs_install(base_dir);
+
+    if needs_compile {
         println!("\nBuilding kernel...");
         let t = Timer::start("Kernel");
         build_kernel(base_dir, &linux.path, config, false)?;
-        rebuild::cache_kconfig_hash(base_dir);
+        rebuild::cache_kernel_hash(base_dir);
+        t.finish();
+    } else if needs_install {
+        // bzImage exists but vmlinuz doesn't - just install
+        println!("\nInstalling kernel (compile skipped)...");
+        let t = Timer::start("Kernel install");
+        install_kernel_only(base_dir, &linux.path)?;
         t.finish();
     } else {
-        println!("\n[SKIP] Kernel already built (kconfig unchanged)");
+        println!("\n[SKIP] Kernel already built and installed");
     }
 
     // 4. Build squashfs (skip if inputs unchanged)
@@ -92,6 +101,19 @@ fn build_full(base_dir: &Path, resolver: &DependencyResolver, config: &Config) -
         t.finish();
     } else {
         println!("\n[SKIP] Initramfs already built (inputs unchanged)");
+    }
+
+    // 5b. Build install initramfs (REQUIRED for installation)
+    // This is copied to installed systems instead of running dracut (saves 2-3 min)
+    // The initramfs is generic (no hostonly) so it works on any hardware
+    let install_initramfs = base_dir.join("output").join(INITRAMFS_INSTALLED_OUTPUT);
+    if !install_initramfs.exists() {
+        println!("\nBuilding install initramfs...");
+        let t = Timer::start("Install Initramfs");
+        artifact::build_install_initramfs(base_dir)?;
+        t.finish();
+    } else {
+        println!("\n[SKIP] Install initramfs already built");
     }
 
     // 6. Build ISO (skip if components unchanged)
@@ -168,11 +190,17 @@ fn build_kernel_only(
     clean: bool,
 ) -> Result<()> {
     let linux = resolver.linux()?;
-    if clean || rebuild::kernel_needs_rebuild(base_dir) {
+    let needs_compile = clean || rebuild::kernel_needs_compile(base_dir);
+    let needs_install = rebuild::kernel_needs_install(base_dir);
+
+    if needs_compile {
         build_kernel(base_dir, &linux.path, config, clean)?;
-        rebuild::cache_kconfig_hash(base_dir);
+        rebuild::cache_kernel_hash(base_dir);
+    } else if needs_install {
+        println!("Installing kernel (compile skipped)...");
+        install_kernel_only(base_dir, &linux.path)?;
     } else {
-        println!("[SKIP] Kernel already built (kconfig unchanged)");
+        println!("[SKIP] Kernel already built and installed");
         println!("  Use 'build kernel --clean' to force rebuild");
     }
     Ok(())
@@ -205,7 +233,7 @@ fn build_initramfs_only(base_dir: &Path) -> Result<()> {
 /// Build ISO only.
 fn build_iso_only(base_dir: &Path) -> Result<()> {
     let squashfs_path = base_dir.join("output").join(SQUASHFS_NAME);
-    let initramfs_path = base_dir.join("output").join(INITRAMFS_OUTPUT);
+    let initramfs_path = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
 
     if !squashfs_path.exists() {
         println!("Squashfs not found, building...");
@@ -243,6 +271,22 @@ fn build_kernel(
     build::kernel::install_kernel(linux_source, &output_dir, &output_dir.join("staging"))?;
 
     println!("\n=== Kernel build complete ===");
+    println!("  Version: {}", version);
+    println!("  Kernel:  output/staging/boot/vmlinuz");
+    println!("  Modules: output/staging/usr/lib/modules/{}/", version);
+
+    Ok(())
+}
+
+/// Install kernel only (when bzImage exists but vmlinuz doesn't).
+fn install_kernel_only(base_dir: &Path, linux_source: &Path) -> Result<()> {
+    use crate::build;
+
+    let output_dir = base_dir.join("output");
+
+    let version = build::kernel::install_kernel(linux_source, &output_dir, &output_dir.join("staging"))?;
+
+    println!("\n=== Kernel install complete ===");
     println!("  Version: {}", version);
     println!("  Kernel:  output/staging/boot/vmlinuz");
     println!("  Modules: output/staging/usr/lib/modules/{}/", version);

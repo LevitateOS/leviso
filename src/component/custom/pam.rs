@@ -77,7 +77,10 @@ pub fn create_security_config(ctx: &BuildContext) -> Result<()> {
     fs::write(security_dir.join("access.conf"), "+:root:LOCAL\n+:ALL:ALL\n")?;
     fs::write(security_dir.join("namespace.conf"), "# Polyinstantiation config\n")?;
     fs::write(security_dir.join("pam_env.conf"), "# Environment variables\n")?;
-    fs::write(security_dir.join("pwquality.conf"), "minlen = 8\nminclass = 1\n")?;
+    fs::write(
+        security_dir.join("pwquality.conf"),
+        "minlen = 12\nminclass = 3\ndcredit = -1\nucredit = -1\nmaxrepeat = 3\n",
+    )?;
 
     println!("  Created security configuration");
     Ok(())

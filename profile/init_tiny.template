@@ -245,6 +245,10 @@ busybox mount --move /dev /newroot/dev
 busybox mount --move /proc /newroot/proc
 busybox mount --move /sys /newroot/sys
 
+# NOTE: efivarfs mount moved to systemd unit (EFIVARS component)
+# See: leviso/src/component/definitions.rs - EFIVARS component
+# See: .teams/TEAM_114_efivarfs-mount-investigation.md
+
 # Keep ISO mounted at /media/cdrom so recstrap can access filesystem.squashfs
 busybox mkdir -p /newroot/media/cdrom
 busybox mount --move /mnt /newroot/media/cdrom

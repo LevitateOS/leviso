@@ -46,6 +46,7 @@ pub fn execute(ctx: &BuildContext, op: CustomOp) -> Result<()> {
         CustomOp::CreateEtcFiles => etc::create_etc_files(ctx),
         CustomOp::CopyTimezoneData => etc::copy_timezone_data(ctx),
         CustomOp::CopyLocales => etc::copy_locales(ctx),
+        CustomOp::CreateSshHostKeys => etc::create_ssh_host_keys(ctx),
 
         // PAM and security
         CustomOp::CreatePamFiles => pam::create_pam_files(ctx),

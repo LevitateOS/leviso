@@ -43,8 +43,43 @@ pub fn create_etc_files(ctx: &BuildContext) -> Result<()> {
     create_network_config(ctx)?;
     create_shell_config(ctx)?;
     create_nsswitch(ctx)?;
+    create_tmpfiles_configs(ctx)?;
 
     println!("  Created /etc configuration files");
+    Ok(())
+}
+
+/// Create custom tmpfiles.d configs for runtime directories.
+fn create_tmpfiles_configs(ctx: &BuildContext) -> Result<()> {
+    let tmpfiles_dir = ctx.staging.join("usr/lib/tmpfiles.d");
+
+    // sshd needs /run/sshd for privilege separation
+    // Can't put it in squashfs since /run is tmpfs
+    fs::write(
+        tmpfiles_dir.join("sshd.conf"),
+        "# /run/sshd is needed by sshd for privilege separation\nd /run/sshd 0755 root root -\n",
+    )?;
+
+    Ok(())
+}
+
+/// Prepare SSH directory for host key generation on first boot.
+///
+/// We do NOT pre-generate keys here because:
+/// 1. Security: All installations would share the same keys
+/// 2. Proper behavior: sshd-keygen@.service generates unique keys on first boot
+///
+/// This function just ensures /etc/ssh exists with correct permissions.
+pub fn create_ssh_host_keys(ctx: &BuildContext) -> Result<()> {
+    println!("Preparing SSH directory...");
+
+    let ssh_dir = ctx.staging.join("etc/ssh");
+    fs::create_dir_all(&ssh_dir)?;
+
+    // Set directory permissions (755)
+    fs::set_permissions(&ssh_dir, fs::Permissions::from_mode(0o755))?;
+
+    println!("  Created /etc/ssh (keys will be generated on first boot by sshd-keygen@)");
     Ok(())
 }
 

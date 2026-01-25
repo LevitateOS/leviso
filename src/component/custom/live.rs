@@ -16,8 +16,14 @@ const LIVE_CONSOLE_AUTOLOGIN: &str =
     include_str!("../../../profile/live-overlay/etc/systemd/system/console-autologin.service");
 const LIVE_SERIAL_CONSOLE: &str =
     include_str!("../../../profile/live-overlay/etc/systemd/system/serial-console.service");
+// SECURITY: Empty root password is INTENTIONAL for archiso-like live boot behavior.
+// This allows passwordless login on the live ISO only. Installed systems use locked
+// root (root:!:...) via recstrap, which copies the base /etc/shadow, not this overlay.
 const LIVE_SHADOW: &str = include_str!("../../../profile/live-overlay/etc/shadow");
 const LIVE_DOCS_SH: &str = include_str!("../../../profile/live-overlay/etc/profile.d/live-docs.sh");
+// Test mode instrumentation (00- prefix ensures it runs before live-docs.sh)
+const LIVE_TEST_MODE: &str =
+    include_str!("../../../profile/live-overlay/etc/profile.d/00-levitate-test.sh");
 
 /// Create live overlay directory with autologin, serial console, empty root password.
 ///
@@ -69,9 +75,12 @@ pub fn create_live_overlay_at(output_dir: &Path) -> Result<()> {
         fs::Permissions::from_mode(0o600),
     )?;
 
-    // Profile.d script to auto-launch tmux with docs-tui
+    // Profile.d scripts
     let profile_d = overlay_dir.join("etc/profile.d");
     fs::create_dir_all(&profile_d)?;
+    // Test mode instrumentation (00- prefix = runs first)
+    fs::write(profile_d.join("00-levitate-test.sh"), LIVE_TEST_MODE)?;
+    // Auto-launch tmux with docs-tui for interactive users
     fs::write(profile_d.join("live-docs.sh"), LIVE_DOCS_SH)?;
 
     println!("  Created live overlay");

@@ -18,7 +18,7 @@
 
 use super::{
     bins, copy_file, copy_tree, custom, dirs, enable_getty, enable_multi_user,
-    enable_sysinit, group, sbins, symlink, units, user, Component, CustomOp, Op,
+    enable_sysinit, group, sbins, symlink, units, user, write_file, Component, CustomOp, Op,
     Phase,
 };
 
@@ -199,7 +199,7 @@ const SBIN_UTILS: &[&str] = &[
     // === PROCPS-NG ===
     "sysctl",
     // === SYSTEM CONTROL ===
-    "reboot", "shutdown", "poweroff", "halt",
+    "reboot", "shutdown", "poweroff", "halt", "efibootmgr",
     // === OTHER ===
     "ldconfig", "hwclock", "lspci", "ifconfig", "route",
     "agetty", "login", "sulogin", "nologin", "chronyd",
@@ -218,7 +218,9 @@ const SBIN_UTILS: &[&str] = &[
 ];
 
 /// Authentication binaries for /usr/sbin.
-const AUTH_SBIN: &[&str] = &["visudo"];
+/// unix_chkpwd is CRITICAL - pam_unix.so has hardcoded path to /usr/sbin/unix_chkpwd
+/// Without it, chpasswd/passwd silently fail (PAM returns success but password unchanged)
+const AUTH_SBIN: &[&str] = &["visudo", "unix_chkpwd"];
 
 /// Systemd helper binaries.
 const SYSTEMD_BINARIES: &[&str] = &[
@@ -274,6 +276,10 @@ pub static SBIN_BINARIES: Component = Component {
     ops: &[
         sbins(SBIN_UTILS),
         sbins(AUTH_SBIN),
+        // CRITICAL: agetty defaults to /bin/login (via /usr/bin/login), but login is in /usr/sbin.
+        // Without this symlink, agetty can't find login and user authentication fails silently.
+        // See TEAM_108_review-of-107-and-login-architecture.md for root cause analysis.
+        symlink("usr/bin/login", "../sbin/login"),
     ],
 };
 
@@ -362,6 +368,22 @@ pub static SYSTEMD_UNITS: Component = Component {
     ],
 };
 
+/// Serial getty configuration for virtual serial consoles.
+/// Fixes two issues that prevent login prompt from appearing:
+/// 1. TERM unset - causes agetty to send terminal queries that may hang
+/// 2. Missing -L - without CLOCAL, agetty waits for modem carrier detect (DCD)
+///    which QEMU's virtual serial port doesn't properly emulate
+/// KNOWLEDGE: See .teams/KNOWLEDGE_login-prompt-debugging.md for root cause.
+const SERIAL_GETTY_CONF: &str = "\
+[Service]
+# Override ExecStart for virtual serial consoles.
+# -L: local line (no carrier detect wait) - required for QEMU/virtual serial
+# --keep-baud: try multiple baud rates for compatibility
+# linux: terminal type that works well with most serial consoles
+ExecStart=
+ExecStart=-/sbin/agetty -L --keep-baud 115200,57600,38400,9600 %I linux
+";
+
 pub static GETTY: Component = Component {
     name: "getty",
     phase: Phase::Systemd,
@@ -369,6 +391,70 @@ pub static GETTY: Component = Component {
         enable_getty("getty@tty1.service"),
         enable_multi_user("getty.target"),
         symlink("etc/systemd/system/default.target", "/usr/lib/systemd/system/multi-user.target"),
+        // Serial console fix: add -L flag for virtual serial ports (CLOCAL - ignore modem control)
+        // Without this, agetty waits for carrier detect that QEMU doesn't provide
+        dirs(&["etc/systemd/system/serial-getty@.service.d"]),
+        write_file(
+            "etc/systemd/system/serial-getty@.service.d/local.conf",
+            SERIAL_GETTY_CONF,
+        ),
+    ],
+};
+
+// =============================================================================
+// EFIVARS - EFI Variable Filesystem Support
+// =============================================================================
+//
+// This subsystem handles mounting the efivarfs filesystem which is required
+// for efibootmgr to write UEFI boot entries. The mounting is attempted in
+// two places for redundancy:
+//
+// 1. Initramfs (leviso/profile/init_tiny.template):
+//    - Mounts efivarfs after /sys is moved to /newroot/sys
+//    - This is the primary mount mechanism for live boot
+//
+// 2. systemd mount unit (below):
+//    - Backup mechanism if initramfs mount fails
+//    - Also handles installed systems where initramfs doesn't run
+//
+// STATUS: Under investigation - see .teams/TEAM_114_efivarfs-mount-investigation.md
+// The mount is not working as expected on QEMU live boot.
+//
+// Safe on all systems:
+// - BIOS: ConditionPathExists fails, unit skipped
+// - UEFI + kernel auto-mount: systemd sees existing mount, no action
+// - UEFI + no mount: unit mounts it, efibootmgr works
+
+/// EFI Variable Filesystem mount unit.
+/// Required for efibootmgr to write boot entries on UEFI systems.
+/// Options=rw is REQUIRED - systemd may mount read-only by default.
+const EFIVARFS_MOUNT: &str = "\
+[Unit]
+Description=EFI Variable Filesystem
+ConditionPathExists=/sys/firmware/efi
+DefaultDependencies=no
+Before=sysinit.target
+After=local-fs-pre.target
+
+[Mount]
+What=efivarfs
+Where=/sys/firmware/efi/efivars
+Type=efivarfs
+Options=rw
+
+[Install]
+WantedBy=sysinit.target
+";
+
+pub static EFIVARS: Component = Component {
+    name: "efivars",
+    phase: Phase::Systemd,
+    ops: &[
+        write_file(
+            "usr/lib/systemd/system/sys-firmware-efi-efivars.mount",
+            EFIVARFS_MOUNT,
+        ),
+        enable_sysinit("sys-firmware-efi-efivars.mount"),
     ],
 };
 
@@ -381,6 +467,8 @@ pub static UDEV: Component = Component {
         Op::UdevHelpers(UDEV_HELPERS),
         enable_sysinit("systemd-udevd-control.socket"),
         enable_sysinit("systemd-udevd-kernel.socket"),
+        // Service must be enabled - socket-activation alone can race on boot
+        enable_sysinit("systemd-udevd.service"),
         enable_sysinit("systemd-udev-trigger.service"),
     ],
 };
@@ -494,6 +582,8 @@ pub static ETC_CONFIG: Component = Component {
         custom(CustomOp::CopyTimezoneData),
         custom(CustomOp::CopyLocales),
         custom(CustomOp::DisableSelinux),
+        // Pre-generate SSH host keys so sshd starts immediately
+        custom(CustomOp::CreateSshHostKeys),
         // Terminal support (required for tmux, levitate-docs, ncurses apps)
         copy_tree("usr/share/terminfo"),
     ],
@@ -577,6 +667,7 @@ pub static OPENSSH_SVC: Service = Service {
         "sshd@.service",
         "sshd-keygen.target",
         "sshd-keygen@.service",
+        "ssh-host-keys-migration.service",  // Required by sshd.service Wants=
     ],
     enable: &[],  // Not enabled by default
     config_trees: &[
@@ -586,7 +677,7 @@ pub static OPENSSH_SVC: Service = Service {
         "usr/share/crypto-policies",
     ],
     config_files: &["etc/pam.d/sshd", "etc/sysconfig/sshd"],
-    dirs: &["var/empty/sshd", "run/sshd"],
+    dirs: &["var/empty/sshd"],  // Note: /run/sshd is created by tmpfiles at boot
     symlinks: &[],
     users: &[User {
         name: "sshd",

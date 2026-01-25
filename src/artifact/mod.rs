@@ -9,6 +9,6 @@ pub mod initramfs;
 pub mod iso;
 pub mod squashfs;
 
-pub use initramfs::build_tiny_initramfs;
+pub use initramfs::{build_tiny_initramfs, build_install_initramfs};
 pub use iso::create_squashfs_iso;
 pub use squashfs::build_squashfs;

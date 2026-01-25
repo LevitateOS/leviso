@@ -42,6 +42,7 @@ pub fn build_system(ctx: &BuildContext) -> Result<()> {
     let t = Timer::start("Systemd");
     executor::execute(ctx, &SYSTEMD_UNITS)?;
     executor::execute(ctx, &GETTY)?;
+    executor::execute(ctx, &EFIVARS)?;  // EFI variable filesystem for efibootmgr
     executor::execute(ctx, &UDEV)?;
     executor::execute(ctx, &TMPFILES)?;
     executor::execute(ctx, &LIVE_SYSTEMD)?;
@@ -102,6 +103,7 @@ mod tests {
             (SYSTEMD_BINS.name(), SYSTEMD_BINS.phase()),
             (SYSTEMD_UNITS.name(), SYSTEMD_UNITS.phase()),
             (GETTY.name(), GETTY.phase()),
+            (EFIVARS.name(), EFIVARS.phase()),
             (UDEV.name(), UDEV.phase()),
             (TMPFILES.name(), TMPFILES.phase()),
             (LIVE_SYSTEMD.name(), LIVE_SYSTEMD.phase()),

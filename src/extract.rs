@@ -96,6 +96,15 @@ const SUPPLEMENTARY_RPMS: &[&str] = &[
     "pciutils",       // Added: lspci (duplicate but good to have)
     "usbutils",       // Added: lsusb
     "alsa-utils",     // Added: Audio tools (amixer, alsamixer)
+
+    // === BTRFS ===
+    "btrfs-progs",    // Btrfs filesystem tools (mkfs.btrfs, btrfs, btrfsck)
+
+    // === WIRELESS ===
+    "iwd",            // Alternative WiFi daemon (iwctl, iwmon)
+
+    // === SOUND FIRMWARE ===
+    "alsa-sof-firmware", // Intel Sound Open Firmware (modern laptop audio)
     "libdrm",         // Added: Direct Rendering Manager
     "mesa-dri-drivers", // Added: Basic GPU drivers for Intel/AMD
 

@@ -23,6 +23,7 @@ hardware-compat = { path = "../testing/hardware-compat" }
 # Async runtime (minimal - heavy networking moved to leviso-deps)
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "time", "process"] }
 sha2 = "0.10"
+which = "7"
 
 [dev-dependencies]
 tempfile = "3"

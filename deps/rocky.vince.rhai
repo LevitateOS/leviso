@@ -2,6 +2,35 @@
 //
 // Provides: extracted Rocky rootfs for leviso to build upon
 // Output: PREFIX/rootfs, PREFIX/packages
+//
+// === Globals (provided by executor) ===
+//
+// BUILD_DIR  - Temporary build directory for intermediate files
+// PREFIX     - Installation prefix (where final artifacts go)
+//
+// === Helper functions (provided by executor) ===
+//
+// Filesystem:
+//   exists(path)              - Check if path exists
+//   mkdir(path)               - Create directory (recursive)
+//   rm(path)                  - Remove file or directory
+//   mv(src, dst)              - Move/rename file or directory
+//
+// Commands:
+//   shell(cmd)                - Run shell command, throw on failure
+//
+// Network:
+//   download(url, dest)       - HTTP download, returns path or ""
+//   torrent(url, dest)        - BitTorrent download, returns path or ""
+//   http_get(url)             - Fetch URL content as string
+//
+// Verification:
+//   verify_sha256(path, hash) - Verify file checksum, throw on mismatch
+//   fetch_sha256(url, name)   - Fetch CHECKSUM file, extract hash for filename
+//   check_disk_space(path, n) - Verify n bytes free at path, throw if not
+//
+// Parsing:
+//   parse_int(str)            - Parse string to integer
 
 let ctx = #{
     // === Config ===

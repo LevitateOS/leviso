@@ -22,7 +22,7 @@ LevitateOS aims for parity with archiso - the Arch Linux installation ISO. This 
 | ~~Intel/AMD microcode~~ | ~~CPU bugs, security vulnerabilities~~ | ✅ INCLUDED (firmware) |
 | ~~cryptsetup (LUKS)~~ | ~~No encrypted disk support~~ | ✅ ADDED 2026-01-24 |
 | ~~lvm2~~ | ~~No LVM support~~ | ✅ ADDED 2026-01-24 |
-| **btrfs-progs** | No Btrfs support | NOT IN ROCKY ROOTFS (needs RPM) |
+| ~~btrfs-progs~~ | ~~No Btrfs support~~ | ✅ ADDED 2026-01-25 |
 | ~~docs-tui~~ | ~~No on-screen installation docs~~ | ✅ ADDED 2026-01-24 |
 | ~~tmux~~ | ~~No split-screen for docs~~ | ✅ ADDED 2026-01-24 |
 | ~~terminfo~~ | ~~Terminal apps fail~~ | ✅ ADDED 2026-01-24 |
@@ -35,13 +35,13 @@ LevitateOS aims for parity with archiso - the Arch Linux installation ISO. This 
 | ~~do-not-suspend config~~ | ~~Live session may sleep during install~~ | ✅ CONFIGURED |
 | ~~SSH server (sshd)~~ | ~~No remote installation/rescue~~ | ✅ AVAILABLE |
 | ~~pciutils (lspci)~~ | ~~Cannot identify PCI hardware~~ | ✅ INCLUDED |
-| **usbutils (lsusb)** | Cannot identify USB devices | NOT IN ROCKY ROOTFS (needs RPM) |
+| ~~usbutils (lsusb)~~ | ~~Cannot identify USB devices~~ | ✅ ADDED 2026-01-25 |
 | ~~dmidecode~~ | ~~Cannot read BIOS/DMI info~~ | ✅ ADDED 2026-01-24 |
 | ~~ethtool~~ | ~~Cannot diagnose NICs~~ | ✅ ADDED 2026-01-24 |
 | ~~gdisk/sgdisk~~ | ~~Only fdisk for GPT~~ | N/A - NOT IN ROCKY 10.1 (parted/sfdisk sufficient) |
-| **iwd** | Only wpa_supplicant for WiFi | NOT IN ROCKY ROOTFS (needs RPM) |
-| **wireless-regdb** | WiFi may violate regulations | NOT IN ROCKY ROOTFS (needs RPM) |
-| **sof-firmware** | Modern laptop sound may not work | NOT IN ROCKY ROOTFS (needs RPM) |
+| ~~iwd~~ | ~~Only wpa_supplicant for WiFi~~ | ✅ ADDED 2026-01-25 |
+| ~~wireless-regdb~~ | ~~WiFi may violate regulations~~ | ✅ INCLUDED |
+| ~~sof-firmware~~ | ~~Modern laptop sound may not work~~ | ✅ ADDED 2026-01-25 |
 | ~~ISO SHA512 checksum~~ | ~~Users cannot verify downloads~~ | ✅ GENERATED |
 | ~~checksums (md5/sha256/sha512)~~ | ~~Cannot verify file integrity~~ | ✅ ADDED 2026-01-24 |
 | ~~network diag (dig/nslookup/tracepath)~~ | ~~Cannot debug DNS/routing~~ | ✅ ADDED 2026-01-24 |
@@ -69,12 +69,15 @@ LevitateOS aims for parity with archiso - the Arch Linux installation ISO. This 
 | Intel/AMD microcode | ✅ Included in firmware |
 | LUKS encryption (cryptsetup) | ✅ Included |
 | LVM (lvm2) | ✅ Included |
-| Hardware detection (dmidecode, ethtool) | ✅ Included |
+| Hardware detection (dmidecode, ethtool, lsusb) | ✅ Included |
 | Disk health (smartctl, hdparm, nvme) | ✅ Included |
 | XFS filesystem | ✅ Included |
+| Btrfs filesystem | ✅ Included |
 | Checksums (base64, md5sum, sha256sum, sha512sum) | ✅ Included |
 | Network diagnostics (dig, nslookup, tracepath) | ✅ Included |
 | Binary inspection (strings, hexdump) | ✅ Included |
+| iwd WiFi daemon | ✅ Included |
+| Intel SOF audio firmware | ✅ Included |
 
 ### Remaining Work Summary
 
@@ -82,22 +85,17 @@ LevitateOS aims for parity with archiso - the Arch Linux installation ISO. This 
 |----------|-------|----------|-------|
 | docs-tui Integration | ✅ DONE | P0 | Shell+docs split screen working (TUI UX refinements pending) |
 | Microcode | ✅ DONE | P0 | Intel/AMD included in firmware |
-| Encryption/Storage | 1 remaining | P0 | btrfs-progs needs RPM |
-| Hardware Detection | 1 remaining | P1 | lsusb needs RPM |
-| Networking | 3 remaining | P1 | iwd, wireless-regdb, sof-firmware need RPM |
+| Encryption/Storage | ✅ DONE | P0 | cryptsetup, lvm2, btrfs-progs included |
+| Hardware Detection | ✅ DONE | P1 | lspci, lsusb included |
+| Networking | ✅ DONE | P1 | iwd, wireless-regdb, sof-firmware included |
 | Shell UX | ✅ DONE | P1 | tmux, terminfo included |
 | Package Manager | 5 | P1 | recipe commands not fully implemented |
-| Filesystems | ✅ DONE | P2 | XFS added, ext4/fat32 working |
+| Filesystems | ✅ DONE | P2 | XFS, Btrfs, ext4, fat32 working |
 | Network Tools | ✅ DONE | P2 | dig, nslookup, tracepath added |
 | Disk Health | ✅ DONE | P2 | smartctl, hdparm, nvme added |
 | Real HW Testing | 10 | P1 | Needs testing on physical hardware |
 
-**Items requiring RPM extraction (not in Rocky rootfs):**
-- `btrfs-progs` - Btrfs filesystem tools
-- `usbutils` (lsusb) - USB device identification
-- `iwd` - Alternative WiFi daemon
-- `wireless-regdb` - WiFi regulatory database
-- `sof-firmware` - Intel Sound Open Firmware
+**All archiso-parity RPMs now extracted** - btrfs-progs, usbutils, iwd, wireless-regdb, sof-firmware are all included.
 
 ---
 
@@ -299,18 +297,18 @@ These are known gaps in the live environment (squashfs):
 - [x] `recchroot` - enter installed system with proper mounts (arch-chroot equivalent)
 
 > **✅ NOTE:** The /etc/motd welcome message has been updated to reference `recfstab` and `recchroot`.
-- [ ] `cryptsetup` - LUKS disk encryption
-- [ ] `lvm2` - Logical Volume Manager (pvcreate, vgcreate, lvcreate)
-- [ ] `btrfs-progs` - Btrfs filesystem tools
+- [x] `cryptsetup` - LUKS disk encryption
+- [x] `lvm2` - Logical Volume Manager (pvcreate, vgcreate, lvcreate)
+- [x] `btrfs-progs` - Btrfs filesystem tools
 
 ### Important Tools (P1)
-- [ ] `gdisk` / `sgdisk` - GPT partitioning (better than fdisk for GPT)
+- [~] `gdisk` / `sgdisk` - N/A - NOT IN ROCKY 10.1 (parted/sfdisk sufficient)
 - [x] `pciutils` (lspci) - identify PCI hardware
-- [ ] `usbutils` (lsusb) - identify USB devices
-- [ ] `dmidecode` - BIOS/DMI information
-- [ ] `ethtool` - NIC diagnostics and configuration
-- [ ] `iwd` - alternative WiFi daemon (often more reliable)
-- [ ] `wireless-regdb` - WiFi regulatory database
+- [x] `usbutils` (lsusb) - identify USB devices
+- [x] `dmidecode` - BIOS/DMI information
+- [x] `ethtool` - NIC diagnostics and configuration
+- [x] `iwd` - alternative WiFi daemon (iwctl)
+- [x] `wireless-regdb` - WiFi regulatory database
 
 ### Live Environment Config (P1)
 - [x] Volatile journal storage (`Storage=volatile` in journald.conf)
@@ -424,10 +422,10 @@ nmcli device                      # Should list interfaces
 nmcli device wifi list            # Should show networks (real hardware)
 ```
 
-### Still Missing (P1)
-- [ ] iwd - alternative WiFi daemon
-- [ ] wireless-regdb - regulatory compliance
-- [ ] sof-firmware - Intel Sound Open Firmware
+### WiFi & Audio (Included)
+- [x] iwd - alternative WiFi daemon (iwctl)
+- [x] wireless-regdb - regulatory compliance
+- [x] sof-firmware - Intel Sound Open Firmware
 
 ---
 
@@ -1124,43 +1122,43 @@ Arch Linux ISO includes these packages. Status in LevitateOS noted.
 
 ### Network & WiFi
 - `dhcpcd` - DHCP client (N/A - using NetworkManager)
-- `iwd` - WiFi daemon - **MISSING (P1)**
+- `iwd` - WiFi daemon - ✅ INCLUDED
 - `wpa_supplicant` - WPA authentication - ✅ INCLUDED
 - `wireless_tools` - iwconfig etc (deprecated)
-- `wireless-regdb` - regulatory database - **MISSING (P1)**
-- `ethtool` - NIC config - **MISSING (P1)**
+- `wireless-regdb` - regulatory database - ✅ INCLUDED
+- `ethtool` - NIC config - ✅ INCLUDED
 - `modemmanager` - mobile broadband - MISSING (P2)
 
 ### Filesystems
-- `btrfs-progs` - **MISSING (P0)**
+- `btrfs-progs` - ✅ INCLUDED
 - `dosfstools` - ✅ INCLUDED
 - `e2fsprogs` - ✅ INCLUDED
 - `exfatprogs` - MISSING (P2)
 - `f2fs-tools` - MISSING (P3)
 - `jfsutils` - MISSING (P3)
 - `ntfs-3g` - MISSING (P2)
-- `xfsprogs` - MISSING (P2)
+- `xfsprogs` - ✅ INCLUDED
 
 ### Disk Tools
-- `cryptsetup` - LUKS - **MISSING (P0)**
+- `cryptsetup` - LUKS - ✅ INCLUDED
 - `dmraid` - MISSING (P3)
-- `gptfdisk` (gdisk) - **MISSING (P1)**
-- `hdparm` - MISSING (P2)
-- `lvm2` - **MISSING (P0)**
+- `gptfdisk` (gdisk) - N/A - NOT IN ROCKY 10.1 (parted/sfdisk sufficient)
+- `hdparm` - ✅ INCLUDED
+- `lvm2` - ✅ INCLUDED
 - `mdadm` - MISSING (P2)
-- `nvme-cli` - MISSING (P2)
+- `nvme-cli` - ✅ INCLUDED
 - `parted` - ✅ INCLUDED (in squashfs)
 - `sdparm` - MISSING (P3)
-- `smartmontools` - MISSING (P2)
+- `smartmontools` - ✅ INCLUDED
 
 ### Hardware
-- `amd-ucode` - **MISSING (P0)**
-- `intel-ucode` - **MISSING (P0)**
-- `linux-firmware` - ✅ INCLUDED (partial)
+- `amd-ucode` - ✅ INCLUDED (via linux-firmware)
+- `intel-ucode` - ✅ INCLUDED (microcode_ctl)
+- `linux-firmware` - ✅ INCLUDED
 - `linux-firmware-marvell` - MISSING (minor)
-- `sof-firmware` - sound - **MISSING (P1)**
-- `dmidecode` - **MISSING (P1)**
-- `usbutils` - **MISSING (P1)**
+- `sof-firmware` - sound - ✅ INCLUDED (alsa-sof-firmware)
+- `dmidecode` - ✅ INCLUDED
+- `usbutils` - ✅ INCLUDED
 - `pciutils` - ✅ INCLUDED
 
 ### Utilities
@@ -1206,21 +1204,21 @@ Arch Linux ISO includes these packages. Status in LevitateOS noted.
 - [x] Core utilities
 - [x] **recfstab** - fstab generation helper (genfstab equivalent)
 - [x] **recchroot** - arch-chroot equivalent
-- [ ] **Intel/AMD microcode** - CPU security/stability
-- [ ] **cryptsetup (LUKS)** - disk encryption
-- [ ] **lvm2** - Logical Volume Manager
-- [ ] **btrfs-progs** - Btrfs filesystem support
+- [x] **Intel/AMD microcode** - CPU security/stability
+- [x] **cryptsetup (LUKS)** - disk encryption
+- [x] **lvm2** - Logical Volume Manager
+- [x] **btrfs-progs** - Btrfs filesystem support
 
 ### P1 - Should Have (archiso Parity)
 - [x] Volatile journal storage (prevent tmpfs fill)
 - [x] do-not-suspend config (prevent sleep during install)
 - [x] SSH server available (remote installation/rescue) - not enabled by default
-- [~] Hardware probing: ~~lspci~~, lsusb, dmidecode (lspci done, others pending)
-- [ ] ethtool (NIC diagnostics)
+- [x] Hardware probing: lspci, lsusb, dmidecode
+- [x] ethtool (NIC diagnostics)
 - [~] gdisk/sgdisk - NOT IN ROCKY 10.1 (parted/sfdisk sufficient)
-- [ ] iwd (alternative WiFi)
-- [ ] wireless-regdb (regulatory compliance)
-- [ ] sof-firmware (Intel laptop sound)
+- [x] iwd (alternative WiFi)
+- [x] wireless-regdb (regulatory compliance)
+- [x] sof-firmware (Intel laptop sound)
 - [x] ISO SHA512 checksum generation
 - [ ] Man pages
 

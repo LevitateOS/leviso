@@ -126,7 +126,7 @@ const BIN_UTILS: &[&str] = &[
     "grep", "find", "xargs",
     // System info
     "pwd", "uname", "date", "env", "id", "hostname",
-    "printenv", "whoami", "groups", "dmesg",
+    "printenv", "whoami", "groups", "dmesg", "lsusb",
     // Process control
     "kill", "nice", "nohup", "setsid",
     // Compression
@@ -171,6 +171,8 @@ const BIN_UTILS: &[&str] = &[
     "tmux",
     // === NETWORK DIAGNOSTICS ===
     "dig", "nslookup", "tracepath",
+    // === WIRELESS ===
+    "iwctl",          // iwd WiFi client
     // === BINARY INSPECTION ===
     "strings", "hexdump",
 ];
@@ -213,6 +215,8 @@ const SBIN_UTILS: &[&str] = &[
     "dmidecode", "ethtool",
     // === XFS ===
     "mkfs.xfs", "xfs_repair",
+    // === BTRFS ===
+    "mkfs.btrfs", "btrfs", "btrfsck",
     // === DISK HEALTH ===
     "smartctl", "hdparm", "nvme",
 ];

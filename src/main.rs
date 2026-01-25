@@ -42,7 +42,7 @@ enum Commands {
         target: Option<BuildTarget>,
     },
 
-    /// Run the ISO in QEMU (UEFI boot)
+    /// Run the ISO in QEMU (UEFI boot, GUI)
     Run {
         /// Don't attach virtual disk
         #[arg(long)]
@@ -50,6 +50,13 @@ enum Commands {
         /// Virtual disk size (default: 8G)
         #[arg(long, default_value = "8G")]
         disk_size: String,
+    },
+
+    /// Test the ISO boots correctly (headless, automated)
+    Test {
+        /// Timeout in seconds (default: 120)
+        #[arg(short, long, default_value = "120")]
+        timeout: u64,
     },
 
     /// Clean build artifacts (default: preserves downloads)
@@ -174,6 +181,10 @@ fn main() -> Result<()> {
 
         Commands::Run { no_disk, disk_size } => {
             commands::cmd_run(&base_dir, no_disk, disk_size)?;
+        }
+
+        Commands::Test { timeout } => {
+            commands::cmd_test(&base_dir, timeout)?;
         }
 
         Commands::Clean { what } => {

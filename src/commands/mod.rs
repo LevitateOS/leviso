@@ -2,7 +2,8 @@
 //!
 //! Each submodule handles a specific CLI command:
 //! - `build` - Build LevitateOS artifacts
-//! - `run` - Run ISO in QEMU
+//! - `run` - Run ISO in QEMU (GUI)
+//! - `test` - Test ISO boots (headless, automated)
 //! - `clean` - Clean build artifacts
 //! - `show` - Display information
 //! - `download` - Download dependencies
@@ -22,5 +23,5 @@ pub use clean::cmd_clean;
 pub use download::cmd_download;
 pub use extract::cmd_extract;
 pub use preflight::cmd_preflight;
-pub use run::cmd_run;
+pub use run::{cmd_run, cmd_test};
 pub use show::cmd_show;

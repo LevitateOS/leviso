@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 
 use crate::extract;
 use distro_builder::process::Cmd;
-use leviso_deps::DependencyResolver;
 
 /// Extract target for the extract command.
 pub enum ExtractTarget {
@@ -16,15 +15,12 @@ pub enum ExtractTarget {
 }
 
 /// Execute the extract command.
-pub fn cmd_extract(
-    base_dir: &Path,
-    target: ExtractTarget,
-    resolver: &DependencyResolver,
-) -> Result<()> {
+pub fn cmd_extract(base_dir: &Path, target: ExtractTarget) -> Result<()> {
     match target {
         ExtractTarget::Rocky => {
-            let rocky = resolver.rocky_iso()?;
-            extract::extract_rocky_iso(base_dir, &rocky.path)?;
+            // Use recipe to ensure Rocky is available, then extract
+            let rocky = crate::recipe::rocky(base_dir)?;
+            extract::extract_rocky_iso(base_dir, &rocky.iso)?;
         }
         ExtractTarget::Squashfs { output } => {
             let squashfs = base_dir.join("output/filesystem.squashfs");

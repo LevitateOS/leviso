@@ -227,7 +227,7 @@ fn main() -> Result<()> {
                     commands::extract::ExtractTarget::Squashfs { output }
                 }
             };
-            commands::cmd_extract(&base_dir, extract_target, &resolver)?;
+            commands::cmd_extract(&base_dir, extract_target)?;
         }
 
         Commands::Preflight { strict } => {

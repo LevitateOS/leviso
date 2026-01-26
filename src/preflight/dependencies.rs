@@ -26,29 +26,38 @@ pub fn check_dependencies(base_dir: &Path) -> Result<Vec<CheckResult>> {
         ));
     }
 
-    // Rocky ISO - ANTI-CHEAT: verify size, not just existence
-    // A partial curl download passes .exists() but fails the build later.
-    // This is the "sys.exit(0)" equivalent - satisfying the literal check
-    // while violating its spirit. See: anthropic.com/research/emergent-misalignment-reward-hacking
-    if resolver.has_rocky_iso() {
+    // Rocky (via recipe) - check known paths
+    // Recipe puts artifacts at: downloads/Rocky-*.iso, downloads/rootfs, downloads/iso-contents
+    let iso_path = base_dir.join("downloads/Rocky-10.1-x86_64-dvd1.iso");
+    let rootfs_path = base_dir.join("downloads/rootfs");
+    let iso_contents_path = base_dir.join("downloads/iso-contents");
+
+    if iso_path.exists() && rootfs_path.exists() && iso_contents_path.exists() {
+        // Validate ISO size (anti-cheat)
         match validate_rocky_iso_size(base_dir) {
             Ok(size_gb) => {
                 results.push(CheckResult::pass_with(
-                    "Rocky ISO",
-                    &format!("Found, {:.1}GB (complete)", size_gb),
+                    "Rocky (recipe)",
+                    &format!("ISO {:.1}GB + rootfs + iso-contents", size_gb),
                 ));
             }
             Err(e) => {
                 results.push(CheckResult::fail(
-                    "Rocky ISO",
-                    &format!("Found but invalid: {} - delete and re-download", e),
+                    "Rocky (recipe)",
+                    &format!("ISO invalid: {} - run 'leviso download rocky'", e),
                 ));
             }
         }
+    } else if iso_path.exists() {
+        // ISO exists but not fully extracted
+        results.push(CheckResult::warn(
+            "Rocky (recipe)",
+            "ISO found but not extracted - run 'leviso download rocky'",
+        ));
     } else {
         results.push(CheckResult::warn(
-            "Rocky ISO",
-            "Not found - will download 8.6GB on first build",
+            "Rocky (recipe)",
+            "Not found - run 'leviso download rocky' (8.6GB download)",
         ));
     }
 

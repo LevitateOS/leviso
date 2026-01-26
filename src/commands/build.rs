@@ -8,7 +8,6 @@ use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, INITRAMFS_INSTALLED_OUTPUT, I
 
 use crate::artifact;
 use crate::config::Config;
-use crate::extract;
 use crate::rebuild;
 use crate::timing::Timer;
 use leviso_deps::DependencyResolver;
@@ -49,13 +48,10 @@ fn build_full(base_dir: &Path, resolver: &DependencyResolver, config: &Config) -
     println!("=== Full LevitateOS Build ===\n");
     let build_start = Instant::now();
 
-    // 1. Download Rocky if needed
+    // 1. Ensure Rocky is available via recipe
     if !base_dir.join("downloads/iso-contents/BaseOS").exists() {
-        println!("Resolving Rocky Linux ISO...");
-        let rocky = resolver.rocky_iso()?;
-        if !base_dir.join("downloads/iso-contents/BaseOS").exists() {
-            extract::extract_rocky_iso(base_dir, &rocky.path)?;
-        }
+        println!("Resolving Rocky Linux via recipe...");
+        crate::recipe::rocky(base_dir)?;
     }
 
     // 2. Resolve Linux source (auto-detects submodule or downloads)

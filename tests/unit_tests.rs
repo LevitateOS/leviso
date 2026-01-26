@@ -1068,43 +1068,24 @@ fn test_filesystem_phase_is_first() {
 }
 
 // =============================================================================
-// CRITICAL: Library Dependency Tests
+// NOTE: Library Dependency Error Messages - NOT Unit Testable
 // =============================================================================
-
-#[cheat_aware(
-    protects = "Missing library dependency produces clear error message",
-    severity = "CRITICAL",
-    ease = "MEDIUM",
-    cheats = [
-        "Swallow library copy errors",
-        "Continue on missing library",
-        "Return Ok(true) when library missing"
-    ],
-    consequence = "Binary copied but crashes on execution with 'error while loading shared libraries'"
-)]
-#[test]
-fn test_copy_library_error_message_includes_context() {
-    // This test verifies that when a library copy fails, the error message
-    // includes context about WHICH binary needed the library.
-    // The actual copy_library function is tested by checking the error format.
-
-    // Simulate the error format from libdeps.rs line 76-77:
-    // .with_context(|| format!("'{}' requires missing library '{}'", binary, lib_name))
-    let error = anyhow::anyhow!("Library not found")
-        .context("'sudo' requires missing library 'libpam.so.0'");
-
-    let msg = format!("{:#}", error);
-    assert!(
-        msg.contains("sudo"),
-        "Error should mention the binary name: {}",
-        msg
-    );
-    assert!(
-        msg.contains("libpam"),
-        "Error should mention the library name: {}",
-        msg
-    );
-}
+//
+// Testing that copy_library() produces good error messages requires:
+// - A real rootfs with binaries that have library dependencies
+// - A missing library to trigger the error path
+//
+// A previous test here verified anyhow's .context() format, not that
+// copy_library() actually uses it. That's reward hacking - the test passed
+// but didn't verify the real code.
+//
+// To test library error messages properly:
+// 1. Create a mock binary with a dependency on "libfake.so"
+// 2. Call copy_binary_with_libs() without libfake.so present
+// 3. Verify the error message mentions both binary and library names
+//
+// This requires ELF manipulation which is complex for unit tests.
+// Consider adding to testing/install-tests/ with a real failing case.
 
 // =============================================================================
 // CRITICAL: WriteFile Mode Tests

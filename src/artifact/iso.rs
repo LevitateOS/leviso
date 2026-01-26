@@ -5,12 +5,15 @@
 //! - Squashfs image (~350MB) - complete base system
 //! - Live overlay - live-specific configs (autologin, serial console, empty root password)
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use leviso_elf::copy_dir_recursive;
+use distro_builder::{
+    copy_dir_recursive, create_efi_boot_image, generate_iso_checksum, run_xorriso,
+    setup_iso_structure,
+};
 use distro_spec::levitate::{
     // Identity
     ISO_LABEL, ISO_FILENAME, OS_NAME,
@@ -20,20 +23,13 @@ use distro_spec::levitate::{
     KERNEL_ISO_PATH, INITRAMFS_LIVE_ISO_PATH,
     INITRAMFS_LIVE_OUTPUT, INITRAMFS_INSTALLED_OUTPUT, INITRAMFS_INSTALLED_ISO_PATH,
     // ISO structure
-    ISO_BOOT_DIR, ISO_LIVE_DIR, ISO_EFI_DIR,
-    LIVE_OVERLAY_ISO_PATH,
+    ISO_EFI_DIR, LIVE_OVERLAY_ISO_PATH,
     // EFI
-    EFIBOOT_FILENAME, EFIBOOT_SIZE_MB,
-    EFI_BOOTLOADER, EFI_GRUB,
+    EFIBOOT_FILENAME, EFI_BOOTLOADER, EFI_GRUB,
     // Console
     SERIAL_CONSOLE, VGA_CONSOLE, SELINUX_DISABLE,
-    // Checksum
-    ISO_CHECKSUM_SUFFIX, SHA512_SEPARATOR,
-    // xorriso
-    XORRISO_PARTITION_OFFSET, XORRISO_FS_FLAGS,
 };
 use crate::component::custom::create_live_overlay_at;
-use distro_builder::process::Cmd;
 
 /// Get ISO volume label from environment or use default.
 /// Used for boot device detection (root=LABEL=X).
@@ -99,7 +95,7 @@ pub fn create_squashfs_iso(base_dir: &Path) -> Result<()> {
     create_live_overlay_at(&paths.output_dir)?;
 
     // Stage 3: Set up ISO directory structure
-    setup_iso_structure(&paths)?;
+    setup_iso_dirs(&paths)?;
 
     // Stage 4: Copy boot files and artifacts (including live overlay)
     copy_iso_artifacts(&paths, &kernel_path)?;
@@ -112,7 +108,7 @@ pub fn create_squashfs_iso(base_dir: &Path) -> Result<()> {
     run_xorriso_to(&paths, &temp_iso)?;
 
     // Stage 7: Generate checksum for the temporary ISO
-    generate_iso_checksum(&temp_iso)?;
+    generate_checksum(&temp_iso)?;
 
     // Stage 8: Verify hardware compatibility (BAIL on critical failures)
     println!("\nVerifying hardware compatibility before finalizing...");
@@ -231,16 +227,8 @@ fn find_kernel(paths: &IsoPaths) -> Result<PathBuf> {
 }
 
 /// Stage 3: Create ISO directory structure.
-fn setup_iso_structure(paths: &IsoPaths) -> Result<()> {
-    if paths.iso_root.exists() {
-        fs::remove_dir_all(&paths.iso_root)?;
-    }
-
-    fs::create_dir_all(paths.iso_root.join(ISO_BOOT_DIR))?;
-    fs::create_dir_all(paths.iso_root.join(ISO_LIVE_DIR))?;
-    fs::create_dir_all(paths.iso_root.join(ISO_EFI_DIR))?;
-
-    Ok(())
+fn setup_iso_dirs(paths: &IsoPaths) -> Result<()> {
+    setup_iso_structure(&paths.iso_root)
 }
 
 /// Stage 4: Copy kernel, initramfs, squashfs, and live overlay to ISO.
@@ -341,7 +329,7 @@ menuentry '{} (Debug)' {{
 
     // Create EFI boot image
     let efiboot_img = paths.output_dir.join(EFIBOOT_FILENAME);
-    create_efi_boot_image(&paths.iso_root, &efiboot_img)?;
+    build_efi_boot_image(&paths.iso_root, &efiboot_img)?;
 
     Ok(())
 }
@@ -350,64 +338,13 @@ menuentry '{} (Debug)' {{
 fn run_xorriso_to(paths: &IsoPaths, output: &Path) -> Result<()> {
     println!("Creating UEFI bootable ISO with xorriso...");
     let label = iso_label();
-
-    Cmd::new("xorriso")
-        .args(["-as", "mkisofs", "-o"])
-        .arg_path(output)
-        .args(["-V", &label]) // CRITICAL: Volume label for device detection
-        .args(["-partition_offset", &XORRISO_PARTITION_OFFSET.to_string()])
-        .args(XORRISO_FS_FLAGS)
-        .args(["-e", EFIBOOT_FILENAME, "-no-emul-boot", "-isohybrid-gpt-basdat"])
-        .arg_path(&paths.iso_root)
-        .error_msg("xorriso failed. Install: sudo dnf install xorriso")
-        .run()?;
-
-    Ok(())
+    run_xorriso(&paths.iso_root, output, &label, EFIBOOT_FILENAME)
 }
 
 /// Stage 7: Generate SHA512 checksum for download verification.
-///
-/// Writes checksum in standard format: "<hash>  <filename>" (two spaces)
-/// Uses just the filename (not full path) so users can verify with:
-///   cd output && sha512sum -c levitateos.iso.sha512
-fn generate_iso_checksum(iso_path: &Path) -> Result<()> {
+fn generate_checksum(iso_path: &Path) -> Result<()> {
     println!("Generating SHA512 checksum...");
-
-    let result = Cmd::new("sha512sum")
-        .arg_path(iso_path)
-        .error_msg("sha512sum failed. Install: sudo dnf install coreutils")
-        .run()?;
-
-    // Extract hash and replace full path with just filename
-    // sha512sum outputs: "<hash>  <full_path>"
-    // We want: "<hash>  <filename>"
-    let hash = result
-        .stdout
-        .split_whitespace()
-        .next()
-        .context("Could not parse sha512sum output - no hash found")?;
-
-    let filename = iso_path
-        .file_name()
-        .context("Could not get ISO filename")?
-        .to_string_lossy();
-
-    // Standard format: "<hash>  <filename>" (two spaces between hash and filename)
-    let checksum_content = format!("{}{}{}\n", hash, SHA512_SEPARATOR, filename);
-
-    let checksum_path = iso_path.with_extension(ISO_CHECKSUM_SUFFIX.trim_start_matches('.'));
-    fs::write(&checksum_path, &checksum_content)?;
-
-    // Print abbreviated hash for visual confirmation
-    if hash.len() >= 16 {
-        println!(
-            "  SHA512: {}...{}",
-            &hash[..8],
-            &hash[hash.len() - 8..]
-        );
-    }
-    println!("  Wrote: {}", checksum_path.display());
-
+    generate_iso_checksum(iso_path)?;
     Ok(())
 }
 
@@ -429,56 +366,18 @@ fn print_iso_summary(iso_output: &Path) {
 }
 
 /// Create a FAT16 image containing EFI boot files
-fn create_efi_boot_image(iso_root: &Path, efiboot_img: &Path) -> Result<()> {
-    // Create a FAT image file (16MB for FAT16 minimum + space for EFI files)
-    let efiboot_str = efiboot_img.to_string_lossy();
+fn build_efi_boot_image(iso_root: &Path, efiboot_img: &Path) -> Result<()> {
+    let efi_dir = iso_root.join(ISO_EFI_DIR);
 
-    // Create empty file
-    Cmd::new("dd")
-        .args(["if=/dev/zero", &format!("of={}", efiboot_str)])
-        .args(["bs=1M", &format!("count={}", EFIBOOT_SIZE_MB)])
-        .error_msg("Failed to create efiboot.img with dd")
-        .run()?;
-
-    // Format as FAT16
-    Cmd::new("mkfs.fat")
-        .args(["-F", "16"])
-        .arg_path(efiboot_img)
-        .error_msg("mkfs.fat failed. Install: sudo dnf install dosfstools")
-        .run()?;
-
-    // Create EFI/BOOT directory structure using mtools
-    Cmd::new("mmd")
-        .args(["-i", &efiboot_str, "::EFI"])
-        .error_msg("mmd failed. Install: sudo dnf install mtools")
-        .run()?;
-
-    Cmd::new("mmd")
-        .args(["-i", &efiboot_str, "::EFI/BOOT"])
-        .error_msg("mmd failed to create ::EFI/BOOT directory")
-        .run()?;
-
-    // Copy EFI files - these must succeed for UEFI boot to work
-    Cmd::new("mcopy")
-        .args(["-i", &efiboot_str])
-        .arg_path(&iso_root.join(ISO_EFI_DIR).join(EFI_BOOTLOADER))
-        .arg("::EFI/BOOT/")
-        .error_msg("mcopy failed to copy BOOTX64.EFI")
-        .run()?;
-
-    Cmd::new("mcopy")
-        .args(["-i", &efiboot_str])
-        .arg_path(&iso_root.join(ISO_EFI_DIR).join(EFI_GRUB))
-        .arg("::EFI/BOOT/")
-        .error_msg("mcopy failed to copy grubx64.efi")
-        .run()?;
-
-    Cmd::new("mcopy")
-        .args(["-i", &efiboot_str])
-        .arg_path(&iso_root.join(ISO_EFI_DIR).join("grub.cfg"))
-        .arg("::EFI/BOOT/")
-        .error_msg("mcopy failed to copy grub.cfg")
-        .run()?;
+    // Create EFI boot image with bootloader, GRUB, and config
+    create_efi_boot_image(
+        efiboot_img,
+        &[
+            (efi_dir.join(EFI_BOOTLOADER).as_path(), EFI_BOOTLOADER),
+            (efi_dir.join(EFI_GRUB).as_path(), EFI_GRUB),
+            (efi_dir.join("grub.cfg").as_path(), "grub.cfg"),
+        ],
+    )?;
 
     // Copy efiboot.img into iso-root for xorriso
     fs::copy(efiboot_img, iso_root.join(EFIBOOT_FILENAME))?;

@@ -36,6 +36,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use distro_builder::process::{shell, Cmd};
+use distro_builder::build_cpio;
 use distro_spec::levitate::{
     // Modules
     BOOT_MODULES,
@@ -98,7 +99,7 @@ pub fn build_tiny_initramfs(base_dir: &Path) -> Result<()> {
 
     // Build cpio archive to a temporary file (Atomic Artifacts)
     let temp_cpio = output_dir.join(format!("{}.tmp", INITRAMFS_LIVE_OUTPUT));
-    build_cpio(&initramfs_root, &temp_cpio)?;
+    build_cpio_archive(&initramfs_root, &temp_cpio)?;
 
     // Verify the temporary artifact is valid (could extend this with cpio check)
     if !temp_cpio.exists() || fs::metadata(&temp_cpio)?.len() < 1024 {
@@ -354,20 +355,9 @@ fn create_init_script(base_dir: &Path, initramfs_root: &Path) -> Result<()> {
 }
 
 /// Build the cpio archive from initramfs root.
-fn build_cpio(root: &Path, output: &Path) -> Result<()> {
+fn build_cpio_archive(root: &Path, output: &Path) -> Result<()> {
     println!("Building cpio archive...");
-
-    // Use find + cpio to create the archive
-    let cpio_cmd = format!(
-        "cd {} && find . -print0 | cpio --null -o -H newc 2>/dev/null | gzip -{} > {}",
-        root.display(),
-        CPIO_GZIP_LEVEL,
-        output.display()
-    );
-
-    shell(&cpio_cmd)?;
-
-    Ok(())
+    build_cpio(root, output, CPIO_GZIP_LEVEL)
 }
 
 /// Build a full initramfs for installed systems using dracut.

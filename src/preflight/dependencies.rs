@@ -108,41 +108,31 @@ pub fn check_dependencies(base_dir: &Path) -> Result<Vec<CheckResult>> {
         }
     }
 
-    // Recipe binary
-    // Check env var first, then fall back to default location
-    let recipe_binary = match std::env::var("RECIPE_BINARY") {
-        Ok(path_str) => {
-            let path = std::path::PathBuf::from(&path_str);
-            // Warn if env var is set but path doesn't exist (user error)
-            if !path.exists() {
-                eprintln!(
-                    "  [WARN] RECIPE_BINARY env var set to {} but file does not exist",
-                    path_str
-                );
-            }
-            Some(path)
-        }
-        Err(std::env::VarError::NotPresent) => {
-            // Env var not set - use default location
-            let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            manifest_dir
-                .parent()
-                .map(|p| p.join("recipe/target/release/recipe"))
-                .filter(|p| p.exists())
-        }
-        Err(std::env::VarError::NotUnicode(s)) => {
-            // Env var exists but invalid Unicode - warn user
-            eprintln!(
-                "  [WARN] RECIPE_BINARY env var contains invalid Unicode: {:?}",
-                s
-            );
-            None
-        }
-    };
+    // Recipe binary - use the same resolution logic as recipe.rs
+    // Check: PATH, workspace binary, RECIPE_BIN env var
+    let monorepo_dir = base_dir.parent().unwrap_or(base_dir);
 
-    // ANTI-CHEAT: verify recipe binary is executable, not just exists
+    // 1. Check system PATH
+    let recipe_in_path = which::which("recipe").ok();
+
+    // 2. Check workspace binary (debug and release)
+    let workspace_debug = monorepo_dir.join("target/debug/recipe");
+    let workspace_release = monorepo_dir.join("target/release/recipe");
+
+    // 3. Check RECIPE_BIN env var
+    let recipe_env = std::env::var("RECIPE_BIN").ok().map(std::path::PathBuf::from);
+
+    // 4. Check if source exists (can be built)
+    let recipe_source = monorepo_dir.join("tools/recipe/Cargo.toml");
+
+    // Find first available binary
+    let recipe_binary = recipe_in_path
+        .or_else(|| if workspace_debug.exists() { Some(workspace_debug.clone()) } else { None })
+        .or_else(|| if workspace_release.exists() { Some(workspace_release.clone()) } else { None })
+        .or_else(|| recipe_env.filter(|p| p.exists()));
+
     match recipe_binary {
-        Some(path) if path.exists() => {
+        Some(path) => {
             match validate_executable(&path, "recipe") {
                 Ok(version) => {
                     results.push(CheckResult::pass_with(
@@ -158,16 +148,20 @@ pub fn check_dependencies(base_dir: &Path) -> Result<Vec<CheckResult>> {
                 }
             }
         }
-        Some(path) => {
-            results.push(CheckResult::fail(
+        None if recipe_source.exists() => {
+            // Source exists but not built - this is OK, it will be built on demand
+            results.push(CheckResult::warn(
                 "recipe",
-                &format!("Path set but not found: {}", path.display()),
+                &format!(
+                    "Source found at {}, will be built on first use",
+                    monorepo_dir.join("tools/recipe").display()
+                ),
             ));
         }
         None => {
             results.push(CheckResult::fail(
                 "recipe",
-                "Not found. Build with: cd ../recipe && cargo build --release",
+                "Not found. Install to PATH or set RECIPE_BIN=/path/to/recipe",
             ));
         }
     }

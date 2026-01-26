@@ -1,21 +1,26 @@
-// Linux kernel source - dependency recipe
+// Linux kernel - dependency recipe
 //
-// Provides: LevitateOS linux fork for kernel building
-// Output: Kernel source at submodule path or BUILD_DIR/linux
+// Provides: Built Linux kernel for LevitateOS
+// Output: vmlinuz + modules in output/staging
 //
-// The linux kernel source can come from:
+// Phases:
+// - acquire: Get source from submodule or clone LevitateOS fork
+// - build: Compile kernel using leviso/kconfig
+// - install: Copy vmlinuz and modules to staging
+//
+// Source priority:
 // 1. Git submodule at MONOREPO/linux (preferred)
 // 2. Git clone from github.com/LevitateOS/linux (fallback)
-//
-// This recipe only handles acquisition. Building is done by leviso
-// using the project's kconfig file.
 
 let ctx = #{
     description: "Linux kernel source (LevitateOS fork)",
-    git_url: "https://github.com/LevitateOS/linux.git",
     name: "linux",
-    source_path: "/home/vince/Projects/LevitateOS/linux",
-    submodule_path: "/home/vince/Projects/LevitateOS/linux",
+    git_url: "https://github.com/LevitateOS/linux.git",
+    // Paths filled in by phases
+    source_path: "",
+    submodule_path: "",
+    build_dir: "",
+    kernel_version: "",
 };
 
 // === ACQUIRE ===
@@ -87,44 +92,46 @@ fn acquire(ctx) {
 }
 
 // === BUILD ===
-// Not implemented - leviso handles kernel building
+// Compile kernel using leviso's kconfig
 
 fn is_built(ctx) {
-    // Kernel building is handled by leviso, not this recipe
-    // Just pass through if source is acquired
+    // Check if source is acquired
     if ctx.source_path == "" {
         throw "source not acquired";
     }
+
+    // BUILD_DIR is leviso/downloads, output is at leviso/output
+    let leviso_dir = dirname(BUILD_DIR);
+    let output_dir = join_path(leviso_dir, "output");
+    let kernel_build = join_path(output_dir, "kernel-build");
+    let bzimage = join_path(kernel_build, "arch/x86/boot/bzImage");
+
+    if !is_file(bzimage) {
+        throw "kernel not built - no bzImage";
+    }
+
+    // Get version from kernel.release
+    let release_file = join_path(kernel_build, "include/config/kernel.release");
+    if is_file(release_file) {
+        ctx.kernel_version = trim(read_file(release_file));
+    }
+
+    ctx.build_dir = kernel_build;
     ctx
 }
 
 fn build(ctx) {
-    // No-op - leviso builds the kernel
-    log("Linux kernel building is handled by leviso");
-    ctx
-}
-
-// === INSTALL ===
-// Not implemented - source stays where it is
-
-fn is_installed(ctx) {
-    // Source is "installed" if it's acquired
-    if ctx.source_path == "" {
-        throw "source not acquired";
-    }
-    ctx
-}
-
-fn install(ctx) {
-    // Determine source path (same logic as is_acquired)
+    // Paths
     let leviso_dir = dirname(BUILD_DIR);
+    let output_dir = join_path(leviso_dir, "output");
+    let kernel_build = join_path(output_dir, "kernel-build");
+    let kconfig_path = join_path(leviso_dir, "kconfig");
+
+    // Determine source path (same logic as is_acquired)
     let monorepo = dirname(leviso_dir);
     let submodule = join_path(monorepo, "linux");
-
-    // Prefer submodule, fall back to downloaded
     if is_file(join_path(submodule, "Makefile")) {
         ctx.source_path = submodule;
-        ctx.submodule_path = submodule;
     } else {
         let downloaded = join_path(BUILD_DIR, "linux");
         if is_file(join_path(downloaded, "Makefile")) {
@@ -132,6 +139,168 @@ fn install(ctx) {
         }
     }
 
-    log("Linux source at " + ctx.source_path);
+    // Validate
+    if ctx.source_path == "" {
+        throw "source not acquired - run acquire first";
+    }
+    if !is_file(kconfig_path) {
+        throw "kconfig not found at " + kconfig_path;
+    }
+
+    mkdir(output_dir);
+    mkdir(kernel_build);
+
+    let src = ctx.source_path;
+    let build_arg = "O=" + kernel_build;
+
+    // Check if .config needs regeneration (kconfig changed)
+    let config_file = join_path(kernel_build, ".config");
+    let hash_file = join_path(kernel_build, ".config.kconfig-hash");
+    let kconfig_hash = trim(shell_output("sha256sum " + kconfig_path + " | cut -d' ' -f1"));
+    let cached_hash = trim(read_file_or_empty(hash_file));
+
+    if cached_hash != kconfig_hash || !is_file(config_file) {
+        log("Generating kernel config...");
+        shell("make -C " + src + " " + build_arg + " x86_64_defconfig");
+
+        // Merge kconfig options using shell (Rhai has complexity limits)
+        log("Applying kconfig options...");
+        let merge_cmd = "grep -E '^CONFIG_' " + kconfig_path + " | while read line; do " +
+            src + "/scripts/config --file " + config_file + " --set-val $(echo $line | sed 's/=/ /'); " +
+            "done";
+        shell(merge_cmd);
+
+        log("Resolving config dependencies...");
+        shell("make -C " + src + " " + build_arg + " olddefconfig");
+        write_file(hash_file, kconfig_hash);
+    } else {
+        log("Config unchanged, running olddefconfig...");
+        shell("make -C " + src + " " + build_arg + " olddefconfig");
+    }
+
+    // Build kernel
+    let cpus = trim(shell_output("nproc"));
+    log("Building kernel with " + cpus + " jobs...");
+    shell("make -C " + src + " " + build_arg + " -j" + cpus);
+
+    // Build modules
+    log("Building modules...");
+    shell("make -C " + src + " " + build_arg + " -j" + cpus + " modules");
+
+    // Get version
+    let release_file = join_path(kernel_build, "include/config/kernel.release");
+    ctx.kernel_version = trim(read_file(release_file));
+    ctx.build_dir = kernel_build;
+
+    log("Kernel " + ctx.kernel_version + " built successfully");
+    ctx
+}
+
+// === INSTALL ===
+// Install kernel and modules to staging
+
+fn is_installed(ctx) {
+    let leviso_dir = dirname(BUILD_DIR);
+    let staging = join_path(leviso_dir, "output/staging");
+    let vmlinuz = join_path(staging, "boot/vmlinuz");
+
+    if !is_file(vmlinuz) {
+        throw "kernel not installed - no vmlinuz in staging";
+    }
+
+    // Check modules exist
+    let modules_dir = join_path(staging, "usr/lib/modules");
+    if !is_dir(modules_dir) {
+        throw "modules not installed";
+    }
+
+    ctx
+}
+
+fn install(ctx) {
+    let leviso_dir = dirname(BUILD_DIR);
+    let output_dir = join_path(leviso_dir, "output");
+    let kernel_build = join_path(output_dir, "kernel-build");
+    let staging = join_path(output_dir, "staging");
+
+    // Validate build exists
+    let bzimage = join_path(kernel_build, "arch/x86/boot/bzImage");
+    if !is_file(bzimage) {
+        throw "kernel not built - run build first";
+    }
+
+    // Get version
+    let release_file = join_path(kernel_build, "include/config/kernel.release");
+    if !is_file(release_file) {
+        throw "kernel.release not found - build incomplete";
+    }
+    ctx.kernel_version = trim(read_file(release_file));
+
+    // Determine source path
+    let leviso_dir2 = dirname(BUILD_DIR);
+    let monorepo = dirname(leviso_dir2);
+    let submodule = join_path(monorepo, "linux");
+    if is_file(join_path(submodule, "Makefile")) {
+        ctx.source_path = submodule;
+    } else {
+        ctx.source_path = join_path(BUILD_DIR, "linux");
+    }
+
+    log("Installing kernel " + ctx.kernel_version + " to staging...");
+
+    // Create staging directories
+    let boot_dir = join_path(staging, "boot");
+    let modules_dir = join_path(staging, "usr/lib/modules/" + ctx.kernel_version);
+    mkdir(boot_dir);
+    mkdir(modules_dir);
+
+    // Copy kernel
+    let vmlinuz = join_path(boot_dir, "vmlinuz");
+    shell("cp " + bzimage + " " + vmlinuz);
+    log("  Installed /boot/vmlinuz");
+
+    // Install modules
+    log("  Installing modules to /usr/lib/modules/" + ctx.kernel_version + "...");
+    let build_arg = "O=" + kernel_build;
+    let mod_install = "INSTALL_MOD_PATH=" + staging;
+    shell("make -C " + ctx.source_path + " " + build_arg + " " + mod_install + " modules_install");
+
+    // Fix UsrMerge: make puts modules in /lib/modules, move to /usr/lib/modules
+    let lib_modules = join_path(staging, "lib/modules");
+    let usr_lib_modules = join_path(staging, "usr/lib/modules");
+    if is_dir(lib_modules) {
+        log("  Moving modules to usr/lib/modules...");
+        shell("mv " + lib_modules + "/* " + usr_lib_modules + "/ 2>/dev/null || true");
+        shell("rm -rf " + join_path(staging, "lib"));
+    }
+
+    // Remove build/source symlinks (point to host paths)
+    let ver_modules = join_path(usr_lib_modules, ctx.kernel_version);
+    shell("rm -f " + join_path(ver_modules, "build") + " " + join_path(ver_modules, "source"));
+
+    ctx.build_dir = kernel_build;
+    log("Kernel installed to " + staging);
+    ctx
+}
+
+// === CLEANUP ===
+// Remove build artifacts, preserve installed kernel
+
+fn cleanup(ctx) {
+    let leviso_dir = dirname(BUILD_DIR);
+    let output_dir = join_path(leviso_dir, "output");
+    let kernel_build = join_path(output_dir, "kernel-build");
+
+    if is_dir(kernel_build) {
+        log("Removing kernel build artifacts...");
+        rm(kernel_build);
+        log("Cleaned " + kernel_build);
+    } else {
+        log("No kernel build artifacts to clean");
+    }
+
+    // NOTE: staging/ is preserved - that's the final output
+    // NOTE: source (submodule or downloaded) is preserved
+
     ctx
 }

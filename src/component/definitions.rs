@@ -645,7 +645,7 @@ pub static FINAL: Component = Component {
     phase: Phase::Final,
     ops: &[
         custom(CustomOp::CreateWelcomeMessage),
-        custom(CustomOp::CopyRecstrap),
+        custom(CustomOp::InstallTools),
         custom(CustomOp::CopyDocsTui),
     ],
 };

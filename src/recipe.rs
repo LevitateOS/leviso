@@ -316,6 +316,65 @@ pub fn rocky(base_dir: &Path) -> Result<RockyPaths> {
     Ok(paths)
 }
 
+// ============================================================================
+// Installation tools via recipes (recstrap, recfstab, recchroot)
+// ============================================================================
+
+/// Run the tool recipes to install recstrap, recfstab, recchroot to staging.
+///
+/// These tools are required for the live ISO to be able to install itself.
+/// The recipes install binaries to output/staging/usr/bin/.
+///
+/// # Arguments
+/// * `base_dir` - leviso crate root (e.g., `/path/to/leviso`)
+pub fn install_tools(base_dir: &Path) -> Result<()> {
+    let monorepo_dir = base_dir
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| base_dir.to_path_buf());
+
+    let downloads_dir = base_dir.join("downloads");
+    let staging_bin = base_dir.join("output/staging/usr/bin");
+
+    // Find recipe binary once
+    let recipe_bin = find_recipe(&monorepo_dir)?;
+
+    // Run each tool recipe
+    for tool in ["recstrap", "recfstab", "recchroot"] {
+        let recipe_path = base_dir.join(format!("deps/{}.rhai", tool));
+        let installed_path = staging_bin.join(tool);
+
+        // Skip if already installed
+        if installed_path.exists() {
+            println!("  {} already installed", tool);
+            continue;
+        }
+
+        if !recipe_path.exists() {
+            bail!(
+                "{} recipe not found at: {}\n\
+                 Expected {}.rhai in leviso/deps/",
+                tool,
+                recipe_path.display(),
+                tool
+            );
+        }
+
+        recipe_bin.run(&recipe_path, &downloads_dir)?;
+
+        // Verify installation
+        if !installed_path.exists() {
+            bail!(
+                "Recipe completed but {} not found at: {}",
+                tool,
+                installed_path.display()
+            );
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

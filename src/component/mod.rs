@@ -305,8 +305,8 @@ pub enum CustomOp {
     CopyKeymaps,
     /// Create welcome message.
     CreateWelcomeMessage,
-    /// Copy recstrap installer tools.
-    CopyRecstrap,
+    /// Install recstrap/recfstab/recchroot tools via recipes.
+    InstallTools,
     /// Disable SELinux.
     DisableSelinux,
     /// Create PAM system-auth and related files.

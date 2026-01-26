@@ -15,7 +15,7 @@ pub enum DownloadTarget {
     Linux,
     /// Download Rocky ISO (via recipe)
     Rocky,
-    /// Download installation tools
+    /// Download installation tools (via recipe)
     Tools,
 }
 
@@ -33,8 +33,12 @@ pub fn cmd_download(
             let rocky = recipe::rocky(base_dir)?;
             println!("Rocky: {} [OK]", rocky.iso.display());
 
+            // Linux via leviso-deps (TODO: migrate to recipe)
             resolver.linux()?;
-            let _ = resolver.all_tools()?;
+
+            // Tools via recipe
+            recipe::install_tools(base_dir)?;
+
             println!("\nAll dependencies resolved.");
         }
         DownloadTarget::Linux => {
@@ -51,23 +55,16 @@ pub fn cmd_download(
             println!("  iso-contents: {}", rocky.iso_contents.display());
         }
         DownloadTarget::Tools => {
-            println!("Resolving installation tools...\n");
-            let (recstrap, recfstab, recchroot) = resolver.all_tools()?;
-            println!("\nTools resolved:");
-            for bin in [&recstrap, &recfstab, &recchroot] {
-                let source = match bin.source {
-                    leviso_deps::ToolSourceType::BuiltFromEnvVar => "built (env)",
-                    leviso_deps::ToolSourceType::BuiltFromSubmodule => "built (submodule)",
-                    leviso_deps::ToolSourceType::Downloaded => "downloaded",
-                };
-                let valid = if bin.is_valid() { "OK" } else { "MISSING" };
-                println!(
-                    "  {:10} {} [{}] ({})",
-                    format!("{}:", bin.tool.name()),
-                    bin.path.display(),
-                    valid,
-                    source
-                );
+            println!("Installing tools via recipes...\n");
+            recipe::install_tools(base_dir)?;
+
+            // Show what was installed
+            let staging_bin = base_dir.join("output/staging/usr/bin");
+            println!("\nTools installed:");
+            for tool in ["recstrap", "recfstab", "recchroot"] {
+                let path = staging_bin.join(tool);
+                let status = if path.exists() { "OK" } else { "MISSING" };
+                println!("  {:10} {} [{}]", format!("{}:", tool), path.display(), status);
             }
         }
     }

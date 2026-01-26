@@ -1,6 +1,6 @@
 //! Live ISO overlay operations.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -99,29 +99,12 @@ pub fn create_welcome_message(ctx: &BuildContext) -> Result<()> {
     Ok(())
 }
 
-/// Copy installation tools (recstrap, recfstab, recchroot) to staging.
-pub fn copy_recstrap(ctx: &BuildContext) -> Result<()> {
-    use leviso_deps::DependencyResolver;
-
-    let resolver = DependencyResolver::new(&ctx.base_dir)?;
-
-    let (recstrap, recfstab, recchroot) = resolver
-        .all_tools()
-        .context("Installation tools are REQUIRED - the ISO cannot install itself without them")?;
-
-    for tool in [&recstrap, &recfstab, &recchroot] {
-        let dst = ctx.staging.join("usr/bin").join(tool.tool.name());
-        fs::copy(&tool.path, &dst)?;
-        fs::set_permissions(&dst, fs::Permissions::from_mode(0o755))?;
-        println!(
-            "  Copied {} to /usr/bin/{} (from {:?})",
-            tool.tool.name(),
-            tool.tool.name(),
-            tool.source
-        );
-    }
-
-    Ok(())
+/// Install installation tools (recstrap, recfstab, recchroot) to staging via recipes.
+///
+/// This is now a thin wrapper that calls the recipe module.
+/// The actual work is done by deps/recstrap.rhai, deps/recfstab.rhai, deps/recchroot.rhai.
+pub fn install_tools(ctx: &BuildContext) -> Result<()> {
+    crate::recipe::install_tools(&ctx.base_dir)
 }
 
 /// Set up live systemd configurations (volatile journal, no suspend).

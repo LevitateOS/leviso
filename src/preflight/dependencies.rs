@@ -62,49 +62,29 @@ pub fn check_dependencies(base_dir: &Path) -> Result<Vec<CheckResult>> {
     }
 
     // Installation tools (recstrap, recfstab, recchroot)
-    // Try to resolve each one
-    match resolver.recstrap() {
-        Ok(tool) => {
+    // Check if installed in staging (placed there by recipes)
+    let staging_bin = base_dir.join("output/staging/usr/bin");
+    for tool in ["recstrap", "recfstab", "recchroot"] {
+        let path = staging_bin.join(tool);
+        if path.exists() {
             results.push(CheckResult::pass_with(
-                "recstrap",
-                &format!("{:?}: {}", tool.source, tool.path.display()),
+                tool,
+                &format!("Installed: {}", path.display()),
             ));
-        }
-        Err(e) => {
-            results.push(CheckResult::fail(
-                "recstrap",
-                &format!("Failed to resolve: {}", e),
-            ));
-        }
-    }
-
-    match resolver.recfstab() {
-        Ok(tool) => {
-            results.push(CheckResult::pass_with(
-                "recfstab",
-                &format!("{:?}: {}", tool.source, tool.path.display()),
-            ));
-        }
-        Err(e) => {
-            results.push(CheckResult::fail(
-                "recfstab",
-                &format!("Failed to resolve: {}", e),
-            ));
-        }
-    }
-
-    match resolver.recchroot() {
-        Ok(tool) => {
-            results.push(CheckResult::pass_with(
-                "recchroot",
-                &format!("{:?}: {}", tool.source, tool.path.display()),
-            ));
-        }
-        Err(e) => {
-            results.push(CheckResult::fail(
-                "recchroot",
-                &format!("Failed to resolve: {}", e),
-            ));
+        } else {
+            // Check if recipe exists
+            let recipe_path = base_dir.join(format!("deps/{}.rhai", tool));
+            if recipe_path.exists() {
+                results.push(CheckResult::warn(
+                    tool,
+                    "Not installed - will be built via recipe during build",
+                ));
+            } else {
+                results.push(CheckResult::fail(
+                    tool,
+                    &format!("Not installed and recipe missing: {}", recipe_path.display()),
+                ));
+            }
         }
     }
 

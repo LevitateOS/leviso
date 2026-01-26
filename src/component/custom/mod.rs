@@ -31,7 +31,7 @@ pub fn execute(ctx: &BuildContext, op: CustomOp) -> Result<()> {
         // Live overlay
         CustomOp::CreateLiveOverlay => live::create_live_overlay(ctx),
         CustomOp::CreateWelcomeMessage => live::create_welcome_message(ctx),
-        CustomOp::CopyRecstrap => live::copy_recstrap(ctx),
+        CustomOp::InstallTools => live::install_tools(ctx),
         CustomOp::SetupLiveSystemdConfigs => live::setup_live_systemd_configs(ctx),
 
         // Firmware

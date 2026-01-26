@@ -230,7 +230,7 @@ fn build(ctx) {
 // === INSTALL ===
 //
 // For leviso's use case, artifacts stay in BUILD_DIR after build().
-// install() just records the paths in ctx.
+// install() records paths and removes bloat that leviso doesn't need.
 
 fn is_installed(ctx) {
     // Check if paths are recorded and artifacts exist
@@ -248,16 +248,124 @@ fn is_installed(ctx) {
         throw "packages missing at " + iso_contents;
     }
 
+    // Check if install marker exists (bloat was removed)
+    let install_marker = join_path(BUILD_DIR, ".rocky-installed");
+    if !is_file(install_marker) {
+        throw "install marker missing - bloat not yet removed";
+    }
+
     ctx
 }
 
 fn install(ctx) {
-    // Artifacts are already in BUILD_DIR from build phase
-    // Just record the paths
-    ctx.rootfs_path = join_path(BUILD_DIR, "rootfs");
-    ctx.iso_contents_path = join_path(BUILD_DIR, "iso-contents");
+    let iso_contents = join_path(BUILD_DIR, "iso-contents");
+    let rootfs = join_path(BUILD_DIR, "rootfs");
+    let install_marker = join_path(BUILD_DIR, ".rocky-installed");
 
-    log("Install complete - artifacts at " + BUILD_DIR);
+    // Record the paths
+    ctx.rootfs_path = rootfs;
+    ctx.iso_contents_path = iso_contents;
+
+    // Skip if already installed
+    if is_file(install_marker) {
+        log("Already installed (bloat removed)");
+        return ctx;
+    }
+
+    log("Removing bloat from iso-contents...");
+
+    // Remove installer boot files (leviso builds its own)
+    let efi_dir = join_path(iso_contents, "EFI");
+    if is_dir(efi_dir) {
+        log("  Removing EFI/ (installer boot files)");
+        rm(efi_dir);
+    }
+
+    let isolinux_dir = join_path(iso_contents, "isolinux");
+    if is_dir(isolinux_dir) {
+        log("  Removing isolinux/ (legacy BIOS boot)");
+        rm(isolinux_dir);
+    }
+
+    // Remove images/ (squashfs already extracted to rootfs)
+    let images_dir = join_path(iso_contents, "images");
+    if is_dir(images_dir) {
+        log("  Removing images/ (squashfs already extracted)");
+        rm(images_dir);
+    }
+
+    // Remove LiveOS (not used by leviso)
+    let liveos_dir = join_path(iso_contents, "LiveOS");
+    if is_dir(liveos_dir) {
+        log("  Removing LiveOS/");
+        rm(liveos_dir);
+    }
+
+    // Remove Minimal (not used - we use full packages)
+    let minimal_dir = join_path(iso_contents, "Minimal");
+    if is_dir(minimal_dir) {
+        log("  Removing Minimal/");
+        rm(minimal_dir);
+    }
+
+    // Remove installer metadata files
+    let metadata_files = [".discinfo", ".treeinfo", "media.repo", "TRANS.TBL"];
+    for f in metadata_files {
+        let fpath = join_path(iso_contents, f);
+        if is_file(fpath) {
+            log("  Removing " + f);
+            rm(fpath);
+        }
+    }
+
+    log("Removing bloat from rootfs...");
+
+    // Remove Anaconda installer (leviso doesn't use it)
+    let anaconda_dir = join_path(rootfs, "usr/lib64/python3.12/site-packages/pyanaconda");
+    if is_dir(anaconda_dir) {
+        log("  Removing pyanaconda/");
+        rm(anaconda_dir);
+    }
+
+    // Remove Anaconda data
+    let anaconda_share = join_path(rootfs, "usr/share/anaconda");
+    if is_dir(anaconda_share) {
+        log("  Removing anaconda share data");
+        rm(anaconda_share);
+    }
+
+    // Remove installer-specific GTK themes
+    let gtk_themes = join_path(rootfs, "usr/share/themes");
+    if is_dir(gtk_themes) {
+        log("  Removing GTK themes (installer UI)");
+        rm(gtk_themes);
+    }
+
+    // Remove locale data (leviso builds its own)
+    let locale_dir = join_path(rootfs, "usr/share/locale");
+    if is_dir(locale_dir) {
+        log("  Removing locale data");
+        rm(locale_dir);
+    }
+
+    // Remove man pages (not needed for base extraction)
+    let man_dir = join_path(rootfs, "usr/share/man");
+    if is_dir(man_dir) {
+        log("  Removing man pages");
+        rm(man_dir);
+    }
+
+    // Remove doc (not needed for base extraction)
+    let doc_dir = join_path(rootfs, "usr/share/doc");
+    if is_dir(doc_dir) {
+        log("  Removing documentation");
+        rm(doc_dir);
+    }
+
+    // Write install marker
+    write_file(install_marker, ctx.version);
+
+    log("Install complete - bloat removed from " + BUILD_DIR);
     ctx
 }
 
@@ -267,6 +375,7 @@ fn cleanup(ctx) {
     let iso_contents = join_path(BUILD_DIR, "iso-contents");
     let rootfs_temp = join_path(BUILD_DIR, "rootfs");
     let version_file = join_path(BUILD_DIR, ".rocky-built-version");
+    let install_marker = join_path(BUILD_DIR, ".rocky-installed");
 
     log("Cleaning up build artifacts...");
 
@@ -279,6 +388,9 @@ fn cleanup(ctx) {
     // NOTE: ISO is preserved (expensive to re-download)
     if is_file(version_file) {
         rm(version_file);
+    }
+    if is_file(install_marker) {
+        rm(install_marker);
     }
 
     log("Cleanup complete");

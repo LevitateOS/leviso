@@ -54,6 +54,11 @@ fn build_full(base_dir: &Path, resolver: &DependencyResolver, config: &Config) -
         crate::recipe::rocky(base_dir)?;
     }
 
+    // 1b. Extract supplementary RPMs into rootfs
+    // (This is separate from rocky.rhai so changing the package list doesn't re-extract the 2GB squashfs)
+    println!("\nExtracting supplementary packages...");
+    crate::recipe::packages(base_dir)?;
+
     // 2. Resolve Linux source (auto-detects submodule or downloads)
     let linux = resolver.linux()?;
 

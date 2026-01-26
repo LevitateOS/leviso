@@ -171,8 +171,7 @@ const BIN_UTILS: &[&str] = &[
     "tmux",
     // === NETWORK DIAGNOSTICS ===
     "dig", "nslookup", "tracepath",
-    // === WIRELESS ===
-    "iwctl",          // iwd WiFi client
+    // NOTE: iwctl (iwd) is NOT in Rocky 10 repos - WiFi via NetworkManager-wifi instead
     // === BINARY INSPECTION ===
     "strings", "hexdump",
 ];
@@ -215,8 +214,7 @@ const SBIN_UTILS: &[&str] = &[
     "dmidecode", "ethtool",
     // === XFS ===
     "mkfs.xfs", "xfs_repair",
-    // === BTRFS ===
-    "mkfs.btrfs", "btrfs", "btrfsck",
+    // NOTE: btrfs-progs NOT in Rocky 10 DVD ISO - users can install later
     // === DISK HEALTH ===
     "smartctl", "hdparm", "nvme",
 ];

@@ -6,7 +6,7 @@ Builds the LevitateOS ISO and rootfs tarball. Downloads Rocky Linux, extracts pa
 
 ## What Belongs Here
 
-- ISO/initramfs/squashfs building (`src/artifact/`)
+- ISO/initramfs/rootfs building (`src/artifact/`)
 - System component definitions (`src/component/`)
 - Build orchestration (`src/build/`)
 - Unit tests for leviso internals (`tests/`)
@@ -39,7 +39,7 @@ leviso/
 ├── output/              # initramfs, ISO, tarball outputs (gitignored)
 ├── profile/init_tiny    # Init script for initramfs
 ├── src/
-│   ├── artifact/        # initramfs.rs, iso.rs, squashfs.rs
+│   ├── artifact/        # initramfs.rs, iso.rs, rootfs.rs
 │   ├── build/           # kernel.rs, users.rs, libdeps.rs
 │   ├── component/       # System component builders
 │   └── common/          # Shared utilities (use these, don't duplicate)

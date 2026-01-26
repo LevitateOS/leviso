@@ -1,14 +1,16 @@
-//! Build artifacts - initramfs, squashfs, and ISO creation.
+//! Build artifacts - initramfs, rootfs (EROFS), UKI, and ISO creation.
 //!
 //! This module contains all artifact creation logic:
 //! - `initramfs` - Tiny initramfs builder (~5MB)
-//! - `squashfs` - Squashfs system image builder (~350MB)
+//! - `rootfs` - EROFS system image builder (~350MB)
+//! - `uki` - Unified Kernel Image builder
 //! - `iso` - Bootable ISO creation
 
 pub mod initramfs;
 pub mod iso;
-pub mod squashfs;
+pub mod rootfs;
+pub mod uki;
 
 pub use initramfs::{build_tiny_initramfs, build_install_initramfs};
 pub use iso::create_squashfs_iso;
-pub use squashfs::build_squashfs;
+pub use rootfs::build_squashfs;

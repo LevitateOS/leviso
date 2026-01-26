@@ -187,6 +187,17 @@ CONFIG_SQUASHFS_LZ4=y
 CONFIG_SQUASHFS_LZO=y
 CONFIG_SQUASHFS_XZ=y
 CONFIG_SQUASHFS_ZSTD=y
+# === EROFS (modern read-only filesystem for live media) ===
+# EROFS is used by Fedora 42+, RHEL 10, Android for better read performance
+# and compression. Better random access than squashfs (no linear directory search).
+CONFIG_EROFS_FS=y
+CONFIG_EROFS_FS_XATTR=y
+CONFIG_EROFS_FS_POSIX_ACL=y
+CONFIG_EROFS_FS_SECURITY=y
+CONFIG_EROFS_FS_ZIP=y
+CONFIG_EROFS_FS_ZIP_LZMA=y
+CONFIG_EROFS_FS_ZIP_DEFLATE=y
+CONFIG_EROFS_FS_ZIP_ZSTD=y
 CONFIG_OVERLAY_FS=y
 CONFIG_FUSE_FS=y
 CONFIG_CUSE=y

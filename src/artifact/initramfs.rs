@@ -44,7 +44,7 @@ use distro_spec::levitate::{
     BOOT_DEVICE_PROBE_ORDER,
     ISO_LABEL,
     LIVE_OVERLAY_ISO_PATH,
-    SQUASHFS_ISO_PATH,
+    ROOTFS_ISO_PATH,
     // Build paths
     BUSYBOX_URL,
     BUSYBOX_URL_ENV,
@@ -544,7 +544,7 @@ fn generate_init_script(base_dir: &Path) -> Result<String> {
 
     Ok(template
         .replace("{{ISO_LABEL}}", ISO_LABEL)
-        .replace("{{SQUASHFS_PATH}}", &format!("/{}", SQUASHFS_ISO_PATH))
+        .replace("{{ROOTFS_PATH}}", &format!("/{}", ROOTFS_ISO_PATH))
         .replace("{{BOOT_MODULES}}", &module_names.join(" "))
         .replace("{{BOOT_DEVICES}}", &BOOT_DEVICE_PROBE_ORDER.join(" "))
         .replace(

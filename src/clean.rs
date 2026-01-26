@@ -6,7 +6,7 @@ use std::path::Path;
 
 use distro_spec::levitate::{
     EFIBOOT_FILENAME, INITRAMFS_BUILD_DIR, INITRAMFS_FILENAME, INITRAMFS_LIVE_OUTPUT, ISO_CHECKSUM_SUFFIX,
-    ISO_FILENAME, SQUASHFS_NAME,
+    ISO_FILENAME, ROOTFS_NAME,
 };
 
 /// Clean all build outputs (preserves downloads).
@@ -139,42 +139,42 @@ pub fn clean_iso(base_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Clean squashfs only.
+/// Clean rootfs (EROFS) only.
 pub fn clean_squashfs(base_dir: &Path) -> Result<()> {
-    let squashfs = base_dir.join("output").join(SQUASHFS_NAME);
-    let squashfs_root = base_dir.join("output/squashfs-root");
-    let squashfs_extracted = base_dir.join("output/squashfs-extracted");
-    let squashfs_hash = base_dir.join("output/.squashfs-inputs.hash");
+    let rootfs = base_dir.join("output").join(ROOTFS_NAME);
+    let rootfs_staging = base_dir.join("output/squashfs-root");  // Keep dir name for compat
+    let rootfs_extracted = base_dir.join("output/squashfs-extracted");
+    let rootfs_hash = base_dir.join("output/.squashfs-inputs.hash");
 
     let mut cleaned = false;
 
-    if squashfs.exists() {
-        println!("Removing squashfs...");
-        fs::remove_file(&squashfs)?;
+    if rootfs.exists() {
+        println!("Removing EROFS rootfs...");
+        fs::remove_file(&rootfs)?;
         cleaned = true;
     }
 
-    if squashfs_root.exists() {
-        println!("Removing squashfs-root staging...");
-        fs::remove_dir_all(&squashfs_root)?;
+    if rootfs_staging.exists() {
+        println!("Removing rootfs staging...");
+        fs::remove_dir_all(&rootfs_staging)?;
         cleaned = true;
     }
 
-    if squashfs_extracted.exists() {
-        println!("Removing extracted squashfs...");
-        fs::remove_dir_all(&squashfs_extracted)?;
+    if rootfs_extracted.exists() {
+        println!("Removing extracted rootfs...");
+        fs::remove_dir_all(&rootfs_extracted)?;
         cleaned = true;
     }
 
-    if squashfs_hash.exists() {
-        fs::remove_file(&squashfs_hash)?;
+    if rootfs_hash.exists() {
+        fs::remove_file(&rootfs_hash)?;
         cleaned = true;
     }
 
     if cleaned {
-        println!("Squashfs artifacts cleaned.");
+        println!("Rootfs artifacts cleaned.");
     } else {
-        println!("No squashfs artifacts to clean.");
+        println!("No rootfs artifacts to clean.");
     }
 
     Ok(())

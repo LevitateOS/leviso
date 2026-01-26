@@ -3,7 +3,7 @@
 use anyhow::Result;
 use std::path::Path;
 
-use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, ISO_FILENAME, SQUASHFS_NAME};
+use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, ISO_FILENAME, ROOTFS_NAME};
 
 use crate::config::Config;
 use distro_builder::process::Cmd;
@@ -34,15 +34,16 @@ pub fn cmd_show(
             resolver.print_status();
         }
         ShowTarget::Squashfs => {
-            let squashfs = base_dir.join("output/filesystem.squashfs");
-            if !squashfs.exists() {
-                anyhow::bail!("Squashfs not found. Run 'leviso build squashfs' first.");
+            let rootfs = base_dir.join("output").join(ROOTFS_NAME);
+            if !rootfs.exists() {
+                anyhow::bail!("Rootfs not found. Run 'leviso build squashfs' first.");
             }
-            // Use unsquashfs -l to list contents
-            Cmd::new("unsquashfs")
-                .args(["-l"])
-                .arg_path(&squashfs)
-                .error_msg("unsquashfs failed. Install: sudo dnf install squashfs-tools")
+            // Use fsck.erofs to show EROFS image info
+            println!("=== EROFS Rootfs Info ===\n");
+            Cmd::new("fsck.erofs")
+                .arg("--print-comp-cfgs")
+                .arg_path(&rootfs)
+                .error_msg("fsck.erofs failed. Install: sudo dnf install erofs-utils")
                 .run_interactive()?;
         }
         ShowTarget::Status => {
@@ -59,7 +60,7 @@ fn show_build_status(base_dir: &Path) -> Result<()> {
     // Check each artifact
     let bzimage = base_dir.join("output/kernel-build/arch/x86/boot/bzImage");
     let vmlinuz = base_dir.join("output/staging/boot/vmlinuz");
-    let squashfs = base_dir.join("output").join(SQUASHFS_NAME);
+    let rootfs = base_dir.join("output").join(ROOTFS_NAME);
     let initramfs = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
     let iso = base_dir.join("output").join(ISO_FILENAME);
 
@@ -84,12 +85,12 @@ fn show_build_status(base_dir: &Path) -> Result<()> {
         println!("OK (up to date)");
     }
 
-    // Squashfs
-    let squashfs_rebuild = rebuild::squashfs_needs_rebuild(base_dir);
-    print!("Squashfs:          ");
-    if !squashfs.exists() {
+    // Rootfs (EROFS)
+    let rootfs_rebuild = rebuild::squashfs_needs_rebuild(base_dir);
+    print!("Rootfs (EROFS):    ");
+    if !rootfs.exists() {
         println!("MISSING → will build");
-    } else if squashfs_rebuild {
+    } else if rootfs_rebuild {
         println!("STALE → will rebuild");
     } else {
         println!("OK (up to date)");
@@ -119,7 +120,7 @@ fn show_build_status(base_dir: &Path) -> Result<()> {
 
     // Summary
     println!();
-    let any_work = kernel_compile || kernel_install || squashfs_rebuild || initramfs_rebuild || iso_rebuild;
+    let any_work = kernel_compile || kernel_install || rootfs_rebuild || initramfs_rebuild || iso_rebuild;
     if any_work {
         println!("Run 'leviso build' to rebuild stale/missing artifacts.");
     } else {

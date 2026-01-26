@@ -23,7 +23,7 @@ use crate::timing::Timer;
 /// 8. Firmware - hardware support
 /// 9. Final - welcome message, installer tools
 pub fn build_system(ctx: &BuildContext) -> Result<()> {
-    println!("Building complete system for squashfs...");
+    println!("Building complete system for rootfs (EROFS)...");
 
     // Phase 1: Filesystem
     let t = Timer::start("Filesystem");

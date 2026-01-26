@@ -83,24 +83,24 @@ pub fn check_build_environment(base_dir: &Path) -> Vec<CheckResult> {
         ));
     }
 
-    // Check profile/init_tiny exists AND is valid - ANTI-CHEAT: verify it's a real init script
+    // Check profile/init_tiny.template exists AND is valid - ANTI-CHEAT: verify it's a real init script
     // An empty file passes .exists() but system won't boot.
-    let init_tiny = base_dir.join("profile/init_tiny");
+    let init_tiny = base_dir.join("profile/init_tiny.template");
     if init_tiny.exists() {
         match validate_init_script(&init_tiny) {
             Ok(line_count) => {
                 results.push(CheckResult::pass_with(
-                    "profile/init_tiny",
+                    "profile/init_tiny.template",
                     &format!("{} lines, valid shebang", line_count),
                 ));
             }
             Err(e) => {
-                results.push(CheckResult::fail("profile/init_tiny", &e));
+                results.push(CheckResult::fail("profile/init_tiny.template", &e));
             }
         }
     } else {
         results.push(CheckResult::fail(
-            "profile/init_tiny",
+            "profile/init_tiny.template",
             "Not found - initramfs init script required",
         ));
     }

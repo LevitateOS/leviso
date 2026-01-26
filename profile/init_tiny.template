@@ -1,9 +1,9 @@
 #!/bin/busybox sh
 # LevitateOS Tiny Initramfs
-# Mounts squashfs + overlay, then switch_root to live system
+# Mounts EROFS + overlay, then switch_root to live system
 #
 # REQUIREMENTS:
-# - Kernel built with CONFIG_SQUASHFS=y, CONFIG_BLK_DEV_LOOP=y, CONFIG_OVERLAY_FS=y
+# - Kernel built with CONFIG_EROFS_FS=y, CONFIG_BLK_DEV_LOOP=y, CONFIG_OVERLAY_FS=y
 # - ISO labeled "{{ISO_LABEL}}" (set by xorriso -V)
 # - Kernel cmdline: root=LABEL={{ISO_LABEL}}
 #
@@ -11,9 +11,9 @@
 # 1. GRUB loads kernel + this initramfs
 # 2. Kernel unpacks initramfs to rootfs, runs /init (this script)
 # 3. Mount /proc, /sys, /dev
-# 4. Find boot device by looking for /live/filesystem.squashfs
-# 5. Mount squashfs read-only
-# 6. Create overlay (squashfs lower + tmpfs upper)
+# 4. Find boot device by looking for /live/filesystem.erofs
+# 5. Mount EROFS read-only
+# 6. Create overlay (erofs lower + tmpfs upper)
 # 7. switch_root to overlay
 # 8. systemd takes over as PID 1
 
@@ -44,7 +44,7 @@ if [ -n "$KVER" ]; then
     # Order matters: dependencies first
     # CDROM: cdrom, virtio_scsi (QEMU), sr_mod, isofs
     # Block: virtio_blk (QEMU disk), loop
-    # Filesystems: squashfs, overlay
+    # Filesystems: erofs, overlay
     for mod in {{BOOT_MODULES}}; do
         MODPATH=$(busybox find "$MODDIR" -name "${mod}.ko*" 2>/dev/null | busybox head -1)
         if [ -n "$MODPATH" ]; then
@@ -114,7 +114,7 @@ if [ ! -e /dev/sr0 ] && [ ! -e /dev/sda ]; then
     busybox sleep 2
 fi
 
-# Find the boot device by looking for filesystem.squashfs
+# Find the boot device by looking for filesystem.erofs
 # Check common device paths in order of likelihood
 BOOT_DEV=""
 DEVICES="{{BOOT_DEVICES}}"
@@ -132,7 +132,7 @@ for dev in $DEVICES; do
     fi
 
     # Check if this is our boot media
-    if [ -f /mnt{{SQUASHFS_PATH}} ]; then
+    if [ -f /mnt{{ROOTFS_PATH}} ]; then
         BOOT_DEV="$dev"
         msg "Found boot device: $dev"
         break
@@ -143,7 +143,7 @@ for dev in $DEVICES; do
 done
 
 if [ -z "$BOOT_DEV" ]; then
-    msg "ERROR: Could not find boot device with filesystem.squashfs"
+    msg "ERROR: Could not find boot device with filesystem.erofs"
     msg ""
     msg "Kernel cmdline: $CMDLINE"
     msg ""
@@ -151,7 +151,7 @@ if [ -z "$BOOT_DEV" ]; then
     busybox ls -la /dev/sd* /dev/sr* /dev/vd* /dev/nvme* 2>/dev/null || msg "  (none found)"
     msg ""
     msg "Expected structure on boot device:"
-    msg "  {{SQUASHFS_PATH}}"
+    msg "  {{ROOTFS_PATH}}"
     msg ""
     emergency_shell "Boot device not found"
 fi
@@ -167,32 +167,32 @@ fi
 # Create mount points for overlay
 busybox mkdir -p /squashfs /live-overlay /overlay /overlay/upper /overlay/work /newroot
 
-# Mount squashfs read-only
+# Mount EROFS read-only
 # Busybox mount doesn't always support -o loop automatically, so we set up loop device manually
-msg "Setting up loop device for squashfs..."
+msg "Setting up loop device for EROFS..."
 
 # Create loop device node if needed
 busybox mknod /dev/loop0 b 7 0 2>/dev/null || true
 
 # Set up loop device
 busybox echo "Running losetup..."
-if ! busybox losetup /dev/loop0 "/mnt{{SQUASHFS_PATH}}"; then
+if ! busybox losetup /dev/loop0 "/mnt{{ROOTFS_PATH}}"; then
     busybox echo "losetup failed, trying direct mount..."
     # Fall back to direct mount (kernel might handle it)
-    if ! busybox mount -t squashfs -o ro "/mnt{{SQUASHFS_PATH}}" /squashfs; then
-        emergency_shell "Failed to mount squashfs. Is CONFIG_SQUASHFS=y in kernel?"
+    if ! busybox mount -t erofs -o ro "/mnt{{ROOTFS_PATH}}" /squashfs; then
+        emergency_shell "Failed to mount EROFS. Is CONFIG_EROFS_FS=y in kernel?"
     fi
 else
-    msg "Mounting squashfs from loop device..."
-    if ! busybox mount -t squashfs -o ro /dev/loop0 /squashfs; then
-        emergency_shell "Failed to mount squashfs. Is CONFIG_SQUASHFS=y in kernel?"
+    msg "Mounting EROFS from loop device..."
+    if ! busybox mount -t erofs -o ro /dev/loop0 /squashfs; then
+        emergency_shell "Failed to mount EROFS. Is CONFIG_EROFS_FS=y in kernel?"
     fi
 fi
-busybox echo "Squashfs mounted successfully"
+busybox echo "EROFS mounted successfully"
 
 # Check for live overlay on ISO
 # This contains live-specific configs (autologin, serial console, empty root password)
-# that are NOT included in the squashfs base system
+# that are NOT included in the EROFS base system
 LIVE_OVERLAY=""
 if [ -d "/mnt{{LIVE_OVERLAY_PATH}}" ]; then
     msg "Found live overlay on ISO"
@@ -204,12 +204,12 @@ else
 fi
 
 # Create overlay filesystem with THREE layers:
-# 1. Lower (bottom): squashfs - the base system (read-only)
+# 1. Lower (bottom): erofs - the base system (read-only)
 # 2. Middle: live-overlay - live-specific configs from ISO (read-only)
 # 3. Upper (top): tmpfs - runtime writes (read-write)
 #
 # OverlayFS syntax: lowerdir=<higher>:<lower> (colon-separated, rightmost is lowest)
-# With live overlay: lowerdir=/live-overlay:/squashfs
+# With live overlay: lowerdir=/live-overlay:/squashfs (mount point still named /squashfs)
 # Without live overlay: lowerdir=/squashfs (installed system)
 msg "Creating overlay filesystem..."
 busybox mount -t tmpfs -o size=50% tmpfs /overlay
@@ -249,7 +249,7 @@ busybox mount --move /sys /newroot/sys
 # See: leviso/src/component/definitions.rs - EFIVARS component
 # See: .teams/TEAM_114_efivarfs-mount-investigation.md
 
-# Keep ISO mounted at /media/cdrom so recstrap can access filesystem.squashfs
+# Keep ISO mounted at /media/cdrom so recstrap can access filesystem.erofs
 busybox mkdir -p /newroot/media/cdrom
 busybox mount --move /mnt /newroot/media/cdrom
 

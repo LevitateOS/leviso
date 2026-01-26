@@ -4,7 +4,7 @@ use anyhow::Result;
 use std::path::Path;
 use std::time::Instant;
 
-use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, INITRAMFS_INSTALLED_OUTPUT, ISO_FILENAME, SQUASHFS_NAME};
+use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, INITRAMFS_INSTALLED_OUTPUT, ISO_FILENAME, ROOTFS_NAME};
 
 use crate::artifact;
 use crate::config::Config;
@@ -18,8 +18,8 @@ pub enum BuildTarget {
     Full,
     /// Kernel only
     Kernel { clean: bool },
-    /// Squashfs only
-    Squashfs,
+    /// Rootfs (EROFS) only
+    Rootfs,
     /// Initramfs only
     Initramfs,
     /// ISO only
@@ -36,13 +36,13 @@ pub fn cmd_build(
     match target {
         BuildTarget::Full => build_full(base_dir, resolver, config),
         BuildTarget::Kernel { clean } => build_kernel_only(base_dir, resolver, config, clean),
-        BuildTarget::Squashfs => build_squashfs_only(base_dir),
+        BuildTarget::Rootfs => build_rootfs_only(base_dir),
         BuildTarget::Initramfs => build_initramfs_only(base_dir),
         BuildTarget::Iso => build_iso_only(base_dir),
     }
 }
 
-/// Full build: squashfs + tiny initramfs + ISO.
+/// Full build: rootfs (EROFS) + tiny initramfs + ISO.
 /// Skips anything already built, rebuilds only on changes.
 fn build_full(base_dir: &Path, resolver: &DependencyResolver, config: &Config) -> Result<()> {
     println!("=== Full LevitateOS Build ===\n");
@@ -82,15 +82,15 @@ fn build_full(base_dir: &Path, resolver: &DependencyResolver, config: &Config) -
         println!("\n[SKIP] Kernel already built and installed");
     }
 
-    // 4. Build squashfs (skip if inputs unchanged)
+    // 4. Build rootfs (EROFS) - skip if inputs unchanged
     if rebuild::squashfs_needs_rebuild(base_dir) {
-        println!("\nBuilding squashfs system image...");
-        let t = Timer::start("Squashfs");
+        println!("\nBuilding EROFS rootfs image...");
+        let t = Timer::start("Rootfs");
         artifact::build_squashfs(base_dir)?;
         rebuild::cache_squashfs_hash(base_dir);
         t.finish();
     } else {
-        println!("\n[SKIP] Squashfs already built (inputs unchanged)");
+        println!("\n[SKIP] Rootfs already built (inputs unchanged)");
     }
 
     // 5. Build tiny initramfs (skip if inputs unchanged)
@@ -137,7 +137,7 @@ fn build_full(base_dir: &Path, resolver: &DependencyResolver, config: &Config) -
         println!("\n=== Build Complete ({:.1}s) ===", total);
     }
     println!("  ISO: output/{}", ISO_FILENAME);
-    println!("  Squashfs: output/{}", SQUASHFS_NAME);
+    println!("  Rootfs: output/{}", ROOTFS_NAME);
     println!("\nNext: leviso run");
 
     Ok(())
@@ -207,13 +207,13 @@ fn build_kernel_only(
     Ok(())
 }
 
-/// Build squashfs only.
-fn build_squashfs_only(base_dir: &Path) -> Result<()> {
+/// Build rootfs (EROFS) only.
+fn build_rootfs_only(base_dir: &Path) -> Result<()> {
     if rebuild::squashfs_needs_rebuild(base_dir) {
         artifact::build_squashfs(base_dir)?;
         rebuild::cache_squashfs_hash(base_dir);
     } else {
-        println!("[SKIP] Squashfs already built (inputs unchanged)");
+        println!("[SKIP] Rootfs already built (inputs unchanged)");
         println!("  Use 'clean squashfs' then rebuild to force");
     }
     Ok(())
@@ -233,11 +233,11 @@ fn build_initramfs_only(base_dir: &Path) -> Result<()> {
 
 /// Build ISO only.
 fn build_iso_only(base_dir: &Path) -> Result<()> {
-    let squashfs_path = base_dir.join("output").join(SQUASHFS_NAME);
+    let rootfs_path = base_dir.join("output").join(ROOTFS_NAME);
     let initramfs_path = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
 
-    if !squashfs_path.exists() {
-        println!("Squashfs not found, building...");
+    if !rootfs_path.exists() {
+        println!("Rootfs not found, building...");
         artifact::build_squashfs(base_dir)?;
     }
     if !initramfs_path.exists() {

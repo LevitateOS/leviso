@@ -1,9 +1,9 @@
 //! Leviso - LevitateOS ISO builder.
 //!
-//! Builds LevitateOS using squashfs architecture:
-//! - Squashfs system image (complete live system, ~400MB)
-//! - Tiny initramfs (mounts squashfs, ~5MB)
-//! - Bootable ISO
+//! Builds LevitateOS with EROFS-based architecture:
+//! - EROFS rootfs image (complete live system, ~400MB)
+//! - Tiny initramfs (mounts rootfs, ~5MB)
+//! - Bootable ISO with UKI (systemd-boot)
 
 mod artifact;
 mod build;
@@ -100,9 +100,9 @@ enum BuildTarget {
         #[arg(long)]
         clean: bool,
     },
-    /// Build squashfs system image (complete live system)
+    /// Build rootfs image (EROFS, complete live system)
     Squashfs,
-    /// Build tiny initramfs (mounts squashfs, ~5MB)
+    /// Build tiny initramfs (mounts rootfs, ~5MB)
     Initramfs,
     /// Build only the ISO image
     Iso,
@@ -112,7 +112,7 @@ enum BuildTarget {
 enum ShowTarget {
     /// Show current configuration
     Config,
-    /// Show squashfs contents
+    /// Show rootfs contents (EROFS)
     Squashfs,
     /// Show build status (what needs rebuilding)
     Status,
@@ -124,7 +124,7 @@ enum CleanTarget {
     Kernel,
     /// Clean ISO and initramfs only
     Iso,
-    /// Clean squashfs only
+    /// Clean rootfs only (EROFS image + staging)
     Squashfs,
     /// Clean downloaded sources (Rocky ISO, Linux source)
     Downloads,
@@ -152,9 +152,9 @@ enum DownloadTarget {
 enum ExtractTarget {
     /// Extract Rocky ISO contents
     Rocky,
-    /// Extract squashfs for inspection
+    /// Extract rootfs for inspection (mounts EROFS)
     Squashfs {
-        /// Output directory (default: output/squashfs-extracted)
+        /// Output directory (default: output/rootfs-extracted)
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
@@ -173,7 +173,7 @@ fn main() -> Result<()> {
                 Some(BuildTarget::Kernel { clean }) => {
                     commands::build::BuildTarget::Kernel { clean }
                 }
-                Some(BuildTarget::Squashfs) => commands::build::BuildTarget::Squashfs,
+                Some(BuildTarget::Squashfs) => commands::build::BuildTarget::Rootfs,
                 Some(BuildTarget::Initramfs) => commands::build::BuildTarget::Initramfs,
                 Some(BuildTarget::Iso) => commands::build::BuildTarget::Iso,
             };

@@ -13,16 +13,15 @@
 // 2. Download pre-built binary from GitHub releases (fallback)
 
 let ctx = #{
-    description: "recstrap - LevitateOS system extractor",
-    name: "recstrap",
-    git_url: "https://github.com/LevitateOS/recstrap.git",
-    releases_url: "https://api.github.com/repos/LevitateOS/recstrap/releases/latest",
     binary_name: "recstrap",
+    binary_path: "/home/vince/Projects/LevitateOS/target/release/recstrap",
+    description: "recstrap - LevitateOS system extractor",
+    from_source: true,
+    git_url: "https://github.com/LevitateOS/recstrap.git",
+    name: "recstrap",
+    releases_url: "https://api.github.com/repos/LevitateOS/recstrap/releases/latest",
+    source_path: "/home/vince/Projects/LevitateOS/tools/recstrap",
     tarball_name: "recstrap-x86_64-linux.tar.gz",
-    // State (filled by phases)
-    source_path: "",
-    binary_path: "",
-    from_source: false,
 };
 
 // === ACQUIRE ===

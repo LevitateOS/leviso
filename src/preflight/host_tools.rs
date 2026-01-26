@@ -12,11 +12,11 @@ pub fn check_host_tools() -> Vec<CheckResult> {
 
     // Required tools with package hints
     let required_tools = [
-        ("mksquashfs", "squashfs-tools", "Required to create squashfs filesystem"),
-        ("unsquashfs", "squashfs-tools", "Required to extract squashfs"),
+        ("mkfs.erofs", "erofs-utils", "Required to create EROFS filesystem (1.8+ for zstd)"),
         ("xorriso", "xorriso", "Required to create ISO image"),
         ("mkfs.fat", "dosfstools", "Required for EFI partition"),
         ("readelf", "binutils", "Required for library dependency detection"),
+        ("ukify", "systemd-ukify", "Required for UKI (Unified Kernel Image) creation"),
     ];
 
     for (tool, package, purpose) in required_tools {
@@ -33,6 +33,20 @@ pub fn check_host_tools() -> Vec<CheckResult> {
     for (tool, package, purpose) in optional_tools {
         let result = check_tool_exists(tool, package, purpose, false);
         results.push(result);
+    }
+
+    // Check for systemd-boot EFI binary (required for UKI boot)
+    let systemd_boot_path = distro_spec::levitate::SYSTEMD_BOOT_EFI;
+    if Path::new(systemd_boot_path).exists() {
+        results.push(CheckResult::pass_with("systemd-boot", systemd_boot_path));
+    } else {
+        results.push(CheckResult::fail(
+            "systemd-boot",
+            &format!(
+                "Not found at {}. Install: sudo dnf install systemd-boot",
+                systemd_boot_path
+            ),
+        ));
     }
 
     // Check for OVMF (UEFI firmware)

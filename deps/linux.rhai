@@ -1,22 +1,21 @@
 // Linux kernel source - dependency recipe
 //
-// Provides: Linux kernel source tree for building
+// Provides: LevitateOS linux fork for kernel building
 // Output: Kernel source at submodule path or BUILD_DIR/linux
 //
 // The linux kernel source can come from:
 // 1. Git submodule at MONOREPO/linux (preferred)
-// 2. Downloaded tarball from kernel.org
+// 2. Git clone from github.com/LevitateOS/linux (fallback)
 //
-// This recipe only handles acquisition. Building is done by leviso.
+// This recipe only handles acquisition. Building is done by leviso
+// using the project's kconfig file.
 
 let ctx = #{
-    description: "Linux kernel source",
+    description: "Linux kernel source (LevitateOS fork)",
+    git_url: "https://github.com/LevitateOS/linux.git",
     name: "linux",
     source_path: "/home/vince/Projects/LevitateOS/linux",
     submodule_path: "/home/vince/Projects/LevitateOS/linux",
-    tarball_sha256: "",
-    tarball_url: "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.12.10.tar.xz",
-    version: "6.12.10",
 };
 
 // === ACQUIRE ===
@@ -49,14 +48,13 @@ fn acquire(ctx) {
     // Ensure BUILD_DIR exists
     mkdir(BUILD_DIR);
 
-    // First, try to init submodule if it exists but isn't populated
     // BUILD_DIR is leviso/downloads, submodule is at ../../linux (monorepo root)
     let leviso_dir = dirname(BUILD_DIR);
     let monorepo = dirname(leviso_dir);
     let submodule = join_path(monorepo, "linux");
     ctx.submodule_path = submodule;
 
-    // Check if .git file exists (submodule is registered but not init'd)
+    // First, try to init submodule if it exists but isn't populated
     let git_file = join_path(submodule, ".git");
     if exists(git_file) {
         log("Initializing linux submodule...");
@@ -68,40 +66,23 @@ fn acquire(ctx) {
                 return ctx;
             }
         }
-        warn("Submodule init failed, falling back to tarball download");
+        warn("Submodule init failed, falling back to git clone");
     }
 
-    // Fallback: download tarball
-    let dest = join_path(BUILD_DIR, "linux-" + ctx.version + ".tar.xz");
-    let extract_dir = join_path(BUILD_DIR, "linux");
+    // Fallback: clone from LevitateOS fork
+    let clone_dir = join_path(BUILD_DIR, "linux");
 
-    if !is_file(dest) {
-        log("Downloading Linux " + ctx.version + " tarball...");
-        let path = download(ctx.tarball_url, dest);
-        if path == "" {
-            throw "Failed to download linux tarball";
-        }
+    if !is_dir(clone_dir) {
+        log("Cloning LevitateOS linux fork...");
+        shell("git clone --depth=1 " + ctx.git_url + " " + clone_dir);
     }
 
-    // Extract tarball
-    if !is_dir(extract_dir) {
-        log("Extracting Linux source...");
-        mkdir(extract_dir);
-        // tar extracts to linux-6.12.10/, we want it in linux/
-        shell("tar -xf " + dest + " -C " + BUILD_DIR);
-        // Rename extracted directory
-        let extracted = join_path(BUILD_DIR, "linux-" + ctx.version);
-        if is_dir(extracted) {
-            mv(extracted, extract_dir);
-        }
+    if !is_file(join_path(clone_dir, "Makefile")) {
+        throw "Linux source clone failed - no Makefile";
     }
 
-    if !is_file(join_path(extract_dir, "Makefile")) {
-        throw "Linux source extraction failed - no Makefile";
-    }
-
-    ctx.source_path = extract_dir;
-    log("Linux source ready at " + extract_dir);
+    ctx.source_path = clone_dir;
+    log("Linux source ready at " + clone_dir);
     ctx
 }
 

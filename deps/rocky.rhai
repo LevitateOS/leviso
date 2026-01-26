@@ -74,11 +74,11 @@ let ctx = #{
     http_url: "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/Rocky-10.1-x86_64-dvd1.iso",
     iso_contents_path: "/home/vince/Projects/LevitateOS/leviso/downloads/iso-contents",
     iso_name: "Rocky-10.1-x86_64-dvd1.iso",
-    iso_path: "",
+    iso_path: "/home/vince/Projects/LevitateOS/leviso/downloads/Rocky-10.1-x86_64-dvd1.iso",
     name: "rocky",
     packages_path: "",
     rootfs_path: "/home/vince/Projects/LevitateOS/leviso/downloads/rootfs",
-    sha256: "",
+    sha256: "55f96d45a052c0ed4f06309480155cb66281a008691eb7f3f359957205b1849a",
     sha256_url: "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/CHECKSUM",
     size_bytes: 9278128128,
     torrent_url: "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/Rocky-10.1-x86_64-dvd1.torrent",
@@ -121,8 +121,16 @@ fn acquire(ctx) {
     // Ensure BUILD_DIR exists
     mkdir(BUILD_DIR);
 
+    // Fetch and parse checksum using shell (Rhai has complexity limits)
     log("Fetching checksum for " + ctx.iso_name);
-    ctx.sha256 = fetch_sha256(ctx.sha256_url, ctx.iso_name);
+    // Rocky CHECKSUM format: "SHA256 (Rocky-10.1-x86_64-dvd1.iso) = abc123..."
+    let cmd = "curl -sL '" + ctx.sha256_url + "' | grep '" + ctx.iso_name + "' | awk -F' = ' '{print $2}'";
+    ctx.sha256 = trim(shell_output(cmd));
+
+    if ctx.sha256 == "" {
+        throw "Could not find checksum for " + ctx.iso_name;
+    }
+    log("Found checksum: " + ctx.sha256);
 
     // Check if ISO already exists and is valid
     if is_file(dest) {
@@ -137,19 +145,33 @@ fn acquire(ctx) {
         rm(dest);
     }
 
-    check_disk_space(BUILD_DIR, ctx.size_bytes + ctx.disk_buffer);
+    // Download via torrent (faster, distributed)
+    log("Downloading " + ctx.iso_name + " via torrent (~9GB)...");
+    let path = torrent(ctx.torrent_url, BUILD_DIR);
 
-    // Try torrent first (faster, distributed), fallback to HTTP
-    log("Downloading " + ctx.iso_name + " via torrent...");
-    let path = torrent(ctx.torrent_url, dest);
+    // HTTP fallback (commented out for testing torrent)
+    // if path == "" {
+    //     log("Torrent failed, falling back to HTTP...");
+    //     path = download(ctx.http_url, dest);
+    // }
 
     if path == "" {
-        log("Torrent failed, falling back to HTTP...");
-        path = download(ctx.http_url, dest);
+        throw "torrent download failed for " + ctx.iso_name;
     }
 
-    if path == "" {
-        throw "download failed for " + ctx.iso_name;
+    // Torrent may create a directory with the ISO inside
+    // e.g., Rocky-10.1-x86_64-dvd1/Rocky-10.1-x86_64-dvd1.iso
+    if is_dir(path) {
+        let iso_in_dir = join_path(path, ctx.iso_name);
+        if is_file(iso_in_dir) {
+            log("Found ISO inside torrent directory, moving to " + dest);
+            mv(iso_in_dir, dest);
+            // Clean up the torrent directory
+            rm(path);
+            path = dest;
+        } else {
+            throw "Torrent downloaded directory but ISO not found at " + iso_in_dir;
+        }
     }
 
     log("Verifying checksum...");
@@ -200,11 +222,11 @@ fn build(ctx) {
         rm(version_file);
     }
 
-    // Extract ISO (7z/iso format)
+    // Extract ISO using 7z (recipe extract() doesn't support ISO format)
     if !is_dir(join_path(iso_contents, "BaseOS")) {
         log("Extracting ISO to " + iso_contents);
         mkdir(iso_contents);
-        extract(ctx.iso_path, iso_contents);
+        shell("7z x -o" + iso_contents + " " + ctx.iso_path + " -y");
     }
 
     // Extract squashfs (install.img contains the rootfs)
@@ -215,8 +237,8 @@ fn build(ctx) {
 
     if !is_dir(join_path(rootfs_temp, "usr")) {
         log("Extracting squashfs to " + rootfs_temp);
-        mkdir(rootfs_temp);
-        extract(squashfs, rootfs_temp);
+        // -no-xattrs: avoid exit code 2 when not root (can't write SELinux xattrs)
+        shell("unsquashfs -no-xattrs -d " + rootfs_temp + " " + squashfs);
         // NOTE: RPM merging is done by leviso (src/extract.rs), not the recipe
     }
 

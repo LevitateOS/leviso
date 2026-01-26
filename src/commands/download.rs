@@ -1,8 +1,11 @@
 //! Download command - downloads dependencies.
 
 use anyhow::Result;
+use std::path::Path;
 
 use leviso_deps::DependencyResolver;
+
+use crate::recipe;
 
 /// Download target for the download command.
 pub enum DownloadTarget {
@@ -10,18 +13,26 @@ pub enum DownloadTarget {
     All,
     /// Download Linux kernel source
     Linux,
-    /// Download Rocky ISO
+    /// Download Rocky ISO (via recipe)
     Rocky,
     /// Download installation tools
     Tools,
 }
 
 /// Execute the download command.
-pub fn cmd_download(target: DownloadTarget, resolver: &DependencyResolver) -> Result<()> {
+pub fn cmd_download(
+    base_dir: &Path,
+    target: DownloadTarget,
+    resolver: &DependencyResolver,
+) -> Result<()> {
     match target {
         DownloadTarget::All => {
             println!("Resolving all dependencies...\n");
-            resolver.rocky_iso()?;
+
+            // Rocky via recipe
+            let rocky = recipe::rocky(base_dir)?;
+            println!("Rocky: {} [OK]", rocky.iso.display());
+
             resolver.linux()?;
             let _ = resolver.all_tools()?;
             println!("\nAll dependencies resolved.");
@@ -31,10 +42,13 @@ pub fn cmd_download(target: DownloadTarget, resolver: &DependencyResolver) -> Re
             println!("Linux source: {}", linux.path.display());
         }
         DownloadTarget::Rocky => {
-            let rocky = resolver.rocky_iso()?;
-            let status = if rocky.is_valid() { "OK" } else { "MISSING" };
-            println!("Rocky ISO: {} [{}]", rocky.path.display(), status);
-            println!("  Version: {} ({})", rocky.config.version, rocky.config.arch);
+            // Use recipe for Rocky
+            let rocky = recipe::rocky(base_dir)?;
+            let status = if rocky.exists() { "OK" } else { "MISSING" };
+            println!("Rocky (via recipe):");
+            println!("  ISO:          {} [{}]", rocky.iso.display(), status);
+            println!("  rootfs:       {}", rocky.rootfs.display());
+            println!("  iso-contents: {}", rocky.iso_contents.display());
         }
         DownloadTarget::Tools => {
             println!("Resolving installation tools...\n");

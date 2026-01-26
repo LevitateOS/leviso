@@ -16,6 +16,7 @@ mod extract;
 mod preflight;
 mod qemu;
 mod rebuild;
+mod recipe;
 mod timing;
 
 use anyhow::Result;
@@ -216,7 +217,7 @@ fn main() -> Result<()> {
                 Some(DownloadTarget::Rocky) => commands::download::DownloadTarget::Rocky,
                 Some(DownloadTarget::Tools) => commands::download::DownloadTarget::Tools,
             };
-            commands::cmd_download(download_target, &resolver)?;
+            commands::cmd_download(&base_dir, download_target, &resolver)?;
         }
 
         Commands::Extract { what } => {

@@ -1,12 +1,12 @@
 // Rocky Linux DVD ISO - dependency recipe
 //
 // Provides: extracted Rocky rootfs for leviso to build upon
-// Output: BUILD_DIR/rootfs, BUILD_DIR/packages
+// Output: PREFIX/rootfs, PREFIX/packages
 //
 // === Globals (provided by executor) ===
 //
 // BUILD_DIR  - Temporary build directory for intermediate files
-// BUILD_DIR     - Installation prefix (where final artifacts go)
+// PREFIX     - Installation prefix (where final artifacts go)
 //
 // === Helper functions (provided by executor) ===
 //
@@ -69,33 +69,30 @@
 //   warn(msg)                 - Print warning message
 
 let ctx = #{
-    description: "Rocky Linux rootfs (extracted from DVD ISO)",
-    disk_buffer: 2147483648,
-    http_url: "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/Rocky-10.1-x86_64-dvd1.iso",
-    iso_contents_path: "leviso/downloads/iso-contents",
-    iso_name: "Rocky-10.1-x86_64-dvd1.iso",
-    iso_path: "",
+    // === Config ===
     name: "rocky",
-    packages_path: "",
-    rootfs_path: "leviso/downloads/rootfs",
-    sha256: "",
-    sha256_url: "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/CHECKSUM",
-    size_bytes: 9278128128,
-    torrent_url: "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/Rocky-10.1-x86_64-dvd1.torrent",
     version: "10.1",
+    description: "Rocky Linux rootfs (extracted from DVD ISO)",
+
+    iso_name: "Rocky-10.1-x86_64-dvd1.iso",
+    torrent_url: "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/Rocky-10.1-x86_64-dvd1.torrent",
+    http_url: "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/Rocky-10.1-x86_64-dvd1.iso",
+    sha256_url: "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/CHECKSUM",
+    sha256: "",
+    size_bytes: 9278128128,
+    disk_buffer: 2147483648,
+
+    // === State ===
+    iso_path: "",
+    rootfs_path: "",
+    packages_path: "",
 };
 
 // === ACQUIRE ===
 
 fn is_acquired(ctx) {
-    // Check if iso_path is set, or if ISO exists at expected location
     if ctx.iso_path == "" {
-        let expected = join_path(BUILD_DIR, ctx.iso_name);
-        if is_file(expected) {
-            ctx.iso_path = expected;
-        } else {
-            throw "not acquired";
-        }
+        throw "not acquired";
     }
     if !is_file(ctx.iso_path) {
         throw "ISO missing at " + ctx.iso_path;
@@ -162,7 +159,7 @@ fn acquire(ctx) {
 // === BUILD ===
 
 fn is_built(ctx) {
-    let rootfs_temp = join_path(BUILD_DIR, "rootfs");
+    let rootfs_temp = join_path(BUILD_DIR, "rootfs-temp");
     let iso_contents = join_path(BUILD_DIR, "iso-contents");
     let version_file = join_path(BUILD_DIR, ".rocky-built-version");
 
@@ -175,7 +172,7 @@ fn is_built(ctx) {
     }
 
     // Version check
-    let built_version = trim(read_file_or_empty(version_file));
+    let built_version = trim(read_file(version_file));
     if built_version == "" {
         throw "version marker missing - rebuild required";
     }
@@ -188,11 +185,11 @@ fn is_built(ctx) {
 
 fn build(ctx) {
     let iso_contents = join_path(BUILD_DIR, "iso-contents");
-    let rootfs_temp = join_path(BUILD_DIR, "rootfs");
+    let rootfs_temp = join_path(BUILD_DIR, "rootfs-temp");
     let version_file = join_path(BUILD_DIR, ".rocky-built-version");
 
     // Check for stale artifacts from a different version
-    let existing_version = trim(read_file_or_empty(version_file));
+    let existing_version = trim(read_file(version_file));
     if existing_version != "" && existing_version != ctx.version {
         log("Cleaning stale build artifacts from version " + existing_version);
         if is_dir(iso_contents) { rm(iso_contents); }
@@ -228,36 +225,74 @@ fn build(ctx) {
 }
 
 // === INSTALL ===
-//
-// For leviso's use case, artifacts stay in BUILD_DIR after build().
-// install() just records the paths in ctx.
 
 fn is_installed(ctx) {
-    // Check if paths are recorded and artifacts exist
-    if ctx.rootfs_path == "" {
-        throw "not installed - rootfs_path not set";
+    let version_file = join_path(PREFIX, ".rocky-version");
+
+    if ctx.rootfs_path == "" || ctx.packages_path == "" {
+        throw "not installed";
     }
 
     if !is_dir(join_path(ctx.rootfs_path, "usr")) {
         throw "rootfs missing at " + ctx.rootfs_path;
     }
+    if !is_dir(join_path(ctx.packages_path, "BaseOS")) {
+        throw "packages missing at " + ctx.packages_path;
+    }
 
-    // iso-contents has the packages (no separate packages dir for leviso)
-    let iso_contents = join_path(BUILD_DIR, "iso-contents");
-    if !is_dir(join_path(iso_contents, "BaseOS/Packages")) {
-        throw "packages missing at " + iso_contents;
+    // Version check
+    let installed_version = trim(read_file(version_file));
+    if installed_version == "" {
+        throw "version marker missing - reinstall required";
+    }
+    if installed_version != ctx.version {
+        throw "version mismatch: installed " + installed_version + ", want " + ctx.version;
     }
 
     ctx
 }
 
 fn install(ctx) {
-    // Artifacts are already in BUILD_DIR from build phase
-    // Just record the paths
-    ctx.rootfs_path = join_path(BUILD_DIR, "rootfs");
-    ctx.iso_contents_path = join_path(BUILD_DIR, "iso-contents");
+    let rootfs_temp = join_path(BUILD_DIR, "rootfs-temp");
+    let iso_contents = join_path(BUILD_DIR, "iso-contents");
+    let rootfs_dest = join_path(PREFIX, "rootfs");
+    let packages_dest = join_path(PREFIX, "packages");
+    let version_file = join_path(PREFIX, ".rocky-version");
 
-    log("Install complete - artifacts at " + BUILD_DIR);
+    // Check for existing installation
+    let existing_version = trim(read_file(version_file));
+    if existing_version != "" {
+        if existing_version == ctx.version {
+            log("Rocky " + ctx.version + " already installed, skipping");
+            ctx.rootfs_path = rootfs_dest;
+            ctx.packages_path = packages_dest;
+            return ctx;
+        }
+        log("Removing existing installation (version " + existing_version + ")");
+        if is_dir(rootfs_dest) { rm(rootfs_dest); }
+        if is_dir(packages_dest) { rm(packages_dest); }
+        rm(version_file);
+    }
+
+    log("Installing Rocky " + ctx.version + " to " + PREFIX);
+
+    // Ensure PREFIX exists
+    mkdir(PREFIX);
+
+    // Move artifacts to final location
+    mv(rootfs_temp, rootfs_dest);
+
+    mkdir(packages_dest);
+    mv(join_path(iso_contents, "BaseOS/Packages"), join_path(packages_dest, "BaseOS"));
+    mv(join_path(iso_contents, "AppStream/Packages"), join_path(packages_dest, "AppStream"));
+
+    // Write version marker
+    write_file(version_file, ctx.version);
+
+    ctx.rootfs_path = rootfs_dest;
+    ctx.packages_path = packages_dest;
+
+    log("Install complete");
     ctx
 }
 
@@ -265,7 +300,7 @@ fn install(ctx) {
 
 fn cleanup(ctx) {
     let iso_contents = join_path(BUILD_DIR, "iso-contents");
-    let rootfs_temp = join_path(BUILD_DIR, "rootfs");
+    let rootfs_temp = join_path(BUILD_DIR, "rootfs-temp");
     let version_file = join_path(BUILD_DIR, ".rocky-built-version");
 
     log("Cleaning up build artifacts...");
@@ -276,11 +311,139 @@ fn cleanup(ctx) {
     if is_dir(rootfs_temp) {
         rm(rootfs_temp);
     }
-    // NOTE: ISO is preserved (expensive to re-download)
+    if ctx.iso_path != "" && is_file(ctx.iso_path) {
+        rm(ctx.iso_path);
+        ctx.iso_path = "";
+    }
     if is_file(version_file) {
         rm(version_file);
     }
 
     log("Cleanup complete");
     ctx
+}
+
+// === UPDATE ===
+
+fn update(ctx) {
+    let base_url = "https://download.rockylinux.org/pub/rocky/10/isos/x86_64";
+
+    log("Checking for Rocky Linux updates...");
+    let checksum_content = http_get(base_url + "/CHECKSUM");
+
+    let iso_info = parse_checksum_for_dvd(checksum_content);
+
+    // Check if update is available
+    if version_newer(iso_info.version, ctx.version) {
+        log("Update available: " + ctx.version + " -> " + iso_info.version);
+    } else if iso_info.version == ctx.version {
+        log("Already at latest version: " + ctx.version);
+    } else {
+        warn("Remote version " + iso_info.version + " is older than current " + ctx.version);
+    }
+
+    // Update ctx with new version info (use string concat for URLs, not join_path)
+    ctx.version = iso_info.version;
+    ctx.iso_name = iso_info.filename;
+    ctx.size_bytes = iso_info.size_bytes;
+    ctx.sha256 = iso_info.sha256;
+    ctx.torrent_url = base_url + "/" + iso_info.filename.replace(".iso", ".torrent");
+    ctx.http_url = base_url + "/" + iso_info.filename;
+    ctx.sha256_url = base_url + "/CHECKSUM";
+
+    ctx
+}
+
+// === REMOVE ===
+
+fn remove(ctx) {
+    let version_file = join_path(PREFIX, ".rocky-version");
+    let rootfs_dest = join_path(PREFIX, "rootfs");
+    let packages_dest = join_path(PREFIX, "packages");
+
+    // Check if anything is installed
+    let installed_version = trim(read_file(version_file));
+    if installed_version == "" && !is_dir(rootfs_dest) && !is_dir(packages_dest) {
+        log("Nothing to remove - Rocky not installed");
+        return ctx;
+    }
+
+    log("Removing Rocky " + (if installed_version != "" { installed_version } else { "(unknown version)" }) + "...");
+
+    if is_dir(rootfs_dest) {
+        rm(rootfs_dest);
+    }
+    if is_dir(packages_dest) {
+        rm(packages_dest);
+    }
+    if is_file(version_file) {
+        rm(version_file);
+    }
+
+    ctx.iso_path = "";
+    ctx.rootfs_path = "";
+    ctx.packages_path = "";
+
+    log("Remove complete");
+    ctx
+}
+
+// === Helpers ===
+
+private fn parse_checksum_for_dvd(content) {
+    // Parse Rocky CHECKSUM format:
+    // # Rocky-10.1-x86_64-dvd1.iso: 9278128128 bytes
+    // SHA256 (Rocky-10.1-x86_64-dvd1.iso) = <hash>
+
+    let lines = content.split("\n");
+    let filename = "";
+    let size_bytes = 0;
+    let sha256 = "";
+    let version = "";
+
+    for i in 0..lines.len() {
+        let line = lines[i];
+
+        if line.contains("-dvd1.iso:") && line.starts_with("#") {
+            // Extract filename and size from: # Rocky-10.1-x86_64-dvd1.iso: 9278128128 bytes
+            let parts = line.split(": ");
+            filename = parts[0].trim_start("#").trim();
+            size_bytes = parse_int(parts[1].replace(" bytes", ""));
+
+            // Extract version: Rocky-10.1-x86_64-dvd1.iso -> 10.1
+            version = filename.replace("Rocky-", "").replace("-x86_64-dvd1.iso", "");
+
+            // Next line has SHA256
+            if i + 1 < lines.len() {
+                let sha_line = lines[i + 1];
+                if sha_line.starts_with("SHA256") {
+                    sha256 = sha_line.split(" = ")[1].trim();
+                }
+            }
+            break;
+        }
+    }
+
+    if filename == "" {
+        throw "Could not find dvd1 ISO in CHECKSUM";
+    }
+    if sha256 == "" {
+        throw "Could not find SHA256 hash for " + filename + " in CHECKSUM";
+    }
+    if sha256.len() != 64 {
+        throw "Invalid SHA256 hash length for " + filename + ": expected 64, got " + sha256.len();
+    }
+    if version == "" {
+        throw "Could not extract version from filename: " + filename;
+    }
+    if size_bytes <= 0 {
+        throw "Invalid size_bytes for " + filename + ": " + size_bytes;
+    }
+
+    #{
+        filename: filename,
+        version: version,
+        size_bytes: size_bytes,
+        sha256: sha256
+    }
 }

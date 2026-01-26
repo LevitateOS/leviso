@@ -8,6 +8,7 @@ pub mod artifact;
 pub mod build;
 pub mod component;
 pub mod config;
+pub mod recipe;
 pub mod resolve;
 pub mod timing;
 

@@ -19,6 +19,7 @@ distro-builder = { path = "../distro-builder" }
 # Extracted crates
 leviso-elf = { path = "../leviso-elf" }
 hardware-compat = { path = "../testing/hardware-compat" }
+recinit = { path = "../tools/recinit" }
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "time", "process"] }

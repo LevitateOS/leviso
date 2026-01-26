@@ -3,6 +3,7 @@ name = "leviso"
 version = "0.1.0"
 edition = "2021"
 description = "Minimal bootable Linux ISO builder"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 anyhow = "1.0"
@@ -16,11 +17,10 @@ distro-spec = { path = "../distro-spec" }
 distro-builder = { path = "../distro-builder" }
 
 # Extracted crates
-leviso-deps = { path = "../leviso-deps" }
 leviso-elf = { path = "../leviso-elf" }
 hardware-compat = { path = "../testing/hardware-compat" }
 
-# Async runtime (minimal - heavy networking moved to leviso-deps)
+# Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "time", "process"] }
 sha2 = "0.10"
 which = "7"

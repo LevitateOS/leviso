@@ -942,200 +942,37 @@ fn test_component_enable_creates_wants_symlink() {
 }
 
 // =============================================================================
-// CRITICAL: Squashfs Atomicity Tests
+// NOTE: Squashfs and ISO Atomicity - NOT Unit Testable
 // =============================================================================
 //
-// These tests verify the Gentoo-style work directory pattern works correctly.
-
-#[cheat_aware(
-    protects = "Squashfs work directory cleanup on build failure",
-    severity = "CRITICAL",
-    ease = "MEDIUM",
-    cheats = [
-        "Leave work files on failure",
-        "Delete final files on failure",
-        "Don't create work directory"
-    ],
-    consequence = "Failed builds leave corrupted state, next build uses partial artifacts"
-)]
-#[test]
-fn test_squashfs_work_dir_cleanup_on_failure() {
-    // This test verifies the PATTERN, not the full mksquashfs pipeline
-    // (which requires real rootfs and takes 30+ minutes)
-    use tempfile::TempDir;
-
-    let temp = TempDir::new().unwrap();
-    let work_staging = temp.path().join("output/squashfs-root.work");
-    let work_output = temp.path().join("output/filesystem.squashfs.work");
-    let final_staging = temp.path().join("output/squashfs-root");
-    let final_output = temp.path().join("output/filesystem.squashfs");
-
-    // Simulate: work files exist, final files exist (from previous successful build)
-    fs::create_dir_all(&work_staging).unwrap();
-    fs::write(&work_output, "work-squashfs-content").unwrap();
-    fs::create_dir_all(&final_staging).unwrap();
-    fs::write(&final_output, "final-squashfs-content").unwrap();
-
-    // Simulate build failure - the cleanup pattern from squashfs.rs
-    let build_failed = true;
-    if build_failed {
-        let _ = fs::remove_dir_all(&work_staging);
-        let _ = fs::remove_file(&work_output);
-        // Note: final files should NOT be touched on failure
-    }
-
-    // Verify: work files are gone
-    assert!(
-        !work_staging.exists(),
-        "Work staging should be removed on failure"
-    );
-    assert!(
-        !work_output.exists(),
-        "Work output should be removed on failure"
-    );
-
-    // Verify: final files are preserved
-    assert!(
-        final_staging.exists(),
-        "Final staging should be preserved on failure"
-    );
-    assert!(
-        final_output.exists(),
-        "Final output should be preserved on failure"
-    );
-}
-
-#[cheat_aware(
-    protects = "Squashfs atomic swap only happens after successful build",
-    severity = "CRITICAL",
-    ease = "MEDIUM",
-    cheats = [
-        "Swap before build completes",
-        "Partial swap (staging but not squashfs)",
-        "Delete final before build completes"
-    ],
-    consequence = "Interrupted builds leave system with mismatched squashfs-root and filesystem.squashfs"
-)]
-#[test]
-fn test_squashfs_atomic_swap_pattern() {
-    use tempfile::TempDir;
-
-    let temp = TempDir::new().unwrap();
-    let work_staging = temp.path().join("output/squashfs-root.work");
-    let work_output = temp.path().join("output/filesystem.squashfs.work");
-    let final_staging = temp.path().join("output/squashfs-root");
-    let final_output = temp.path().join("output/filesystem.squashfs");
-
-    // Simulate: old final files exist
-    fs::create_dir_all(&final_staging.join("old-content")).unwrap();
-    fs::write(&final_output, "old-squashfs").unwrap();
-
-    // Simulate: successful build created work files
-    fs::create_dir_all(&work_staging.join("new-content")).unwrap();
-    fs::write(&work_output, "new-squashfs").unwrap();
-
-    // Simulate atomic swap pattern from squashfs.rs (lines 84-93)
-    let _ = fs::remove_dir_all(&final_staging);
-    let _ = fs::remove_file(&final_output);
-    fs::rename(&work_staging, &final_staging).unwrap();
-    fs::rename(&work_output, &final_output).unwrap();
-
-    // Verify: work files are gone (renamed to final)
-    assert!(!work_staging.exists(), "Work staging should be renamed away");
-    assert!(!work_output.exists(), "Work output should be renamed away");
-
-    // Verify: final files have new content
-    assert!(
-        final_staging.join("new-content").exists(),
-        "Final staging should have new content"
-    );
-    let content = fs::read_to_string(&final_output).unwrap();
-    assert_eq!(content, "new-squashfs", "Final output should have new content");
-}
-
-// =============================================================================
-// CRITICAL: ISO Atomicity Tests
-// =============================================================================
-
-#[cheat_aware(
-    protects = "ISO temp file is cleaned up if hardware compat fails",
-    severity = "HIGH",
-    ease = "MEDIUM",
-    cheats = [
-        "Leave temp ISO on verification failure",
-        "Rename to final despite verification failure",
-        "Skip verification entirely"
-    ],
-    consequence = "ISOs that fail hardware compat checks are still produced and might be used"
-)]
-#[test]
-fn test_iso_temp_cleanup_on_verification_failure() {
-    use tempfile::TempDir;
-
-    let temp = TempDir::new().unwrap();
-    let temp_iso = temp.path().join("levitate.iso.tmp");
-    let final_iso = temp.path().join("levitate.iso");
-
-    // Simulate: temp ISO was created
-    fs::write(&temp_iso, "temporary-iso-content").unwrap();
-
-    // Simulate: hardware compat verification failed (has_critical = true)
-    let has_critical = true;
-    if has_critical {
-        let _ = fs::remove_file(&temp_iso); // Cleanup from iso.rs line 117
-        // bail!() would happen here in real code
-    }
-
-    // Verify: temp ISO is removed
-    assert!(
-        !temp_iso.exists(),
-        "Temp ISO should be removed on verification failure"
-    );
-
-    // Verify: final ISO was never created
-    assert!(
-        !final_iso.exists(),
-        "Final ISO should not exist after verification failure"
-    );
-}
-
-#[cheat_aware(
-    protects = "ISO checksum is also moved atomically with ISO",
-    severity = "MEDIUM",
-    ease = "EASY",
-    cheats = [
-        "Leave checksum with temp name",
-        "Skip checksum rename",
-        "Generate checksum for wrong file"
-    ],
-    consequence = "Downloaded ISO has mismatched or missing checksum file"
-)]
-#[test]
-fn test_iso_checksum_renamed_with_iso() {
-    use tempfile::TempDir;
-
-    let temp = TempDir::new().unwrap();
-    let temp_iso = temp.path().join("levitate.iso.tmp");
-    let temp_checksum = temp.path().join("levitate.iso.sha512");
-    let final_iso = temp.path().join("levitate.iso");
-    let final_checksum = temp.path().join("levitate.sha512"); // Note: different suffix handling
-
-    // Simulate: both temp files exist
-    fs::write(&temp_iso, "iso-content").unwrap();
-    fs::write(&temp_checksum, "abc123  levitate.iso.tmp").unwrap();
-
-    // Simulate: atomic rename pattern from iso.rs (lines 122-127)
-    fs::rename(&temp_iso, &final_iso).unwrap();
-    fs::rename(&temp_checksum, &final_checksum).unwrap();
-
-    // Verify: both final files exist
-    assert!(final_iso.exists(), "Final ISO should exist");
-    assert!(final_checksum.exists(), "Final checksum should exist");
-
-    // Verify: temp files are gone
-    assert!(!temp_iso.exists(), "Temp ISO should be gone");
-    assert!(!temp_checksum.exists(), "Temp checksum should be gone");
-}
+// The following critical behaviors CANNOT be unit tested because they require:
+// - Real mksquashfs/xorriso binaries
+// - Real rootfs with hundreds of MB of content
+// - Minutes of execution time
+// - Process interruption simulation
+//
+// These MUST be tested via E2E tests in `testing/install-tests/`:
+// - Squashfs work directory cleanup on build failure
+// - Squashfs atomic swap (work -> final)
+// - ISO temp file cleanup on hardware compat failure
+// - ISO + checksum atomic rename
+//
+// REWARD HACKING WARNING: Previously this file contained "pattern simulation"
+// tests that called fs::rename/fs::remove_dir_all directly instead of the real
+// build_squashfs() and create_squashfs_iso() functions. Those tests passed but
+// provided FALSE CONFIDENCE - they tested our understanding of the pattern,
+// not that the actual code implements it correctly.
+//
+// A cheater could keep pattern tests passing while breaking the real code.
+// That's reward hacking. We removed them.
+//
+// To actually test atomicity, add E2E tests to testing/install-tests/ that:
+// 1. Run `cargo run -- build squashfs` with a small mock rootfs
+// 2. Kill the process mid-build (SIGKILL)
+// 3. Verify work files are cleaned up OR final files are intact
+// 4. Verify no corrupted intermediate state
+//
+// See: https://www.anthropic.com/research/emergent-misalignment-reward-hacking
 
 // =============================================================================
 // CRITICAL: Component Phase Ordering Tests

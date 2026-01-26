@@ -3,6 +3,9 @@
 //! Recipe is the general-purpose package manager used by leviso to manage
 //! build dependencies like the Rocky Linux ISO.
 //!
+//! Recipe returns structured JSON to stdout (logs go to stderr), so leviso
+//! can parse the ctx to get paths instead of hardcoding them.
+//!
 //! Resolution order:
 //! 1. System PATH (`which recipe`)
 //! 2. Monorepo submodule (`../tools/recipe`)
@@ -12,7 +15,7 @@
 use anyhow::{bail, Context, Result};
 use std::env;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 /// How the recipe binary was resolved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -214,28 +217,40 @@ fn build_from_source(crate_path: &Path, monorepo_dir: &Path, source: RecipeSourc
     })
 }
 
-/// Run a recipe using the recipe binary.
-pub fn run_recipe(recipe_bin: &Path, recipe_path: &Path, build_dir: &Path) -> Result<()> {
-    println!("  Running recipe: {}", recipe_path.display());
-    println!("    Build dir: {}", build_dir.display());
+/// Run a recipe using the recipe binary, returning the ctx as JSON.
+///
+/// Recipe outputs:
+/// - stderr: Progress/logs (inherited, shown to user)
+/// - stdout: JSON ctx (parsed and returned)
+pub fn run_recipe_json(recipe_bin: &Path, recipe_path: &Path, build_dir: &Path) -> Result<serde_json::Value> {
+    eprintln!("  Running recipe: {}", recipe_path.display());
+    eprintln!("    Build dir: {}", build_dir.display());
 
-    let mut cmd = Command::new(recipe_bin);
-    cmd.arg("install")
+    let output = Command::new(recipe_bin)
+        .arg("install")
         .arg(recipe_path)
         .arg("--build-dir")
-        .arg(build_dir);
-
-    let status = cmd
-        .status()
+        .arg(build_dir)
+        .stderr(Stdio::inherit())  // Show progress to user
+        .output()
         .with_context(|| format!("Failed to execute recipe: {}", recipe_bin.display()))?;
 
-    if !status.success() {
+    if !output.status.success() {
         bail!(
             "Recipe failed with exit code: {}",
-            status.code().unwrap_or(-1)
+            output.status.code().unwrap_or(-1)
         );
     }
 
+    let ctx: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .with_context(|| "Failed to parse recipe JSON output")?;
+
+    Ok(ctx)
+}
+
+/// Run a recipe using the recipe binary (legacy, no JSON parsing).
+pub fn run_recipe(recipe_bin: &Path, recipe_path: &Path, build_dir: &Path) -> Result<()> {
+    run_recipe_json(recipe_bin, recipe_path, build_dir)?;
     Ok(())
 }
 
@@ -264,6 +279,7 @@ impl RockyPaths {
 /// Run the rocky.rhai recipe and return the output paths.
 ///
 /// This is the entry point for leviso to use recipe for Rocky dependency.
+/// The recipe returns a ctx with paths, so we don't need to hardcode them.
 ///
 /// # Arguments
 /// * `base_dir` - leviso crate root (e.g., `/path/to/leviso`)
@@ -287,15 +303,30 @@ pub fn rocky(base_dir: &Path) -> Result<RockyPaths> {
         );
     }
 
-    // Find and run recipe
+    // Find and run recipe, parse JSON output
     let recipe_bin = find_recipe(&monorepo_dir)?;
-    recipe_bin.run(&recipe_path, &downloads_dir)?;
+    let ctx = run_recipe_json(&recipe_bin.path, &recipe_path, &downloads_dir)?;
 
-    // Return the well-known paths
+    // Extract paths from ctx (recipe sets these)
+    let iso = ctx["iso_path"]
+        .as_str()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| downloads_dir.join("Rocky-10.1-x86_64-dvd1.iso"));
+
+    let rootfs = ctx["rootfs_path"]
+        .as_str()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| downloads_dir.join("rootfs"));
+
+    let iso_contents = ctx["iso_contents_path"]
+        .as_str()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| downloads_dir.join("iso-contents"));
+
     let paths = RockyPaths {
-        iso: downloads_dir.join("Rocky-10.1-x86_64-dvd1.iso"),
-        rootfs: downloads_dir.join("rootfs"),
-        iso_contents: downloads_dir.join("iso-contents"),
+        iso,
+        rootfs,
+        iso_contents,
     };
 
     if !paths.exists() {
@@ -375,6 +406,52 @@ pub fn install_tools(base_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Install docs-tui (levitate-docs) to staging using its recipe.
+///
+/// This builds the terminal documentation viewer using bun and installs it
+/// to staging. Unlike the Rust tools, this requires bun to be installed.
+///
+/// # Arguments
+/// * `base_dir` - leviso crate root (e.g., `/path/to/leviso`)
+pub fn install_docs_tui(base_dir: &Path) -> Result<()> {
+    let monorepo_dir = base_dir
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| base_dir.to_path_buf());
+
+    let downloads_dir = base_dir.join("downloads");
+    let staging_bin = base_dir.join("output/staging/usr/bin");
+    let installed_path = staging_bin.join("levitate-docs");
+
+    // Skip if already installed
+    if installed_path.exists() {
+        println!("  levitate-docs already installed");
+        return Ok(());
+    }
+
+    let recipe_path = base_dir.join("deps/docs-tui.rhai");
+    if !recipe_path.exists() {
+        bail!(
+            "docs-tui recipe not found at: {}\n\
+             Expected docs-tui.rhai in leviso/deps/",
+            recipe_path.display()
+        );
+    }
+
+    let recipe_bin = find_recipe(&monorepo_dir)?;
+    recipe_bin.run(&recipe_path, &downloads_dir)?;
+
+    // Verify installation
+    if !installed_path.exists() {
+        bail!(
+            "Recipe completed but levitate-docs not found at: {}",
+            installed_path.display()
+        );
+    }
+
+    Ok(())
+}
+
 // ============================================================================
 // Supplementary packages via recipe
 // ============================================================================
@@ -427,6 +504,129 @@ pub fn packages(base_dir: &Path) -> Result<()> {
     let recipe_bin = find_recipe(&monorepo_dir)?;
     recipe_bin.run(&recipe_path, &downloads_dir)?;
 
+    Ok(())
+}
+
+// ============================================================================
+// Linux kernel via recipe
+// ============================================================================
+
+/// Paths produced by the linux.rhai recipe after execution.
+#[derive(Debug, Clone)]
+pub struct LinuxPaths {
+    /// Path to the kernel source tree.
+    pub source: PathBuf,
+    /// Path to the kernel build directory.
+    pub build_dir: PathBuf,
+    /// Path to vmlinuz in staging.
+    pub vmlinuz: PathBuf,
+    /// Kernel version string.
+    pub version: String,
+}
+
+impl LinuxPaths {
+    /// Check if kernel is built and installed.
+    pub fn is_installed(&self) -> bool {
+        self.vmlinuz.exists()
+    }
+
+    /// Check if kernel source is acquired.
+    pub fn is_acquired(&self) -> bool {
+        self.source.join("Makefile").exists()
+    }
+}
+
+/// Run the linux.rhai recipe and return the output paths.
+///
+/// This handles the full kernel workflow: acquire source, build, install to staging.
+/// The recipe returns a ctx with all paths and the kernel version.
+///
+/// # Arguments
+/// * `base_dir` - leviso crate root (e.g., `/path/to/leviso`)
+pub fn linux(base_dir: &Path) -> Result<LinuxPaths> {
+    let monorepo_dir = base_dir
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| base_dir.to_path_buf());
+
+    let downloads_dir = base_dir.join("downloads");
+    let recipe_path = base_dir.join("deps/linux.rhai");
+
+    if !recipe_path.exists() {
+        bail!(
+            "Linux recipe not found at: {}\n\
+             Expected linux.rhai in leviso/deps/",
+            recipe_path.display()
+        );
+    }
+
+    // Find and run recipe, parse JSON output
+    let recipe_bin = find_recipe(&monorepo_dir)?;
+    let ctx = run_recipe_json(&recipe_bin.path, &recipe_path, &downloads_dir)?;
+
+    // Extract paths from ctx (recipe sets these)
+    let output_dir = base_dir.join("output");
+
+    let source = ctx["source_path"]
+        .as_str()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            // Fallback: check submodule first, then downloads
+            let submodule = monorepo_dir.join("linux");
+            if submodule.join("Makefile").exists() {
+                submodule
+            } else {
+                downloads_dir.join("linux")
+            }
+        });
+
+    let build_dir = ctx["build_dir"]
+        .as_str()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| output_dir.join("kernel-build"));
+
+    let version = ctx["kernel_version"]
+        .as_str()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let vmlinuz = output_dir.join("staging/boot/vmlinuz");
+
+    Ok(LinuxPaths {
+        source,
+        build_dir,
+        vmlinuz,
+        version,
+    })
+}
+
+/// Check if Linux source is available (without running the full recipe).
+pub fn has_linux_source(base_dir: &Path) -> bool {
+    let monorepo_dir = base_dir.parent().unwrap_or(base_dir);
+
+    // Check submodule
+    if monorepo_dir.join("linux/Makefile").exists() {
+        return true;
+    }
+
+    // Check downloads
+    if base_dir.join("downloads/linux/Makefile").exists() {
+        return true;
+    }
+
+    false
+}
+
+/// Clear the recipe cache directory (~/.cache/levitate/).
+pub fn clear_cache() -> Result<()> {
+    let cache_dir = dirs::cache_dir()
+        .unwrap_or_else(|| PathBuf::from("/tmp"))
+        .join("levitate");
+
+    if cache_dir.exists() {
+        std::fs::remove_dir_all(&cache_dir)?;
+        std::fs::create_dir_all(&cache_dir)?;
+    }
     Ok(())
 }
 

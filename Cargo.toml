@@ -27,7 +27,7 @@ which = "7"
 
 [dev-dependencies]
 tempfile = "3"
-leviso-cheat-test = "0.1"
+leviso-cheat-test = { path = "../testing/cheat-test" }
 libc = "0.2"
 regex = "1"
 serial_test = "3"

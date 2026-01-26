@@ -97,20 +97,20 @@ pub fn build_tiny_initramfs(base_dir: &Path) -> Result<()> {
 /// The initramfs is generic (all drivers) so it works on any hardware.
 pub fn build_install_initramfs(base_dir: &Path) -> Result<()> {
     let output_dir = base_dir.join("output");
-    let rootfs_staging = output_dir.join("rootfs-staging");
+    let squashfs_root = output_dir.join("squashfs-root");
 
-    // Verify rootfs-staging exists
-    if !rootfs_staging.exists() {
+    // Verify squashfs-root exists (we need modules and systemd from it)
+    if !squashfs_root.exists() {
         bail!(
-            "rootfs-staging not found at {}.\n\
-             Run 'leviso build rootfs' first.",
-            rootfs_staging.display()
+            "squashfs-root not found at {}.\n\
+             Run 'leviso build squashfs' first.",
+            squashfs_root.display()
         );
     }
 
     // Build using recinit
     let config = InstallConfig {
-        rootfs: rootfs_staging,
+        rootfs: squashfs_root,
         output: output_dir.join(INITRAMFS_INSTALLED_OUTPUT),
         module_preset: ModulePreset::Install,
         gzip_level: CPIO_GZIP_LEVEL,

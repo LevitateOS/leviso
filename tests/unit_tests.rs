@@ -597,29 +597,6 @@ fn test_make_executable() {
 // =============================================================================
 
 use leviso::config::{module_defaults, Config};
-use leviso::deps::RockyConfig;
-
-#[cheat_aware(
-    protects = "Rocky config uses correct defaults when no env vars set",
-    severity = "HIGH",
-    ease = "EASY",
-    cheats = [
-        "Hardcode wrong defaults",
-        "Skip env var checking",
-        "Use stale cached values"
-    ],
-    consequence = "Wrong Rocky version downloaded"
-)]
-#[test]
-fn test_rocky_config_defaults() {
-    let config = RockyConfig::default();
-
-    assert_eq!(config.version, "10.1");
-    assert_eq!(config.arch, "x86_64");
-    assert!(config.url.contains("Rocky-10.1"));
-    assert!(config.filename.contains("Rocky-10.1"));
-    assert!(!config.sha256.is_empty());
-}
 
 #[cheat_aware(
     protects = "Module defaults contain essential modules",

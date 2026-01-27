@@ -74,8 +74,11 @@ pub struct Service {
     // ─────────────────────────────────────────────────────────────────────
     // Systemd
     // ─────────────────────────────────────────────────────────────────────
-    /// Systemd unit files to copy.
+    /// Systemd unit files to copy (from /usr/lib/systemd/system/).
     pub units: &'static [&'static str],
+    /// Systemd user unit files to copy (from /usr/lib/systemd/user/).
+    /// Used for per-user services like PipeWire.
+    pub user_units: &'static [&'static str],
     /// Units to enable (target, unit_name).
     pub enable: &'static [(Target, &'static str)],
 
@@ -122,6 +125,7 @@ impl Service {
         bins: &[],
         sbins: &[],
         units: &[],
+        user_units: &[],
         enable: &[],
         config_trees: &[],
         config_files: &[],
@@ -167,6 +171,11 @@ impl Service {
         // Systemd units
         if !self.units.is_empty() {
             ops.push(Op::Units(self.units));
+        }
+
+        // Systemd user units (per-user services like PipeWire)
+        if !self.user_units.is_empty() {
+            ops.push(Op::UserUnits(self.user_units));
         }
 
         // Enable units

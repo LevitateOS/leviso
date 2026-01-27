@@ -27,9 +27,9 @@ let ctx = #{
     description: "Supplementary RPMs for Rocky rootfs",
     iso_contents_path: "",
     name: "packages",
-    packages_extracted: 46,
+    packages_extracted: 86,
     rootfs_path: "",
-    version: "1.0.2",
+    version: "1.0.10",
 };
 
 // === ACQUIRE ===
@@ -134,6 +134,10 @@ fn build(ctx) {
         "coreutils", "coreutils-common",
         // PROCPS-NG - process utilities
         "procps-ng",
+        // HWLOC - hardware locality (needed by htop from EPEL)
+        "hwloc-libs",
+        // OPENCL - OpenCL ICD loader (needed by htop from EPEL)
+        "ocl-icd",
         // UTILITIES
         "which", "file", "file-libs", "diffutils", "ncurses", "ncurses-libs",
         // MISSING CORE UTILITIES
@@ -163,7 +167,44 @@ fn build(ctx) {
         // SOUND/GPU FIRMWARE
         "alsa-sof-firmware", "libdrm", "mesa-dri-drivers",
         // TERMINAL TOOLS
-        "tmux", "vim-minimal",
+        "tmux", "vim-minimal", "vim-enhanced", "vim-common", "vim-filesystem",
+        // DOCUMENTATION
+        "man-db", "man-pages", "libpipeline",
+        // FILE MANAGERS
+        "mc",
+        // TEXT BROWSER
+        "lynx",
+        // NETWORK TOOLS (additional)
+        "nmap", "bind-utils", "wget", "iputils",
+        // FILE SYNC
+        "rsync",
+        // DISK TOOLS
+        "lvm2", "mdadm", "smartmontools", "hdparm", "nvme-cli", "dmidecode",
+        // BINARY INSPECTION
+        "binutils",
+        // CRYPTO
+        "gnupg2",
+        // OPENSSL - needed for password hashing (openssl passwd -6)
+        // Used by install-tests and manual password setting
+        "openssl",
+        // GIT - version control (used everywhere)
+        "git-core",
+        // PYTHON - scripting language (many tools depend on it)
+        "python3", "python3-libs",
+        // ZIP/UNZIP - archive tools
+        "zip", "unzip",
+        // TREE - directory listing
+        "tree",
+        // PIPEWIRE - audio system
+        "pipewire", "pipewire-libs", "pipewire-pulseaudio", "pipewire-alsa",
+        "pipewire-utils",  // pw-cli, pw-dump, etc.
+        "wireplumber", "wireplumber-libs",
+        // PULSEAUDIO - compatibility tools
+        "pulseaudio-utils", "pulseaudio-libs",  // pactl, paplay, parecord
+        // POLKIT - authorization framework
+        "polkit", "polkit-libs",
+        // UPOWER - power management
+        "upower", "upower-libs",
     ];
 
     // Load existing manifest for incremental extraction
@@ -260,6 +301,30 @@ fn install(ctx) {
     let rootfs = join_path(BUILD_DIR, "rootfs");
     let install_marker = join_path(BUILD_DIR, ".packages-installed");
 
+    // Create symlinks that RPM alternatives system would normally create
+    // man-db provides man.man-db, whatis.man-db, apropos.man-db
+    // but the alternatives system creates the user-facing symlinks
+    log("Creating alternatives symlinks...");
+    let bin_dir = join_path(rootfs, "usr/bin");
+
+    // man -> man.man-db
+    let man_link = join_path(bin_dir, "man");
+    if !is_file(man_link) {
+        shell_status_in(bin_dir, "ln -sf man.man-db man");
+    }
+
+    // whatis -> whatis.man-db
+    let whatis_link = join_path(bin_dir, "whatis");
+    if !is_file(whatis_link) {
+        shell_status_in(bin_dir, "ln -sf whatis.man-db whatis");
+    }
+
+    // apropos -> whatis (apropos is the same as whatis -a)
+    let apropos_link = join_path(bin_dir, "apropos");
+    if !is_file(apropos_link) {
+        shell_status_in(bin_dir, "ln -sf whatis apropos");
+    }
+
     log("Verifying key binaries from each package category...");
 
     // Comprehensive verification - at least one binary from each major category
@@ -311,6 +376,25 @@ fn install(ctx) {
         ["usr/bin/vi", "vim-minimal", "text editor"],
         // GLIBC
         ["usr/bin/getent", "glibc-common", "name service lookup"],
+        // OPENSSL
+        ["usr/bin/openssl", "openssl", "crypto/password hashing"],
+        // GIT
+        ["usr/bin/git", "git-core", "version control"],
+        // PYTHON
+        ["usr/bin/python3", "python3", "scripting"],
+        // ZIP/UNZIP
+        ["usr/bin/zip", "zip", "compression"],
+        ["usr/bin/unzip", "unzip", "compression"],
+        // TREE
+        ["usr/bin/tree", "tree", "directory listing"],
+        // PIPEWIRE
+        ["usr/bin/pw-cli", "pipewire", "audio"],
+        ["usr/bin/wpctl", "wireplumber", "audio session"],
+        ["usr/bin/pactl", "pipewire-pulseaudio", "pulseaudio compat"],
+        // POLKIT
+        ["usr/bin/pkexec", "polkit", "authorization"],
+        // UPOWER
+        ["usr/bin/upower", "upower", "power management"],
     ];
 
     let missing = [];

@@ -15,6 +15,11 @@
 //! 7. Packages - recipe, dracut
 //! 8. Firmware - WiFi, keymaps
 //! 9. Final - welcome message, recstrap
+//!
+//! # Single Source of Truth
+//!
+//! The lists of binaries, units, etc. are defined in `distro-spec/src/shared/components.rs`.
+//! This file imports those lists and uses them to define Components.
 
 use super::{
     bins, copy_file, copy_tree, custom, dirs, enable_getty, enable_multi_user,
@@ -22,82 +27,22 @@ use super::{
     Phase,
 };
 
+// Import component definitions from distro-spec (SINGLE SOURCE OF TRUTH)
+use distro_spec::shared::{
+    FHS_DIRS, BIN_UTILS, AUTH_BIN, SBIN_UTILS, AUTH_SBIN,
+    SYSTEMD_BINARIES, ESSENTIAL_UNITS, DBUS_ACTIVATION_SYMLINKS,
+    UDEV_HELPERS, SUDO_LIBS, NM_BIN, NM_SBIN, WPA_SBIN, NM_UNITS, WPA_UNITS,
+    // Desktop services
+    BLUETOOTH_SBIN, BLUETOOTH_UNITS,
+    PIPEWIRE_SBIN, PIPEWIRE_UNITS,
+    POLKIT_SBIN, POLKIT_UNITS,
+    UDISKS_SBIN, UDISKS_UNITS,
+    UPOWER_SBIN, UPOWER_UNITS,
+};
+
 // =============================================================================
 // Phase 1: Filesystem
 // =============================================================================
-
-/// FHS directory structure.
-const FHS_DIRS: &[&str] = &[
-    // /usr hierarchy (merged)
-    "usr/bin",
-    "usr/sbin",
-    "usr/lib",
-    "usr/lib64",
-    "usr/share",
-    "usr/share/man",
-    "usr/share/doc",
-    "usr/share/licenses",
-    "usr/share/zoneinfo",
-    "usr/local/bin",
-    "usr/local/sbin",
-    "usr/local/lib",
-    "usr/local/share",
-    // /etc configuration
-    "etc",
-    "etc/systemd/system",
-    "etc/pam.d",
-    "etc/security",
-    "etc/profile.d",
-    // XDG Base Directory spec
-    "etc/xdg",
-    "etc/xdg/autostart",
-    // User skeleton with XDG structure
-    "etc/skel",
-    "etc/skel/.config",
-    "etc/skel/.local",
-    "etc/skel/.local/share",
-    "etc/skel/.local/state",
-    "etc/skel/.cache",
-    // Volatile directories
-    "proc",
-    "sys",
-    "dev",
-    "dev/pts",
-    "dev/shm",
-    "run",
-    "run/lock",
-    "tmp",
-    // Persistent data
-    "var",
-    "var/log",
-    "var/log/journal",
-    "var/tmp",
-    "var/cache",
-    "var/lib",
-    "var/spool",
-    // Mount points
-    "mnt",
-    "media",
-    // User directories
-    "root",
-    "home",
-    // Optional
-    "opt",
-    "srv",
-    // Systemd
-    "usr/lib/systemd/system",
-    "usr/lib/systemd/system-generators",
-    "usr/lib64/systemd",
-    // Modules
-    "usr/lib/modules",
-    // PAM
-    "usr/lib64/security",
-    // D-Bus
-    "usr/share/dbus-1/system.d",
-    "usr/share/dbus-1/system-services",
-    // Locale
-    "usr/lib/locale",
-];
 
 pub static FILESYSTEM: Component = Component {
     name: "filesystem",
@@ -111,149 +56,6 @@ pub static FILESYSTEM: Component = Component {
 // =============================================================================
 // Phase 2: Binaries
 // =============================================================================
-
-/// Binaries for /usr/bin.
-const BIN_UTILS: &[&str] = &[
-    // === COREUTILS ===
-    "ls", "cat", "cp", "mv", "rm", "mkdir", "rmdir", "touch",
-    "chmod", "chown", "chgrp", "ln", "readlink", "realpath",
-    "stat", "file", "mknod", "mkfifo",
-    "timeout", "sleep", "true", "false", "test", "[",
-    // Text processing
-    "echo", "head", "tail", "wc", "sort", "cut", "tr", "tee",
-    "sed", "awk", "gawk", "printf", "uniq", "seq",
-    // Search
-    "grep", "find", "xargs",
-    // System info
-    "pwd", "uname", "date", "env", "id", "hostname",
-    "printenv", "whoami", "groups", "dmesg", "lsusb",
-    // Process control
-    "kill", "nice", "nohup", "setsid",
-    // Compression
-    "gzip", "gunzip", "xz", "unxz", "tar", "bzip2", "bunzip2", "cpio",
-    // Shell utilities
-    "expr", "yes", "mktemp",
-    // Disk info
-    "df", "du", "sync", "mount", "umount", "lsblk", "findmnt", "flock",
-    // Path utilities
-    "dirname", "basename",
-    // Other
-    "which",
-    // === DIFFUTILS ===
-    "diff", "cmp",
-    // === PROCPS-NG ===
-    "ps", "pgrep", "pkill", "top", "free", "uptime", "w", "vmstat", "watch",
-    // === SYSTEMD ===
-    "systemctl", "journalctl", "timedatectl", "hostnamectl", "localectl", "loginctl", "bootctl",
-    // === EDITORS ===
-    "vi", "nano",
-    // === NETWORK ===
-    "ping", "curl", "wget",
-    // === TERMINAL ===
-    "clear", "stty", "tty",
-    // === KEYBOARD ===
-    "loadkeys",
-    // === LOCALE ===
-    "localedef",
-    // === UDEV ===
-    "udevadm",
-    // === MISC ===
-    "less", "more",
-    // === UTIL-LINUX ===
-    "getopt",
-    // === GLIBC UTILITIES ===
-    "getent", "ldd",
-    // === CHECKSUMS ===
-    "base64", "md5sum", "sha256sum", "sha512sum",
-    // === TERMINAL MULTIPLEXER ===
-    "tmux",
-    // === NETWORK DIAGNOSTICS ===
-    "dig", "nslookup", "tracepath",
-    // NOTE: iwctl (iwd) is NOT in Rocky 10 repos - WiFi via NetworkManager-wifi instead
-    // === BINARY INSPECTION ===
-    "strings", "hexdump",
-];
-
-/// Authentication binaries for /usr/bin.
-const AUTH_BIN: &[&str] = &["su", "sudo", "sudoedit", "sudoreplay"];
-
-/// Binaries for /usr/sbin.
-const SBIN_UTILS: &[&str] = &[
-    // === UTIL-LINUX ===
-    "fsck", "blkid", "losetup", "mkswap", "swapon", "swapoff",
-    "fdisk", "sfdisk", "wipefs", "blockdev", "pivot_root", "chroot",
-    "switch_root", "parted",
-    // === E2FSPROGS ===
-    "fsck.ext4", "fsck.ext2", "fsck.ext3", "e2fsck", "mke2fs",
-    "mkfs.ext4", "mkfs.ext2", "mkfs.ext3", "tune2fs", "resize2fs",
-    // === DOSFSTOOLS ===
-    "mkfs.fat", "mkfs.vfat", "fsck.fat", "fsck.vfat",
-    // === KMOD ===
-    "insmod", "rmmod", "modprobe", "lsmod", "depmod", "modinfo",
-    // === SHADOW-UTILS ===
-    "useradd", "userdel", "usermod", "groupadd", "groupdel", "groupmod",
-    "chpasswd", "passwd",
-    // === IPROUTE ===
-    "ip", "ss", "bridge",
-    // === PROCPS-NG ===
-    "sysctl",
-    // === SYSTEM CONTROL ===
-    "reboot", "shutdown", "poweroff", "halt", "efibootmgr",
-    // === OTHER ===
-    "ldconfig", "hwclock", "lspci", "ifconfig", "route",
-    "agetty", "login", "sulogin", "nologin", "chronyd",
-    // === SQUASHFS-TOOLS ===
-    "unsquashfs",
-    // === CRYPTSETUP (LUKS) ===
-    "cryptsetup",
-    // === LVM ===
-    "lvm",
-    // === HARDWARE DETECTION ===
-    "dmidecode", "ethtool",
-    // === XFS ===
-    "mkfs.xfs", "xfs_repair",
-    // NOTE: btrfs-progs NOT in Rocky 10 DVD ISO - users can install later
-    // === DISK HEALTH ===
-    "smartctl", "hdparm", "nvme",
-];
-
-/// Authentication binaries for /usr/sbin.
-/// unix_chkpwd is CRITICAL - pam_unix.so has hardcoded path to /usr/sbin/unix_chkpwd
-/// Without it, chpasswd/passwd silently fail (PAM returns success but password unchanged)
-const AUTH_SBIN: &[&str] = &["visudo", "unix_chkpwd"];
-
-/// Systemd helper binaries.
-const SYSTEMD_BINARIES: &[&str] = &[
-    "systemd-executor",
-    "systemd-shutdown",
-    "systemd-sulogin-shell",
-    "systemd-cgroups-agent",
-    "systemd-journald",
-    "systemd-modules-load",
-    "systemd-sysctl",
-    "systemd-tmpfiles",
-    "systemd-timedated",
-    "systemd-hostnamed",
-    "systemd-localed",
-    "systemd-logind",
-    "systemd-networkd",
-    "systemd-resolved",
-    "systemd-udevd",
-    "systemd-fsck",
-    "systemd-remount-fs",
-    "systemd-vconsole-setup",
-    "systemd-random-seed",
-];
-
-/// Sudo support libraries.
-const SUDO_LIBS: &[&str] = &[
-    "libsudo_util.so.0.0.0",
-    "libsudo_util.so.0",
-    "libsudo_util.so",
-    "sudoers.so",
-    "group_file.so",
-    "system_group.so",
-];
 
 pub static SHELL: Component = Component {
     name: "shell",
@@ -296,68 +98,6 @@ pub static SYSTEMD_BINS: Component = Component {
 // =============================================================================
 // Phase 3: Systemd
 // =============================================================================
-
-/// Essential systemd unit files.
-const ESSENTIAL_UNITS: &[&str] = &[
-    // Targets
-    "basic.target", "sysinit.target", "multi-user.target", "default.target",
-    "getty.target", "local-fs.target", "local-fs-pre.target",
-    "remote-fs.target", "remote-fs-pre.target",
-    "network.target", "network-pre.target", "network-online.target",
-    "paths.target", "slices.target", "sockets.target", "timers.target",
-    "swap.target", "shutdown.target", "rescue.target", "emergency.target",
-    "reboot.target", "poweroff.target", "halt.target",
-    "suspend.target", "sleep.target", "umount.target", "final.target",
-    "graphical.target",
-    // Services - core
-    "systemd-journald.service", "systemd-journald@.service",
-    "systemd-udevd.service", "systemd-udev-trigger.service",
-    "systemd-modules-load.service", "systemd-sysctl.service",
-    "systemd-tmpfiles-setup.service", "systemd-tmpfiles-setup-dev.service",
-    "systemd-tmpfiles-clean.service",
-    "systemd-random-seed.service", "systemd-vconsole-setup.service",
-    // Services - disk
-    "systemd-fsck-root.service", "systemd-fsck@.service",
-    "systemd-remount-fs.service", "systemd-fstab-generator",
-    // Services - auth
-    "systemd-logind.service",
-    // Services - getty
-    "getty@.service", "serial-getty@.service",
-    "console-getty.service", "container-getty@.service",
-    // Services - time/network
-    "systemd-timedated.service", "systemd-hostnamed.service",
-    "systemd-localed.service", "systemd-networkd.service",
-    "systemd-resolved.service", "systemd-networkd-wait-online.service",
-    // Services - misc
-    "dbus.service", "dbus-broker.service", "chronyd.service",
-    // Services - SSH
-    "sshd.service", "sshd@.service", "sshd.socket",
-    "sshd-keygen.target", "sshd-keygen@.service",
-    // Sockets
-    "systemd-journald.socket", "systemd-journald-dev-log.socket",
-    "systemd-journald-audit.socket",
-    "systemd-udevd-control.socket", "systemd-udevd-kernel.socket",
-    "dbus.socket",
-    // Paths
-    "systemd-ask-password-console.path", "systemd-ask-password-wall.path",
-    // Slices
-    "-.slice", "system.slice", "user.slice", "machine.slice",
-];
-
-/// D-Bus activation symlinks.
-const DBUS_ACTIVATION_SYMLINKS: &[&str] = &[
-    "dbus-org.freedesktop.timedate1.service",
-    "dbus-org.freedesktop.hostname1.service",
-    "dbus-org.freedesktop.locale1.service",
-    "dbus-org.freedesktop.login1.service",
-    "dbus-org.freedesktop.network1.service",
-    "dbus-org.freedesktop.resolve1.service",
-];
-
-/// Udev helper binaries.
-const UDEV_HELPERS: &[&str] = &[
-    "ata_id", "scsi_id", "cdrom_id", "v4l_id", "dmi_memory_id", "mtd_probe",
-];
 
 pub static SYSTEMD_UNITS: Component = Component {
     name: "systemd-units",
@@ -501,24 +241,13 @@ pub static LIVE_SYSTEMD: Component = Component {
 
 // --- Network ---
 
-/// NetworkManager required binaries.
-const NM_REQUIRED: &[&str] = &["nmcli", "nm-online", "nmtui"];
-/// NetworkManager sbin binaries.
-const NM_SBIN: &[&str] = &["NetworkManager"];
-/// wpa_supplicant binaries.
-const WPA_SBIN: &[&str] = &["wpa_supplicant", "wpa_cli", "wpa_passphrase"];
-/// NetworkManager units.
-const NM_UNITS: &[&str] = &["NetworkManager.service", "NetworkManager-dispatcher.service"];
-/// wpa_supplicant units.
-const WPA_UNITS: &[&str] = &["wpa_supplicant.service"];
-
 pub static NETWORK: Component = Component {
     name: "network",
     phase: Phase::Services,
     ops: &[
         // NetworkManager
         sbins(NM_SBIN),
-        bins(NM_REQUIRED),
+        bins(NM_BIN),
         // wpa_supplicant
         sbins(WPA_SBIN),
         // Helpers and plugins
@@ -663,6 +392,7 @@ pub static OPENSSH_SVC: Service = Service {
         "sshd-keygen@.service",
         "ssh-host-keys-migration.service",  // Required by sshd.service Wants=
     ],
+    user_units: &[],
     enable: &[],  // Not enabled by default
     config_trees: &[
         "usr/libexec/openssh",
@@ -691,6 +421,7 @@ pub static CHRONY_SVC: Service = Service {
     bins: &[],
     sbins: &[],  // chronyd is already in SBIN_UTILS
     units: &[],  // Already in ESSENTIAL_UNITS
+    user_units: &[],
     enable: &[(Target::MultiUser, "chronyd.service")],
     config_trees: &[],
     config_files: &[
@@ -718,6 +449,7 @@ pub static DBUS_SVC: Service = Service {
     bins: &["dbus-broker", "dbus-broker-launch", "dbus-send", "dbus-daemon", "busctl"],
     sbins: &[],
     units: &["dbus.socket", "dbus-daemon.service"],
+    user_units: &[],
     enable: &[
         (Target::Sockets, "dbus.socket"),
         (Target::Sockets, "systemd-journald.socket"),
@@ -738,5 +470,150 @@ pub static DBUS_SVC: Service = Service {
         shell: "/sbin/nologin",
     }],
     groups: &[Group { name: "dbus", gid: 81 }],
+    custom: &[],
+};
+
+// =============================================================================
+// Desktop Services (Phase 5)
+// =============================================================================
+
+/// Bluetooth support (bluez).
+pub static BLUETOOTH_SVC: Service = Service {
+    name: "bluetooth",
+    phase: Phase::Services,
+    bins: &["bluetoothctl"],
+    sbins: BLUETOOTH_SBIN,
+    units: BLUETOOTH_UNITS,
+    user_units: &[],
+    enable: &[],  // Not enabled by default - user enables when needed
+    config_trees: &[
+        "etc/bluetooth",
+        "usr/libexec/bluetooth",  // Contains bluetoothd (not in /usr/sbin)
+    ],
+    config_files: &[
+        "usr/share/dbus-1/system.d/bluetooth.conf",
+    ],
+    dirs: &["var/lib/bluetooth"],
+    symlinks: &[],
+    users: &[],
+    groups: &[Group { name: "bluetooth", gid: 170 }],
+    custom: &[],
+};
+
+/// PipeWire audio server (modern replacement for PulseAudio).
+/// Runs as a user service, not a system service.
+pub static PIPEWIRE_SVC: Service = Service {
+    name: "pipewire",
+    phase: Phase::Services,
+    // Client tools
+    bins: &[
+        "pw-cli", "pw-dump", "pw-cat", "pw-play", "pw-record",
+        "pw-top", "pw-metadata", "pw-mon", "pw-link",
+        "wpctl",  // WirePlumber control
+        // PulseAudio compatibility (pacmd not provided by pipewire-pulseaudio)
+        "pactl", "paplay", "parecord",
+    ],
+    sbins: PIPEWIRE_SBIN,
+    units: &[],  // No system units
+    user_units: PIPEWIRE_UNITS,  // User-level services
+    enable: &[],  // User units are socket-activated
+    config_trees: &[
+        "usr/share/pipewire",
+        "etc/pipewire",
+        "usr/share/wireplumber",
+        "etc/wireplumber",
+    ],
+    config_files: &[],  // ReserveDevice1.service not present in Rocky
+    dirs: &[],
+    symlinks: &[],
+    users: &[],
+    groups: &[
+        Group { name: "pipewire", gid: 171 },
+        Group { name: "audio", gid: 63 },
+    ],
+    custom: &[],
+};
+
+/// Polkit authorization framework.
+/// Required for desktop privilege escalation (e.g., mounting disks, changing settings).
+pub static POLKIT_SVC: Service = Service {
+    name: "polkit",
+    phase: Phase::Services,
+    bins: &["pkexec", "pkaction", "pkcheck"],
+    sbins: POLKIT_SBIN,
+    units: POLKIT_UNITS,
+    user_units: &[],
+    enable: &[],  // Started on-demand by D-Bus
+    config_trees: &[
+        "usr/share/polkit-1",
+        "etc/polkit-1",
+        "usr/lib/polkit-1",  // Contains polkitd (not in /usr/sbin)
+    ],
+    config_files: &[
+        "usr/share/dbus-1/system.d/org.freedesktop.PolicyKit1.conf",
+        "usr/share/dbus-1/system-services/org.freedesktop.PolicyKit1.service",
+    ],
+    dirs: &["var/lib/polkit-1"],
+    symlinks: &[],
+    users: &[User {
+        name: "polkitd",
+        uid: 27,
+        gid: 27,
+        home: "/",
+        shell: "/sbin/nologin",
+    }],
+    groups: &[Group { name: "polkitd", gid: 27 }],
+    custom: &[],
+};
+
+/// UDisks2 disk management daemon.
+/// Enables automatic mounting of USB drives and other removable media.
+pub static UDISKS_SVC: Service = Service {
+    name: "udisks2",
+    phase: Phase::Services,
+    bins: &["udisksctl"],
+    sbins: UDISKS_SBIN,
+    units: UDISKS_UNITS,
+    user_units: &[],
+    enable: &[],  // Started on-demand by D-Bus
+    config_trees: &[
+        "usr/lib/udisks2",
+        "etc/udisks2",
+        "usr/libexec/udisks2",  // Contains udisksd (not in /usr/sbin)
+    ],
+    config_files: &[
+        "usr/share/dbus-1/system.d/org.freedesktop.UDisks2.conf",
+        "usr/share/dbus-1/system-services/org.freedesktop.UDisks2.service",
+    ],
+    dirs: &["var/lib/udisks2"],
+    symlinks: &[],
+    users: &[],
+    groups: &[],
+    custom: &[],
+};
+
+/// UPower power management daemon.
+/// Provides battery status, suspend/hibernate support.
+pub static UPOWER_SVC: Service = Service {
+    name: "upower",
+    phase: Phase::Services,
+    bins: &["upower"],
+    sbins: UPOWER_SBIN,
+    units: UPOWER_UNITS,
+    user_units: &[],
+    enable: &[],  // Started on-demand by D-Bus
+    config_trees: &[
+        "etc/UPower",
+        // Note: upowerd is a standalone binary in /usr/libexec, handled via CopyFile
+    ],
+    config_files: &[
+        "usr/share/dbus-1/system.d/org.freedesktop.UPower.conf",
+        "usr/share/dbus-1/system-services/org.freedesktop.UPower.service",
+        "usr/libexec/upowerd",  // Contains upowerd (not in /usr/sbin)
+    ],
+    dirs: &["var/lib/upower"],
+    symlinks: &[],
+    users: &[],
+    groups: &[],
     custom: &[],
 };

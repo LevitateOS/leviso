@@ -46,9 +46,13 @@ use std::fs;
 use std::path::Path;
 
 use distro_spec::levitate::ROOTFS_NAME;
+use distro_spec::shared::{
+    FHS_DIRS, BIN_UTILS, AUTH_BIN, SSH_BIN, NM_BIN,
+    ESSENTIAL_UNITS, NM_UNITS, WPA_UNITS,
+    ETC_FILES,
+};
 use crate::build::BuildContext;
 use distro_builder::build_erofs_default;
-use fsdbg::checklist::rootfs as rootfs_checklist;
 
 /// Build the complete rootfs (EROFS) system image.
 ///
@@ -161,26 +165,52 @@ fn create_erofs_internal(staging: &Path, output: &Path) -> Result<()> {
 
 /// Verify the staging directory contains required files before creating EROFS.
 ///
-/// Uses fsdbg checklist constants to ensure the rootfs has all required components.
+/// Uses distro-spec constants to ensure the rootfs has all required components.
 /// Fails the build immediately if ANY required file is missing.
 fn verify_staging(staging: &Path) -> Result<()> {
     println!();
-    println!("  Verifying staging directory with fsdbg checklist...");
+    println!("  Verifying staging directory...");
 
     let mut missing = Vec::new();
     let mut passed = 0;
 
-    // Check binaries
-    for binary in rootfs_checklist::REQUIRED_BINARIES {
-        if staging.join(binary).exists() {
+    // Combine all bin lists (same logic as fsdbg)
+    let all_bins: Vec<&str> = BIN_UTILS.iter()
+        .chain(AUTH_BIN.iter())
+        .chain(SSH_BIN.iter())
+        .chain(NM_BIN.iter())
+        .copied()
+        .collect();
+
+    // Check binaries (in usr/bin)
+    for binary in &all_bins {
+        let bin_path = format!("usr/bin/{}", binary);
+        if staging.join(&bin_path).exists() {
             passed += 1;
         } else {
             missing.push(*binary);
         }
     }
+    // Also check bash (handled separately)
+    if staging.join("usr/bin/bash").exists() {
+        passed += 1;
+    } else {
+        missing.push("bash");
+    }
+
+    // Combine all unit lists
+    let all_units: Vec<&str> = ESSENTIAL_UNITS.iter()
+        .chain(NM_UNITS.iter())
+        .chain(WPA_UNITS.iter())
+        .copied()
+        // Filter out systemd-networkd/resolved - LevitateOS uses NetworkManager
+        .filter(|u| !u.contains("networkd") && !u.contains("resolved"))
+        // Filter out system.slice - auto-generated at runtime
+        .filter(|u| *u != "system.slice")
+        .collect();
 
     // Check units
-    for unit in rootfs_checklist::REQUIRED_UNITS {
+    for unit in &all_units {
         let unit_path = format!("usr/lib/systemd/system/{}", unit);
         if staging.join(&unit_path).exists() {
             passed += 1;
@@ -190,7 +220,7 @@ fn verify_staging(staging: &Path) -> Result<()> {
     }
 
     // Check directories
-    for dir in rootfs_checklist::REQUIRED_DIRS {
+    for dir in FHS_DIRS {
         let dir_path = staging.join(dir);
         // Check for either directory or symlink (bin -> usr/bin)
         if dir_path.exists() || dir_path.is_symlink() {
@@ -201,7 +231,7 @@ fn verify_staging(staging: &Path) -> Result<()> {
     }
 
     // Check /etc files
-    for etc_file in rootfs_checklist::REQUIRED_ETC {
+    for etc_file in ETC_FILES {
         if staging.join(etc_file).exists() {
             passed += 1;
         } else {

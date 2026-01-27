@@ -186,7 +186,8 @@ fn verify_hardware_compat(base_dir: &Path) -> Result<bool> {
     for p in all_profiles {
         match checker.verify_profile(p.as_ref()) {
             Ok(report) => {
-                report.print_summary();
+                // Only show failures by default (verbose=false)
+                report.print_summary(false);
                 if report.has_critical_failures() {
                     has_critical = true;
                 }

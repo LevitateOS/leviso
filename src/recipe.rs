@@ -442,6 +442,48 @@ pub fn packages(base_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Run the epel.rhai recipe to download and extract EPEL packages into rootfs.
+///
+/// This must be called after `packages()` since it depends on the rootfs.
+/// Downloads packages not available in Rocky 10 DVD: btrfs-progs, ntfs-3g,
+/// screen, pv, ddrescue, testdisk.
+///
+/// # Arguments
+/// * `base_dir` - leviso crate root (e.g., `/path/to/leviso`)
+pub fn epel(base_dir: &Path) -> Result<()> {
+    let monorepo_dir = base_dir
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| base_dir.to_path_buf());
+
+    let downloads_dir = base_dir.join("downloads");
+    let recipe_path = base_dir.join("deps/epel.rhai");
+
+    if !recipe_path.exists() {
+        bail!(
+            "EPEL recipe not found at: {}\n\
+             Expected epel.rhai in leviso/deps/",
+            recipe_path.display()
+        );
+    }
+
+    // Verify rootfs exists
+    let rootfs = downloads_dir.join("rootfs");
+    if !rootfs.join("usr").exists() {
+        bail!(
+            "rootfs not found at: {}\n\
+             Run rocky.rhai and packages.rhai first.",
+            rootfs.display()
+        );
+    }
+
+    // Find and run recipe
+    let recipe_bin = find_recipe(&monorepo_dir)?;
+    recipe_bin.run(&recipe_path, &downloads_dir)?;
+
+    Ok(())
+}
+
 // ============================================================================
 // Linux kernel via recipe
 // ============================================================================

@@ -8,6 +8,7 @@ use anyhow::Result;
 use super::definitions::*;
 use super::executor;
 use crate::build::context::BuildContext;
+use crate::build::licenses::LicenseTracker;
 use crate::timing::Timer;
 
 /// Build the complete system into the staging directory.
@@ -22,66 +23,82 @@ use crate::timing::Timer;
 /// 7. Packages - recipe, dracut
 /// 8. Firmware - hardware support
 /// 9. Final - welcome message, installer tools
+/// 10. Licenses - copy license files for all redistributed packages
 pub fn build_system(ctx: &BuildContext) -> Result<()> {
     println!("Building complete system for rootfs (EROFS)...");
 
+    // Track licenses for all binaries we copy
+    let tracker = LicenseTracker::new();
+
     // Phase 1: Filesystem
     let t = Timer::start("Filesystem");
-    executor::execute(ctx, &FILESYSTEM)?;
+    executor::execute(ctx, &FILESYSTEM, &tracker)?;
     t.finish();
 
     // Phase 2: Binaries
     let t = Timer::start("Binaries");
-    executor::execute(ctx, &SHELL)?;
-    executor::execute(ctx, &COREUTILS)?;
-    executor::execute(ctx, &SBIN_BINARIES)?;
-    executor::execute(ctx, &SYSTEMD_BINS)?;
+    executor::execute(ctx, &SHELL, &tracker)?;
+    executor::execute(ctx, &COREUTILS, &tracker)?;
+    executor::execute(ctx, &SBIN_BINARIES, &tracker)?;
+    executor::execute(ctx, &SYSTEMD_BINS, &tracker)?;
     t.finish();
 
     // Phase 3: Systemd
     let t = Timer::start("Systemd");
-    executor::execute(ctx, &SYSTEMD_UNITS)?;
-    executor::execute(ctx, &GETTY)?;
-    executor::execute(ctx, &EFIVARS)?;  // EFI variable filesystem for efibootmgr
-    executor::execute(ctx, &UDEV)?;
-    executor::execute(ctx, &TMPFILES)?;
-    executor::execute(ctx, &LIVE_SYSTEMD)?;
+    executor::execute(ctx, &SYSTEMD_UNITS, &tracker)?;
+    executor::execute(ctx, &GETTY, &tracker)?;
+    executor::execute(ctx, &EFIVARS, &tracker)?;  // EFI variable filesystem for efibootmgr
+    executor::execute(ctx, &UDEV, &tracker)?;
+    executor::execute(ctx, &TMPFILES, &tracker)?;
+    executor::execute(ctx, &LIVE_SYSTEMD, &tracker)?;
     t.finish();
 
     // Phase 4: D-Bus (using Service abstraction)
     let t = Timer::start("D-Bus");
-    executor::execute(ctx, &DBUS_SVC)?;
+    executor::execute(ctx, &DBUS_SVC, &tracker)?;
     t.finish();
 
     // Phase 5: Services (using Service abstraction where applicable)
     let t = Timer::start("Services");
-    executor::execute(ctx, &NETWORK)?;  // Has custom ops, keeping as Component
-    executor::execute(ctx, &CHRONY_SVC)?;
-    executor::execute(ctx, &OPENSSH_SVC)?;
-    executor::execute(ctx, &PAM)?;
-    executor::execute(ctx, &MODULES)?;
+    executor::execute(ctx, &NETWORK, &tracker)?;  // Has custom ops, keeping as Component
+    executor::execute(ctx, &CHRONY_SVC, &tracker)?;
+    executor::execute(ctx, &OPENSSH_SVC, &tracker)?;
+    executor::execute(ctx, &PAM, &tracker)?;
+    executor::execute(ctx, &MODULES, &tracker)?;
+    // Desktop services
+    executor::execute(ctx, &BLUETOOTH_SVC, &tracker)?;
+    executor::execute(ctx, &PIPEWIRE_SVC, &tracker)?;
+    executor::execute(ctx, &POLKIT_SVC, &tracker)?;
+    executor::execute(ctx, &UDISKS_SVC, &tracker)?;
+    executor::execute(ctx, &UPOWER_SVC, &tracker)?;
     t.finish();
 
     // Phase 6: Config
     let t = Timer::start("Config");
-    executor::execute(ctx, &ETC_CONFIG)?;
+    executor::execute(ctx, &ETC_CONFIG, &tracker)?;
     t.finish();
 
     // Phase 7: Packages
     // NOTE: DRACUT removed - initramfs built using custom rootless builder
     let t = Timer::start("Packages");
-    executor::execute(ctx, &RECIPE)?;
-    executor::execute(ctx, &BOOTLOADER)?;
+    executor::execute(ctx, &RECIPE, &tracker)?;
+    executor::execute(ctx, &BOOTLOADER, &tracker)?;
     t.finish();
 
     // Phase 8: Firmware
     let t = Timer::start("Firmware");
-    executor::execute(ctx, &FIRMWARE)?;
+    executor::execute(ctx, &FIRMWARE, &tracker)?;
     t.finish();
 
     // Phase 9: Final
     let t = Timer::start("Final");
-    executor::execute(ctx, &FINAL)?;
+    executor::execute(ctx, &FINAL, &tracker)?;
+    t.finish();
+
+    // Phase 10: Licenses - copy license files for all redistributed packages
+    let t = Timer::start("Licenses");
+    let license_count = tracker.copy_licenses(&ctx.source, &ctx.staging)?;
+    println!("  Copied licenses for {} packages", license_count);
     t.finish();
 
     println!("System build complete.");
@@ -113,6 +130,12 @@ mod tests {
             (OPENSSH_SVC.name(), OPENSSH_SVC.phase()),
             (PAM.name(), PAM.phase()),
             (MODULES.name(), MODULES.phase()),
+            // Desktop services
+            (BLUETOOTH_SVC.name(), BLUETOOTH_SVC.phase()),
+            (PIPEWIRE_SVC.name(), PIPEWIRE_SVC.phase()),
+            (POLKIT_SVC.name(), POLKIT_SVC.phase()),
+            (UDISKS_SVC.name(), UDISKS_SVC.phase()),
+            (UPOWER_SVC.name(), UPOWER_SVC.phase()),
             (ETC_CONFIG.name(), ETC_CONFIG.phase()),
             (RECIPE.name(), RECIPE.phase()),
             (BOOTLOADER.name(), BOOTLOADER.phase()),

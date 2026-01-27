@@ -7,6 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::context::BuildContext;
+use super::licenses::LicenseTracker;
 use distro_builder::process::shell_in;
 use leviso_elf::copy_library_to;
 
@@ -15,8 +16,8 @@ pub use leviso_elf::{
     find_binary, find_sbin_binary, get_all_dependencies, make_executable,
 };
 
-/// Extra library paths (includes sudo private libs).
-const EXTRA_LIB_PATHS: &[&str] = &["usr/libexec/sudo"];
+/// Extra library paths (includes sudo private libs, man-db libs, and pulseaudio libs).
+const EXTRA_LIB_PATHS: &[&str] = &["usr/libexec/sudo", "usr/lib64/man-db", "usr/lib64/pulseaudio"];
 
 /// Private library directories that should preserve their subdirectory structure.
 /// For LevitateOS (systemd-based), this is ["systemd"].
@@ -29,7 +30,10 @@ const RPM_BINARY_SOURCES: &[(&str, &str, &str)] = &[
 ];
 
 /// Copy a library from source rootfs to staging.
-pub fn copy_library(ctx: &BuildContext, lib_name: &str) -> Result<()> {
+pub fn copy_library(ctx: &BuildContext, lib_name: &str, tracker: Option<&LicenseTracker>) -> Result<()> {
+    if let Some(t) = tracker {
+        t.register_library(lib_name);
+    }
     copy_library_to(
         &ctx.source,
         lib_name,
@@ -43,7 +47,12 @@ pub fn copy_library(ctx: &BuildContext, lib_name: &str) -> Result<()> {
 
 /// Copy a binary and its library dependencies to staging.
 /// Returns Ok(false) if binary not found, Ok(true) if copied successfully.
-pub fn copy_binary_with_libs(ctx: &BuildContext, binary: &str, dest_dir: &str) -> Result<bool> {
+pub fn copy_binary_with_libs(
+    ctx: &BuildContext,
+    binary: &str,
+    dest_dir: &str,
+    tracker: Option<&LicenseTracker>,
+) -> Result<bool> {
     // Try rootfs first, then RPM extraction
     // NOTE: This function returns Ok(false) when binary not found.
     // The CALLER decides if missing binary is an error. No warnings here.
@@ -61,6 +70,11 @@ pub fn copy_binary_with_libs(ctx: &BuildContext, binary: &str, dest_dir: &str) -
         },
     };
 
+    // Register binary for license tracking
+    if let Some(t) = tracker {
+        t.register_binary(binary);
+    }
+
     // Copy binary
     let dest = ctx.staging.join(dest_dir).join(binary);
     if !dest.exists() {
@@ -72,7 +86,7 @@ pub fn copy_binary_with_libs(ctx: &BuildContext, binary: &str, dest_dir: &str) -
     // Copy all library dependencies
     let libs = get_all_dependencies(&ctx.source, &bin_path, EXTRA_LIB_PATHS)?;
     for lib_name in &libs {
-        copy_library(ctx, lib_name)
+        copy_library(ctx, lib_name, tracker)
             .with_context(|| format!("'{}' requires missing library '{}'", binary, lib_name))?;
     }
 
@@ -81,7 +95,11 @@ pub fn copy_binary_with_libs(ctx: &BuildContext, binary: &str, dest_dir: &str) -
 
 /// Copy a sbin binary and its library dependencies.
 /// NOTE: Returns Ok(false) when binary not found - caller decides if that's an error.
-pub fn copy_sbin_binary_with_libs(ctx: &BuildContext, binary: &str) -> Result<bool> {
+pub fn copy_sbin_binary_with_libs(
+    ctx: &BuildContext,
+    binary: &str,
+    tracker: Option<&LicenseTracker>,
+) -> Result<bool> {
     let bin_path = match find_sbin_binary(&ctx.source, binary) {
         Some(p) => p,
         None => match extract_binary_from_rpm(ctx, binary) {
@@ -96,6 +114,11 @@ pub fn copy_sbin_binary_with_libs(ctx: &BuildContext, binary: &str) -> Result<bo
         },
     };
 
+    // Register binary for license tracking
+    if let Some(t) = tracker {
+        t.register_binary(binary);
+    }
+
     let dest = ctx.staging.join("usr/sbin").join(binary);
     if !dest.exists() {
         fs::create_dir_all(dest.parent().unwrap())?;
@@ -105,7 +128,7 @@ pub fn copy_sbin_binary_with_libs(ctx: &BuildContext, binary: &str) -> Result<bo
 
     let libs = get_all_dependencies(&ctx.source, &bin_path, EXTRA_LIB_PATHS)?;
     for lib_name in &libs {
-        copy_library(ctx, lib_name)
+        copy_library(ctx, lib_name, tracker)
             .with_context(|| format!("'{}' requires missing library '{}'", binary, lib_name))?;
     }
 
@@ -113,7 +136,7 @@ pub fn copy_sbin_binary_with_libs(ctx: &BuildContext, binary: &str) -> Result<bo
 }
 
 /// Copy bash and its dependencies. FAILS if bash not found.
-pub fn copy_bash(ctx: &BuildContext) -> Result<()> {
+pub fn copy_bash(ctx: &BuildContext, tracker: Option<&LicenseTracker>) -> Result<()> {
     let bash_candidates = [
         ctx.source.join("usr/bin/bash"),
         ctx.source.join("bin/bash"),
@@ -125,6 +148,11 @@ pub fn copy_bash(ctx: &BuildContext) -> Result<()> {
 
     println!("Found bash at: {}", bash_path.display());
 
+    // Register bash for license tracking
+    if let Some(t) = tracker {
+        t.register_binary("bash");
+    }
+
     let bash_dest = ctx.staging.join("usr/bin/bash");
     fs::create_dir_all(bash_dest.parent().unwrap())?;
     fs::copy(bash_path, &bash_dest)?;
@@ -132,7 +160,7 @@ pub fn copy_bash(ctx: &BuildContext) -> Result<()> {
 
     let libs = get_all_dependencies(&ctx.source, bash_path, EXTRA_LIB_PATHS)?;
     for lib_name in &libs {
-        copy_library(ctx, lib_name)
+        copy_library(ctx, lib_name, tracker)
             .with_context(|| format!("bash requires missing library '{}'", lib_name))?;
     }
 

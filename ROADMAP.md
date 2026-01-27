@@ -3,13 +3,13 @@
 > **DOCUMENTATION NOTE:** This roadmap will be used to create the installation guide
 > and user documentation. Keep descriptions clear, complete, and user-facing.
 
-**Version:** 1.2
-**Last Updated:** 2026-01-24
+**Version:** 1.3
+**Last Updated:** 2026-01-28
 **Goal:** Everything a user needs to use LevitateOS as their primary operating system, competing directly with Arch Linux.
 
 ---
 
-## ⚠️ ARCHISO PARITY STATUS
+## ARCHISO PARITY STATUS
 
 > **Reference:** See `docs/archiso-parity-checklist.md` for full details (verified 2026-01-22)
 
@@ -19,80 +19,80 @@ LevitateOS aims for parity with archiso - the Arch Linux installation ISO. This 
 
 | Gap | Impact | Status |
 |-----|--------|--------|
-| ~~Intel/AMD microcode~~ | ~~CPU bugs, security vulnerabilities~~ | ✅ INCLUDED (firmware) |
-| ~~cryptsetup (LUKS)~~ | ~~No encrypted disk support~~ | ✅ ADDED 2026-01-24 |
-| ~~lvm2~~ | ~~No LVM support~~ | ✅ ADDED 2026-01-24 |
-| ~~btrfs-progs~~ | ~~No Btrfs support~~ | ✅ ADDED 2026-01-25 |
-| ~~docs-tui~~ | ~~No on-screen installation docs~~ | ✅ ADDED 2026-01-24 |
-| ~~tmux~~ | ~~No split-screen for docs~~ | ✅ ADDED 2026-01-24 |
-| ~~terminfo~~ | ~~Terminal apps fail~~ | ✅ ADDED 2026-01-24 |
+| ~~Intel/AMD microcode~~ | ~~CPU bugs, security vulnerabilities~~ | INCLUDED (firmware) |
+| ~~cryptsetup (LUKS)~~ | ~~No encrypted disk support~~ | ADDED 2026-01-24 |
+| ~~lvm2~~ | ~~No LVM support~~ | ADDED 2026-01-24 |
+| ~~btrfs-progs~~ | ~~No Btrfs support~~ | ADDED 2026-01-25 |
+| ~~docs-tui~~ | ~~No on-screen installation docs~~ | ADDED 2026-01-24 |
+| ~~tmux~~ | ~~No split-screen for docs~~ | ADDED 2026-01-24 |
+| ~~terminfo~~ | ~~Terminal apps fail~~ | ADDED 2026-01-24 |
 
 ### P1 - Important Gaps
 
 | Gap | Impact | Status |
 |-----|--------|--------|
-| ~~Volatile journal storage~~ | ~~Logs may fill tmpfs~~ | ✅ CONFIGURED |
-| ~~do-not-suspend config~~ | ~~Live session may sleep during install~~ | ✅ CONFIGURED |
-| ~~SSH server (sshd)~~ | ~~No remote installation/rescue~~ | ✅ AVAILABLE |
-| ~~pciutils (lspci)~~ | ~~Cannot identify PCI hardware~~ | ✅ INCLUDED |
-| ~~usbutils (lsusb)~~ | ~~Cannot identify USB devices~~ | ✅ ADDED 2026-01-25 |
-| ~~dmidecode~~ | ~~Cannot read BIOS/DMI info~~ | ✅ ADDED 2026-01-24 |
-| ~~ethtool~~ | ~~Cannot diagnose NICs~~ | ✅ ADDED 2026-01-24 |
+| ~~Volatile journal storage~~ | ~~Logs may fill tmpfs~~ | CONFIGURED |
+| ~~do-not-suspend config~~ | ~~Live session may sleep during install~~ | CONFIGURED |
+| ~~SSH server (sshd)~~ | ~~No remote installation/rescue~~ | AVAILABLE |
+| ~~pciutils (lspci)~~ | ~~Cannot identify PCI hardware~~ | INCLUDED |
+| ~~usbutils (lsusb)~~ | ~~Cannot identify USB devices~~ | ADDED 2026-01-25 |
+| ~~dmidecode~~ | ~~Cannot read BIOS/DMI info~~ | ADDED 2026-01-24 |
+| ~~ethtool~~ | ~~Cannot diagnose NICs~~ | ADDED 2026-01-24 |
 | ~~gdisk/sgdisk~~ | ~~Only fdisk for GPT~~ | N/A - NOT IN ROCKY 10.1 (parted/sfdisk sufficient) |
-| ~~iwd~~ | ~~Only wpa_supplicant for WiFi~~ | ✅ ADDED 2026-01-25 |
-| ~~wireless-regdb~~ | ~~WiFi may violate regulations~~ | ✅ INCLUDED |
-| ~~sof-firmware~~ | ~~Modern laptop sound may not work~~ | ✅ ADDED 2026-01-25 |
-| ~~ISO SHA512 checksum~~ | ~~Users cannot verify downloads~~ | ✅ GENERATED |
-| ~~checksums (md5/sha256/sha512)~~ | ~~Cannot verify file integrity~~ | ✅ ADDED 2026-01-24 |
-| ~~network diag (dig/nslookup/tracepath)~~ | ~~Cannot debug DNS/routing~~ | ✅ ADDED 2026-01-24 |
-| ~~disk health (smartctl/hdparm/nvme)~~ | ~~Cannot check drive health~~ | ✅ ADDED 2026-01-24 |
-| ~~XFS (mkfs.xfs/xfs_repair)~~ | ~~No XFS support~~ | ✅ ADDED 2026-01-24 |
+| ~~iwd~~ | ~~Only wpa_supplicant for WiFi~~ | ADDED 2026-01-25 |
+| ~~wireless-regdb~~ | ~~WiFi may violate regulations~~ | INCLUDED |
+| ~~sof-firmware~~ | ~~Modern laptop sound may not work~~ | ADDED 2026-01-25 |
+| ~~ISO SHA512 checksum~~ | ~~Users cannot verify downloads~~ | GENERATED |
+| ~~checksums (md5/sha256/sha512)~~ | ~~Cannot verify file integrity~~ | ADDED 2026-01-24 |
+| ~~network diag (dig/nslookup/tracepath)~~ | ~~Cannot debug DNS/routing~~ | ADDED 2026-01-24 |
+| ~~disk health (smartctl/hdparm/nvme)~~ | ~~Cannot check drive health~~ | ADDED 2026-01-24 |
+| ~~XFS (mkfs.xfs/xfs_repair)~~ | ~~No XFS support~~ | ADDED 2026-01-24 |
 
 ### What's Working (Verified)
 
 | Feature | Status |
 |---------|--------|
-| UEFI boot | ✅ Verified in E2E test |
-| NetworkManager + WiFi firmware | ✅ Enabled, firmware included |
-| Autologin to root shell | ✅ Like archiso |
-| machine-id empty | ✅ Regenerates on first boot |
-| Hostname set ("levitateos") | ✅ Configured |
-| recstrap (EROFS extraction) | ✅ Working |
-| recfstab (genfstab equivalent) | ✅ Implemented |
-| recchroot (arch-chroot equivalent) | ✅ Implemented |
-| systemd as PID 1 | ✅ Verified |
-| Serial console | ✅ Enabled |
-| **docs-tui (levitate-docs)** | ✅ Auto-launches with tmux on tty1 |
-| **tmux split-screen** | ✅ Shell left, docs right |
-| **Keyboard shortcuts** | ✅ Shift+Tab switch, Ctrl+←/→ resize, F1 help |
-| **QEMU Performance** | ✅ KVM acceleration + 4 cores + 1920x1080 |
-| Intel/AMD microcode | ✅ Included in firmware |
-| LUKS encryption (cryptsetup) | ✅ Included |
-| LVM (lvm2) | ✅ Included |
-| Hardware detection (dmidecode, ethtool, lsusb) | ✅ Included |
-| Disk health (smartctl, hdparm, nvme) | ✅ Included |
-| XFS filesystem | ✅ Included |
-| Btrfs filesystem | ✅ Included |
-| Checksums (base64, md5sum, sha256sum, sha512sum) | ✅ Included |
-| Network diagnostics (dig, nslookup, tracepath) | ✅ Included |
-| Binary inspection (strings, hexdump) | ✅ Included |
-| iwd WiFi daemon | ✅ Included |
-| Intel SOF audio firmware | ✅ Included |
+| UEFI boot | Verified in E2E test |
+| NetworkManager + WiFi firmware | Enabled, firmware included |
+| Autologin to root shell | Like archiso |
+| machine-id empty | Regenerates on first boot |
+| Hostname set ("levitateos") | Configured |
+| recstrap (EROFS extraction) | Working |
+| recfstab (genfstab equivalent) | Implemented |
+| recchroot (arch-chroot equivalent) | Implemented |
+| systemd as PID 1 | Verified |
+| Serial console | Enabled |
+| **docs-tui (levitate-docs)** | Auto-launches with tmux on tty1 |
+| **tmux split-screen** | Shell left, docs right |
+| **Keyboard shortcuts** | Shift+Tab switch, Ctrl+Left/Right resize, F1 help |
+| **QEMU Performance** | KVM acceleration + 4 cores + 1920x1080 |
+| Intel/AMD microcode | Included in firmware |
+| LUKS encryption (cryptsetup) | Included |
+| LVM (lvm2) | Included |
+| Hardware detection (dmidecode, ethtool, lsusb) | Included |
+| Disk health (smartctl, hdparm, nvme) | Included |
+| XFS filesystem | Included |
+| Btrfs filesystem | Included |
+| Checksums (base64, md5sum, sha256sum, sha512sum) | Included |
+| Network diagnostics (dig, nslookup, tracepath) | Included |
+| Binary inspection (strings, hexdump) | Included |
+| iwd WiFi daemon | Included |
+| Intel SOF audio firmware | Included |
 
 ### Remaining Work Summary
 
 | Category | Count | Priority | Notes |
 |----------|-------|----------|-------|
-| docs-tui Integration | ✅ DONE | P0 | Shell+docs split screen working (TUI UX refinements pending) |
-| Microcode | ✅ DONE | P0 | Intel/AMD included in firmware |
-| Encryption/Storage | ✅ DONE | P0 | cryptsetup, lvm2, btrfs-progs included |
-| Hardware Detection | ✅ DONE | P1 | lspci, lsusb included |
-| Networking | ✅ DONE | P1 | iwd, wireless-regdb, sof-firmware included |
-| Shell UX | ✅ DONE | P1 | tmux, terminfo included |
+| docs-tui Integration | DONE | P0 | Shell+docs split screen working (TUI UX refinements pending) |
+| Microcode | DONE | P0 | Intel/AMD included in firmware |
+| Encryption/Storage | DONE | P0 | cryptsetup, lvm2, btrfs-progs included |
+| Hardware Detection | DONE | P1 | lspci, lsusb included |
+| Networking | DONE | P1 | iwd, wireless-regdb, sof-firmware included |
+| Shell UX | DONE | P1 | tmux, terminfo included |
 | Package Manager | 5 | P1 | recipe commands not fully implemented |
-| Filesystems | ✅ DONE | P2 | XFS, Btrfs, ext4, fat32 working |
-| Network Tools | ✅ DONE | P2 | dig, nslookup, tracepath added |
-| Disk Health | ✅ DONE | P2 | smartctl, hdparm, nvme added |
+| Filesystems | DONE | P2 | XFS, Btrfs, ext4, fat32 working |
+| Network Tools | DONE | P2 | dig, nslookup, tracepath added |
+| Disk Health | DONE | P2 | smartctl, hdparm, nvme added |
 | Real HW Testing | 10 | P1 | Needs testing on physical hardware |
 
 **All archiso-parity RPMs now extracted** - btrfs-progs, usbutils, iwd, wireless-regdb, sof-firmware are all included.
@@ -134,7 +134,7 @@ ISO
 5. User has FULL daily driver system
 
 **Installation flow:**
-1. Boot ISO → live environment (from EROFS)
+1. Boot ISO -> live environment (from EROFS)
 2. Run: `recstrap /dev/vda`
 3. Reboot into installed system
 
@@ -250,7 +250,75 @@ Result: Live = Installed (same files!)
 
 ---
 
+## Build System & CLI
+
+### CLI Commands
+
+**Build Commands:**
+- [x] `leviso build` - Full build (kernel + rootfs + initramfs + ISO)
+- [x] `leviso build kernel [--clean]` - Kernel compilation only
+- [x] `leviso build rootfs` - EROFS image only
+- [x] `leviso build initramfs` - Live initramfs only
+- [x] `leviso build iso` - ISO only
+
+**Runtime Commands:**
+- [x] `leviso run [--no-disk] [--disk-size SIZE]` - GUI boot in QEMU (UEFI)
+- [x] `leviso test [--timeout SECS]` - Headless boot verification with serial capture
+
+**Information Commands:**
+- [x] `leviso show config` - Show build configuration
+- [x] `leviso show rootfs` - Show EROFS image info
+- [x] `leviso show status` - Show build status (what needs rebuilding)
+
+**Cleanup Commands:**
+- [x] `leviso clean` - Remove output artifacts (default)
+- [x] `leviso clean kernel` - Remove kernel build
+- [x] `leviso clean iso` - Remove ISO and initramfs
+- [x] `leviso clean rootfs` - Remove EROFS rootfs
+- [x] `leviso clean downloads` - Remove downloaded sources
+- [x] `leviso clean cache` - Clear tool cache (~/.cache/levitate/)
+- [x] `leviso clean all` - Remove everything
+
+**Dependency Management:**
+- [x] `leviso download [linux|rocky|tools]` - Download dependencies manually
+- [x] `leviso preflight [--strict]` - Validate build environment
+
+**Extraction & Inspection:**
+- [x] `leviso extract rocky` - Extract Rocky ISO contents
+- [x] `leviso extract rootfs [-o OUTPUT]` - Extract EROFS contents
+
+### Build Intelligence
+
+**Incremental Building:**
+- [x] Kernel compile detection (skips if unchanged)
+- [x] Kernel install detection (skips if unchanged)
+- [x] Rootfs rebuild detection (hash-based)
+- [x] Initramfs rebuild detection (hash-based)
+- [x] ISO rebuild detection (component-based)
+
+**License Tracking:**
+- [x] Package registration
+- [x] Binary tracking
+- [x] License file copying
+- [x] SPDX compliance
+
+**Preflight Checks:**
+- [x] Host tools validation (erofs-utils, mkfs commands, etc.)
+- [x] Dependency resolution
+- [x] Environment verification
+- [x] KVM/QEMU availability
+
+---
+
 ## Current State (What's Already Working)
+
+### Build Artifacts
+- [x] EROFS rootfs image (~350MB compressed)
+- [x] Tiny live initramfs (~5MB, busybox-based)
+- [x] Install initramfs (~30-50MB, systemd-based)
+- [x] Bootable hybrid BIOS/UEFI ISO
+- [x] UKI (Unified Kernel Images) for installed systems
+- [x] ISO SHA512 checksum generation
 
 ### Live Environment (Initramfs)
 - [x] Downloads Rocky 10 ISO for userspace binaries
@@ -261,6 +329,25 @@ Result: Live = Installed (same files!)
 - [x] efivarfs mounted for UEFI verification
 - [x] Systemd as PID 1 (boots to multi-user.target)
 - [x] Basic systemd units (getty, serial-console)
+- [x] Serial console with CLOCAL support for virtual serial
+
+### System Components (9 Build Phases)
+- [x] Phase 1: Filesystem (FHS directories, merged /usr)
+- [x] Phase 2: Binaries (shell, coreutils, auth, systemd)
+- [x] Phase 3: Systemd (units, udev, tmpfiles, getty)
+- [x] Phase 4: D-Bus (dbus-broker, socket activation)
+- [x] Phase 5: Services (network, NTP, SSH, PAM, kernel modules)
+- [x] Phase 6: Configuration (/etc files, timezone, locale, terminfo)
+- [x] Phase 7: Packages (recipe, bootloader)
+- [x] Phase 8: Firmware (linux-firmware, microcode, keymaps)
+- [x] Phase 9: Final (welcome message, installation tools, docs-tui)
+
+### Desktop Services (Optional Components)
+- [x] Bluetooth (bluez)
+- [x] PipeWire audio (with PulseAudio compatibility)
+- [x] Polkit authorization
+- [x] UDisks2 (disk management)
+- [x] UPower (power management)
 
 ### Disk Utilities (in initramfs)
 - [x] `lsblk` - list block devices
@@ -295,8 +382,6 @@ These are known gaps in the live environment (EROFS rootfs):
 ### Critical Tools (P0 - IMPLEMENTED)
 - [x] `recfstab` - generate fstab from mounted filesystems (genfstab equivalent)
 - [x] `recchroot` - enter installed system with proper mounts (arch-chroot equivalent)
-
-> **✅ NOTE:** The /etc/motd welcome message has been updated to reference `recfstab` and `recchroot`.
 - [x] `cryptsetup` - LUKS disk encryption
 - [x] `lvm2` - Logical Volume Manager (pvcreate, vgcreate, lvcreate)
 - [x] `btrfs-progs` - Btrfs filesystem tools
@@ -327,49 +412,32 @@ These are known gaps in the live environment (EROFS rootfs):
 
 ---
 
-## Live Environment Configuration Gaps
+## Networking Implementation
 
-These are configuration issues that don't require new binaries, just systemd config files.
+> **STATUS: IMPLEMENTED** - See `src/build/network.rs`
 
-### Volatile Journal Storage (P1)
+| Component | Status | Location |
+|-----------|--------|----------|
+| NetworkManager | Working | `src/build/network.rs` |
+| wpa_supplicant | Working | `src/build/network.rs` |
+| nmcli / nmtui | Working | Included with NetworkManager |
+| WiFi firmware | Working | Intel, Atheros, Realtek, Broadcom, MediaTek |
+| Ethernet modules | Working | virtio_net, e1000, e1000e, r8169 |
+| Auto-start | Working | NetworkManager.service enabled |
 
-archiso configures `journald` to use volatile storage so logs don't fill the tmpfs overlay.
-
-**Fix needed:** Create `/etc/systemd/journald.conf.d/volatile.conf`:
-```ini
-[Journal]
-Storage=volatile
-RuntimeMaxUse=64M
+### Verification Commands
+```bash
+systemctl status NetworkManager   # Should show active
+nmcli device                      # Should list interfaces
+nmcli device wifi list            # Should show networks (real hardware)
 ```
 
-**File to modify:** `leviso/src/build/systemd.rs` - add `setup_volatile_journal()`
+### WiFi & Audio (Included)
+- [x] iwd - alternative WiFi daemon (iwctl)
+- [x] wireless-regdb - regulatory compliance
+- [x] sof-firmware - Intel Sound Open Firmware
 
-### Do-Not-Suspend Config (P1)
-
-archiso prevents the live session from suspending/hibernating during installation.
-
-**Fix needed:** Create `/etc/systemd/logind.conf.d/do-not-suspend.conf`:
-```ini
-[Login]
-HandleSuspendKey=ignore
-HandleHibernateKey=ignore
-HandleLidSwitch=ignore
-HandleLidSwitchExternalPower=ignore
-IdleAction=ignore
-```
-
-**File to modify:** `leviso/src/build/systemd.rs` - add `setup_do_not_suspend()`
-
-### KMS (Kernel Mode Setting)
-
-archiso has a KMS hook for proper graphics mode switching.
-
-**Status:** Not implemented. Investigate if needed for LevitateOS.
-
----
-
-### Networking (IMPLEMENTED in src/build/network.rs)
-
+### Implementation status
 - [x] Create `src/initramfs/network.rs` module
 - [x] Copy NetworkManager + nmcli + nmtui + nm-online binaries
 - [x] Copy wpa_supplicant + wpa_cli + wpa_passphrase binaries
@@ -399,33 +467,6 @@ archiso has a KMS hook for proper graphics mode switching.
 
 ### Documentation
 - [x] `levitate-docs` TUI documentation viewer (standalone binary, auto-launches on live boot)
-
----
-
-## Networking Implementation
-
-> **STATUS: ✅ IMPLEMENTED** - See `src/build/network.rs`
-
-| Component | Status | Location |
-|-----------|--------|----------|
-| NetworkManager | ✅ Working | `src/build/network.rs` |
-| wpa_supplicant | ✅ Working | `src/build/network.rs` |
-| nmcli / nmtui | ✅ Working | Included with NetworkManager |
-| WiFi firmware | ✅ Working | Intel, Atheros, Realtek, Broadcom, MediaTek |
-| Ethernet modules | ✅ Working | virtio_net, e1000, e1000e, r8169 |
-| Auto-start | ✅ Working | NetworkManager.service enabled |
-
-### Verification Commands
-```bash
-systemctl status NetworkManager   # Should show active
-nmcli device                      # Should list interfaces
-nmcli device wifi list            # Should show networks (real hardware)
-```
-
-### WiFi & Audio (Included)
-- [x] iwd - alternative WiFi daemon (iwctl)
-- [x] wireless-regdb - regulatory compliance
-- [x] sof-firmware - Intel Sound Open Firmware
 
 ---
 
@@ -488,11 +529,9 @@ tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt
 
 archiso provides checksum files so users can verify their download.
 
-- [ ] **SHA512 checksum** - Generate `levitateos-YYYY.MM.DD.iso.sha512` during build
+- [x] **SHA512 checksum** - Generate `levitateos-YYYY.MM.DD.iso.sha512` during build
 - [ ] **GPG signature** - Sign checksum file for release verification
 - [ ] Document verification process on website
-
-**File to modify:** `leviso/src/iso.rs` - add checksum generation after xorriso
 
 ### 1.1 Boot Modes
 - [x] UEFI boot (GPT, ESP partition) - verified in E2E test
@@ -564,9 +603,9 @@ archiso provides checksum files so users can verify their download.
 - [ ] Can connect to WPA3 network (untested)
 - [ ] Can connect to WPA2-Enterprise (802.1X)
 - [x] WiFi firmware: Intel (iwlwifi), Atheros, Realtek, Broadcom (network.rs)
-- [ ] **wireless-regdb** - P1: Required for legal WiFi operation in many countries
-- [ ] **iwd** - P1: Alternative WiFi daemon, often more reliable than wpa_supplicant
-- [ ] **sof-firmware** - P1: Modern laptop sound (Intel SOF)
+- [x] **wireless-regdb** - Required for legal WiFi operation
+- [x] **iwd** - Alternative WiFi daemon
+- [x] **sof-firmware** - Modern laptop sound (Intel SOF)
 
 ### 2.4 Network Tools
 - [x] `ip` - interface and routing configuration (in rootfs)
@@ -574,9 +613,9 @@ archiso provides checksum files so users can verify their download.
 - [x] `ss` - socket statistics (in rootfs)
 - [x] `curl` - HTTP client (in rootfs)
 - [x] `wget` - file downloads (in rootfs)
-- [ ] `dig` / `nslookup` - DNS queries (from bind-utils or ldns) - P2
-- [ ] `traceroute` / `tracepath` - path tracing - P2
-- [ ] **`ethtool`** - P1: NIC diagnostics and configuration
+- [x] `dig` / `nslookup` - DNS queries (from bind-utils)
+- [x] `tracepath` - path tracing
+- [x] **`ethtool`** - NIC diagnostics and configuration
 - [ ] `nmap` - network scanning (optional) - P3
 - [ ] `tcpdump` - packet capture (optional) - P3
 
@@ -586,9 +625,10 @@ archiso provides checksum files so users can verify their download.
 - [ ] IPsec support (strongswan or libreswan) - *optional*
 
 ### 2.6 Remote Access
-- [ ] **SSH server (sshd) enabled** - P1: Essential for remote installation/rescue (archiso enables this!)
-- [ ] SSH client (ssh, scp, sftp) - P1
-- [ ] Key-based authentication works
+- [x] **SSH server (sshd) available** - Essential for remote installation/rescue
+- [x] SSH client (ssh, scp, sftp)
+- [x] SSH host keys pre-generated
+- [ ] Key-based authentication works (needs testing)
 
 ### 2.7 Firewall
 - [ ] nftables OR iptables available
@@ -601,7 +641,7 @@ archiso provides checksum files so users can verify their download.
 ### 3.1 Partitioning Tools
 - [x] `fdisk` - MBR/GPT partitioning (in rootfs)
 - [x] `parted` - GPT partitioning (in rootfs)
-- [ ] **`gdisk` / `sgdisk`** - P1: GPT-specific tools (better than fdisk for GPT)
+- [~] **`gdisk` / `sgdisk`** - N/A - NOT IN ROCKY 10.1 (parted/sfdisk sufficient)
 - [x] `lsblk` - list block devices (in rootfs)
 - [x] `blkid` - show UUIDs and labels (in rootfs)
 - [x] `wipefs` - clear filesystem signatures (in rootfs)
@@ -609,21 +649,21 @@ archiso provides checksum files so users can verify their download.
 ### 3.2 Filesystem Support
 - [x] ext4 (mkfs.ext4, e2fsck, tune2fs, resize2fs) - in rootfs
 - [x] FAT32/vfat (mkfs.fat, fsck.fat) - required for ESP, in rootfs
-- [ ] XFS (mkfs.xfs, xfs_repair) - P2
-- [ ] **Btrfs (mkfs.btrfs, btrfs)** - P0 CRITICAL: Popular default, users expect it
+- [x] XFS (mkfs.xfs, xfs_repair) - in rootfs
+- [x] **Btrfs (mkfs.btrfs, btrfs)** - in rootfs
 - [ ] NTFS read/write (ntfs-3g) - P2: for Windows drives
 - [ ] exFAT (exfatprogs) - P2: for USB drives and SD cards
 - [x] ISO9660 (mount -t iso9660) - kernel module in initramfs
 - [x] EROFS (for live systems) - kernel module + mkfs.erofs
 
 ### 3.3 LVM & RAID
-- [ ] **LVM2 (pvcreate, vgcreate, lvcreate)** - P0 CRITICAL: Common storage setup
+- [x] **LVM2 (pvcreate, vgcreate, lvcreate)** - in rootfs
 - [ ] mdadm for software RAID - P2
 - [ ] dmraid for fake RAID - P2
 
 ### 3.4 Encryption
-- [ ] **LUKS encryption (cryptsetup)** - P0 CRITICAL: Many users require encrypted root
-- [ ] Encrypted root partition support - depends on cryptsetup
+- [x] **LUKS encryption (cryptsetup)** - in rootfs
+- [ ] Encrypted root partition support - depends on initramfs integration
 - [ ] crypttab for automatic unlock - depends on cryptsetup
 
 ### 3.5 Mount & Automount
@@ -631,20 +671,20 @@ archiso provides checksum files so users can verify their download.
 - [x] `findmnt` - show mounted filesystems (in rootfs)
 - [x] fstab support with UUID (install-tests generates it)
 - [ ] systemd automount for removable media
-- [ ] udisks2 for desktop automount - *optional*
+- [x] udisks2 for desktop automount
 
 ### 3.6 Storage Drivers (Kernel Modules)
-- [ ] SATA: ahci, ata_piix
-- [ ] NVMe: nvme
-- [ ] USB storage: usb-storage, uas
+- [x] SATA: ahci, ata_piix
+- [x] NVMe: nvme
+- [x] USB storage: usb-storage, uas
 - [ ] SD cards: sdhci, mmc_block
 - [x] SCSI: sr_mod (CD/DVD) - in config.rs
 - [x] VirtIO: virtio_blk, virtio_scsi - in config.rs
 
 ### 3.7 Disk Health
-- [ ] `smartctl` (smartmontools) - SMART monitoring
-- [ ] `hdparm` - drive parameters
-- [ ] `nvme-cli` - NVMe management
+- [x] `smartctl` (smartmontools) - SMART monitoring
+- [x] `hdparm` - drive parameters
+- [x] `nvme-cli` - NVMe management
 
 ---
 
@@ -720,8 +760,8 @@ archiso provides checksum files so users can verify their download.
 - [x] `uname` - in rootfs
 - [x] `seq` - in rootfs
 - [ ] `shuf`
-- [ ] `md5sum`, `sha256sum`, `sha512sum`
-- [ ] `base64`
+- [x] `md5sum`, `sha256sum`, `sha512sum` - in rootfs
+- [x] `base64` - in rootfs
 - [ ] `install`
 
 ### 5.2 Text Processing
@@ -755,6 +795,10 @@ archiso provides checksum files so users can verify their download.
 - [x] Command history - built into bash
 - [x] Job control (bg, fg, jobs) - built into bash
 - [ ] `zsh` - *optional alternative*
+
+### 5.6 Binary Inspection
+- [x] `strings` - extract printable strings
+- [x] `hexdump` - hex/binary viewer
 
 ---
 
@@ -793,8 +837,8 @@ archiso provides checksum files so users can verify their download.
 ## 7. HARDWARE SUPPORT
 
 ### 7.1 CPU
-- [ ] **Intel microcode (intel-ucode)** - P0 CRITICAL: CPU security/stability
-- [ ] **AMD microcode (amd-ucode)** - P0 CRITICAL: CPU security/stability
+- [x] **Intel microcode (intel-ucode)** - CPU security/stability (microcode_ctl)
+- [x] **AMD microcode (amd-ucode)** - CPU security/stability (linux-firmware)
 - [ ] CPU frequency scaling (cpupower) - P2
 - [ ] Temperature monitoring (lm_sensors) - P2
 
@@ -806,15 +850,15 @@ archiso provides checksum files so users can verify their download.
 
 ### 7.3 PCI/USB Detection
 - [x] `lspci` (pciutils) - identify PCI hardware
-- [ ] **`lsusb` (usbutils)** - P1: Users need to identify hardware
+- [x] **`lsusb` (usbutils)** - identify USB hardware
 - [ ] `lshw` - *optional but useful*
-- [ ] **`dmidecode`** - P1: SMBIOS/DMI info for hardware identification
+- [x] **`dmidecode`** - SMBIOS/DMI info for hardware identification
 
 ### 7.4 Input Devices
-- [ ] Keyboard works (all layouts via loadkeys)
+- [x] Keyboard works (all layouts via loadkeys)
 - [ ] Mouse works (PS/2 and USB)
 - [ ] Touchpad works (libinput)
-- [ ] Keymaps in /usr/share/kbd/keymaps/
+- [x] Keymaps in /usr/share/kbd/keymaps/
 
 ### 7.5 Display (Framebuffer/Console)
 - [ ] Console fonts (terminus-font or similar)
@@ -823,6 +867,7 @@ archiso provides checksum files so users can verify their download.
 - [ ] Virtual consoles (Ctrl+Alt+F1-F6)
 
 ### 7.6 Audio (Console/Headless)
+- [x] PipeWire audio daemon (with PulseAudio compatibility)
 - [ ] ALSA utilities (alsa-utils) - *optional for server*
 - [ ] `amixer`, `alsamixer` - *optional*
 
@@ -834,8 +879,8 @@ archiso provides checksum files so users can verify their download.
 - [ ] VMware SVGA driver
 - [ ] QXL for QEMU/KVM
 
-### 7.8 Bluetooth - *optional*
-- [ ] BlueZ stack
+### 7.8 Bluetooth
+- [x] BlueZ stack
 - [ ] `bluetoothctl`
 - [ ] Firmware for common adapters
 
@@ -876,6 +921,8 @@ archiso provides checksum files so users can verify their download.
 ## 8. PACKAGE MANAGEMENT
 
 ### 8.1 Recipe Package Manager
+- [x] `recipe` binary installed in rootfs
+- [x] Recipe configuration in /etc/recipe/config.toml
 - [ ] `recipe search <package>` - search packages
 - [ ] `recipe install <package>` - install packages
 - [ ] `recipe remove <package>` - remove packages
@@ -951,10 +998,10 @@ recipe install leviso-tools      # recstrap, recfstab, recchroot, recipe
 - [ ] Hyper-V daemons (hyperv)
 
 ### 10.2 VirtIO Drivers
-- [ ] virtio_blk - block devices
-- [ ] virtio_net - networking
-- [ ] virtio_scsi - SCSI
-- [ ] virtio_console - console
+- [x] virtio_blk - block devices
+- [x] virtio_net - networking
+- [x] virtio_scsi - SCSI
+- [x] virtio_console - console
 - [ ] virtio_balloon - memory ballooning
 - [ ] virtio_gpu - graphics
 
@@ -963,15 +1010,15 @@ recipe install leviso-tools      # recstrap, recfstab, recchroot, recipe
 ## 11. SECURITY
 
 ### 11.1 Basic Security
-- [ ] `/etc/shadow` permissions 0400
+- [x] `/etc/shadow` permissions 0400
 - [ ] Root account locked by default? (configurable)
-- [ ] Password hashing (SHA-512)
+- [x] Password hashing (SHA-512)
 - [ ] Failed login delays
 
 ### 11.2 SSH Security
 - [ ] Root login disabled by default
 - [ ] Key-based auth preferred
-- [ ] SSH host keys generated
+- [x] SSH host keys generated
 
 ### 11.3 Firewall
 - [ ] nftables/iptables available
@@ -987,20 +1034,20 @@ recipe install leviso-tools      # recstrap, recfstab, recchroot, recipe
 ### 12.1 Recovery Tools
 - [ ] Single-user mode (init=/bin/bash)
 - [ ] Live ISO can rescue installed system
-- [ ] `fsck` for all supported filesystems
+- [x] `fsck` for all supported filesystems
 - [ ] `testdisk` - *optional but useful*
 - [ ] `ddrescue` - *optional*
 
 ### 12.2 Diagnostic Tools
-- [ ] `dmesg` - kernel messages
-- [ ] `journalctl -b` - boot logs
-- [ ] `systemctl --failed` - failed services
-- [ ] `/var/log/` directory structure
+- [x] `dmesg` - kernel messages
+- [x] `journalctl -b` - boot logs
+- [x] `systemctl --failed` - failed services
+- [x] `/var/log/` directory structure
 
 ### 12.3 Performance Tools
-- [ ] `top` / `htop`
-- [ ] `ps` - process listing
-- [ ] `kill`, `killall`, `pkill`
+- [x] `top` / `htop`
+- [x] `ps` - process listing
+- [x] `kill`, `killall`, `pkill`
 - [ ] `nice`, `renice`
 - [ ] `iostat`, `vmstat` - *optional*
 
@@ -1009,20 +1056,20 @@ recipe install leviso-tools      # recstrap, recfstab, recchroot, recipe
 ## 13. LOCALIZATION
 
 ### 13.1 Locale
-- [ ] UTF-8 support (en_US.UTF-8 default)
-- [ ] locale-gen or equivalent
-- [ ] `/etc/locale.conf`
+- [x] UTF-8 support (en_US.UTF-8 default)
+- [x] locale-gen or equivalent
+- [x] `/etc/locale.conf`
 - [ ] `/etc/locale.gen`
 
 ### 13.2 Timezone
-- [ ] tzdata installed
-- [ ] `/etc/localtime` symlink
-- [ ] `timedatectl set-timezone`
+- [x] tzdata installed
+- [x] `/etc/localtime` symlink
+- [x] `timedatectl set-timezone`
 
 ### 13.3 Keyboard
-- [ ] US layout default
-- [ ] Other layouts available
-- [ ] `/etc/vconsole.conf`
+- [x] US layout default
+- [x] Other layouts available
+- [x] `/etc/vconsole.conf`
 
 ### 13.4 Console Fonts
 - [ ] Readable default font
@@ -1044,6 +1091,10 @@ recipe install leviso-tools      # recstrap, recfstab, recchroot, recipe
 ### 14.3 Online Documentation
 - [ ] Installation guide on website
 - [ ] Wiki or knowledge base
+
+### 14.4 Offline Documentation
+- [x] `levitate-docs` TUI documentation viewer
+- [x] Auto-launches with tmux on live boot
 
 ---
 
@@ -1122,55 +1173,55 @@ Arch Linux ISO includes these packages. Status in LevitateOS noted.
 
 ### Network & WiFi
 - `dhcpcd` - DHCP client (N/A - using NetworkManager)
-- `iwd` - WiFi daemon - ✅ INCLUDED
-- `wpa_supplicant` - WPA authentication - ✅ INCLUDED
+- `iwd` - WiFi daemon - INCLUDED
+- `wpa_supplicant` - WPA authentication - INCLUDED
 - `wireless_tools` - iwconfig etc (deprecated)
-- `wireless-regdb` - regulatory database - ✅ INCLUDED
-- `ethtool` - NIC config - ✅ INCLUDED
+- `wireless-regdb` - regulatory database - INCLUDED
+- `ethtool` - NIC config - INCLUDED
 - `modemmanager` - mobile broadband - MISSING (P2)
 
 ### Filesystems
-- `btrfs-progs` - ✅ INCLUDED
-- `dosfstools` - ✅ INCLUDED
-- `e2fsprogs` - ✅ INCLUDED
+- `btrfs-progs` - INCLUDED
+- `dosfstools` - INCLUDED
+- `e2fsprogs` - INCLUDED
 - `exfatprogs` - MISSING (P2)
 - `f2fs-tools` - MISSING (P3)
 - `jfsutils` - MISSING (P3)
 - `ntfs-3g` - MISSING (P2)
-- `xfsprogs` - ✅ INCLUDED
+- `xfsprogs` - INCLUDED
 
 ### Disk Tools
-- `cryptsetup` - LUKS - ✅ INCLUDED
+- `cryptsetup` - LUKS - INCLUDED
 - `dmraid` - MISSING (P3)
 - `gptfdisk` (gdisk) - N/A - NOT IN ROCKY 10.1 (parted/sfdisk sufficient)
-- `hdparm` - ✅ INCLUDED
-- `lvm2` - ✅ INCLUDED
+- `hdparm` - INCLUDED
+- `lvm2` - INCLUDED
 - `mdadm` - MISSING (P2)
-- `nvme-cli` - ✅ INCLUDED
-- `parted` - ✅ INCLUDED (in rootfs)
+- `nvme-cli` - INCLUDED
+- `parted` - INCLUDED (in rootfs)
 - `sdparm` - MISSING (P3)
-- `smartmontools` - ✅ INCLUDED
+- `smartmontools` - INCLUDED
 
 ### Hardware
-- `amd-ucode` - ✅ INCLUDED (via linux-firmware)
-- `intel-ucode` - ✅ INCLUDED (microcode_ctl)
-- `linux-firmware` - ✅ INCLUDED
+- `amd-ucode` - INCLUDED (via linux-firmware)
+- `intel-ucode` - INCLUDED (microcode_ctl)
+- `linux-firmware` - INCLUDED
 - `linux-firmware-marvell` - MISSING (minor)
-- `sof-firmware` - sound - ✅ INCLUDED (alsa-sof-firmware)
-- `dmidecode` - ✅ INCLUDED
-- `usbutils` - ✅ INCLUDED
-- `pciutils` - ✅ INCLUDED
+- `sof-firmware` - sound - INCLUDED (alsa-sof-firmware)
+- `dmidecode` - INCLUDED
+- `usbutils` - INCLUDED
+- `pciutils` - INCLUDED
 
 ### Utilities
-- `arch-install-scripts` - genfstab, arch-chroot - ✅ IMPLEMENTED (recfstab, recchroot)
-- `diffutils` - ✅ INCLUDED
-- `less` - ✅ INCLUDED
+- `arch-install-scripts` - genfstab, arch-chroot - IMPLEMENTED (recfstab, recchroot)
+- `diffutils` - INCLUDED
+- `less` - INCLUDED
 - `man-db` - MISSING (P1)
 - `man-pages` - MISSING (P1)
-- `nano` - ✅ INCLUDED
+- `nano` - INCLUDED
 - `rsync` - MISSING (P2)
-- `sudo` - ✅ INCLUDED
-- `vim` - ✅ INCLUDED (vi)
+- `sudo` - INCLUDED
+- `vim` - INCLUDED (vi)
 
 ### VPN
 - `openconnect` - MISSING (P2)
@@ -1228,7 +1279,7 @@ Arch Linux ISO includes these packages. Status in LevitateOS noted.
 - VM guest tools
 - Recovery tools (testdisk, ddrescue)
 - ModemManager (mobile broadband)
-- XFS, exFAT, NTFS support
+- exFAT, NTFS support
 - **System tuner daemon** - auto-tune sysctls for hardware (vm.swappiness, vm.dirty_ratio)
 - **First-boot GPU detection** - detect GPU, suggest ROCm/CUDA install via recipe
 - **scx schedulers package** - BPF schedulers for sched_ext (kernel has CONFIG_SCHED_CLASS_EXT=y)

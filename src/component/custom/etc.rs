@@ -3,6 +3,7 @@
 use anyhow::Result;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
+use std::process::Command;
 
 use leviso_elf::copy_dir_recursive;
 
@@ -44,6 +45,7 @@ pub fn create_etc_files(ctx: &BuildContext) -> Result<()> {
     create_shell_config(ctx)?;
     create_nsswitch(ctx)?;
     create_tmpfiles_configs(ctx)?;
+    copy_ld_so_conf(ctx)?;
 
     println!("  Created /etc configuration files");
     Ok(())
@@ -63,15 +65,21 @@ fn create_tmpfiles_configs(ctx: &BuildContext) -> Result<()> {
     Ok(())
 }
 
-/// Prepare SSH directory for host key generation on first boot.
+/// Generate SSH host keys for the rootfs.
 ///
-/// We do NOT pre-generate keys here because:
-/// 1. Security: All installations would share the same keys
-/// 2. Proper behavior: sshd-keygen@.service generates unique keys on first boot
+/// Pre-generates SSH host keys so sshd can start immediately without relying
+/// on sshd-keygen@.service. This fixes a reproducibility issue where the
+/// service doesn't always start correctly, leaving sshd unable to accept
+/// connections.
 ///
-/// This function just ensures /etc/ssh exists with correct permissions.
+/// SECURITY NOTE: For live ISO, shared keys are acceptable since the ISO is
+/// public and read-only. For installed systems, these keys should be regenerated
+/// during installation (recstrap handles this).
+///
+/// This was previously documented in KNOWLEDGE_install-test-debugging.md as
+/// a manual workaround (R4). Now codified in the build system.
 pub fn create_ssh_host_keys(ctx: &BuildContext) -> Result<()> {
-    println!("Preparing SSH directory...");
+    println!("Generating SSH host keys...");
 
     let ssh_dir = ctx.staging.join("etc/ssh");
     fs::create_dir_all(&ssh_dir)?;
@@ -79,7 +87,60 @@ pub fn create_ssh_host_keys(ctx: &BuildContext) -> Result<()> {
     // Set directory permissions (755)
     fs::set_permissions(&ssh_dir, fs::Permissions::from_mode(0o755))?;
 
-    println!("  Created /etc/ssh (keys will be generated on first boot by sshd-keygen@)");
+    // Generate all three key types used by modern sshd
+    let key_types = [
+        ("rsa", 3072),     // RSA with minimum recommended key size
+        ("ecdsa", 256),    // ECDSA with P-256 curve
+        ("ed25519", 0),    // Ed25519 (fixed size, no bits param needed)
+    ];
+
+    for (key_type, bits) in key_types {
+        let key_path = ssh_dir.join(format!("ssh_host_{}_key", key_type));
+        let pub_key_path = ssh_dir.join(format!("ssh_host_{}_key.pub", key_type));
+
+        // Check if BOTH private and public keys exist (idempotency)
+        // Only skip if both exist - partial state means we need to regenerate
+        if key_path.exists() && pub_key_path.exists() {
+            println!("  {} key pair already exists, skipping", key_type);
+            continue;
+        }
+
+        // Remove any partial state before generating
+        let _ = fs::remove_file(&key_path);
+        let _ = fs::remove_file(&pub_key_path);
+
+        let mut cmd = Command::new("ssh-keygen");
+        cmd.arg("-t").arg(key_type)
+            .arg("-f").arg(&key_path)
+            .arg("-N").arg("")  // Empty passphrase
+            .arg("-q");         // Quiet mode
+
+        // Add bits parameter for RSA and ECDSA
+        if bits > 0 {
+            cmd.arg("-b").arg(bits.to_string());
+        }
+
+        let status = cmd.status()?;
+        if !status.success() {
+            anyhow::bail!("Failed to generate SSH {} host key", key_type);
+        }
+
+        // Verify both files were created
+        if !key_path.exists() {
+            anyhow::bail!("SSH {} private key was not created", key_type);
+        }
+        if !pub_key_path.exists() {
+            anyhow::bail!("SSH {} public key was not created", key_type);
+        }
+
+        // Set correct permissions on private key (600) and public key (644)
+        fs::set_permissions(&key_path, fs::Permissions::from_mode(0o600))?;
+        fs::set_permissions(&pub_key_path, fs::Permissions::from_mode(0o644))?;
+
+        println!("  Generated {} key pair", key_type);
+    }
+
+    println!("  SSH host keys ready (sshd can start immediately)");
     Ok(())
 }
 
@@ -253,6 +314,26 @@ pub fn copy_locales(ctx: &BuildContext) -> Result<()> {
         fs::create_dir_all(archive_dst.parent().unwrap())?;
         fs::copy(&archive_src, &archive_dst)?;
         println!("  Copied locale-archive");
+    }
+
+    Ok(())
+}
+
+/// Copy dynamic linker configuration from source to staging.
+pub fn copy_ld_so_conf(ctx: &BuildContext) -> Result<()> {
+    // Copy ld.so.conf
+    let src = ctx.source.join("etc/ld.so.conf");
+    let dst = ctx.staging.join("etc/ld.so.conf");
+    if src.exists() && !dst.exists() {
+        fs::copy(&src, &dst)?;
+    }
+
+    // Copy ld.so.conf.d directory if it exists
+    let src_dir = ctx.source.join("etc/ld.so.conf.d");
+    let dst_dir = ctx.staging.join("etc/ld.so.conf.d");
+    if src_dir.exists() {
+        fs::create_dir_all(&dst_dir)?;
+        copy_dir_recursive(&src_dir, &dst_dir)?;
     }
 
     Ok(())

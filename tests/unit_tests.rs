@@ -13,6 +13,7 @@ use helpers::{
     assert_file_contains, assert_file_exists, assert_symlink,
     create_mock_rootfs, TestEnv,
 };
+use leviso::build::licenses::LicenseTracker;
 use leviso::component::{Component, Dest, Op, Phase};
 use std::fs;
 
@@ -39,6 +40,8 @@ fn test_component_missing_required_binary_fails() {
     let env = TestEnv::new();
     create_mock_rootfs(&env.rootfs);
     let ctx = env.build_context();
+    let tracker = LicenseTracker::new();
+    let tracker = LicenseTracker::new();
 
     // Create a component that requires a binary that doesn't exist
     let missing_binary_component = Component {
@@ -48,7 +51,7 @@ fn test_component_missing_required_binary_fails() {
     };
 
     // Execute should fail because the binary doesn't exist
-    let result = leviso::component::executor::execute(&ctx, &missing_binary_component);
+    let result = leviso::component::executor::execute(&ctx, &missing_binary_component, &tracker);
 
     assert!(
         result.is_err(),
@@ -79,6 +82,8 @@ fn test_component_bins_reports_all_missing() {
     let env = TestEnv::new();
     create_mock_rootfs(&env.rootfs);
     let ctx = env.build_context();
+    let tracker = LicenseTracker::new();
+    let tracker = LicenseTracker::new();
 
     // Create a component that requires multiple missing binaries
     let missing_bins_component = Component {
@@ -90,7 +95,7 @@ fn test_component_bins_reports_all_missing() {
         )],
     };
 
-    let result = leviso::component::executor::execute(&ctx, &missing_bins_component);
+    let result = leviso::component::executor::execute(&ctx, &missing_bins_component, &tracker);
 
     assert!(result.is_err(), "Op::Bins should fail when binaries missing");
 
@@ -130,6 +135,8 @@ fn test_component_dir_creates_nested_structure() {
     let env = TestEnv::new();
     create_mock_rootfs(&env.rootfs);
     let ctx = env.build_context();
+    let tracker = LicenseTracker::new();
+    let tracker = LicenseTracker::new();
 
     let dir_component = Component {
         name: "TestDir",
@@ -137,7 +144,7 @@ fn test_component_dir_creates_nested_structure() {
         ops: &[Op::Dir("var/lib/deeply/nested/directory")],
     };
 
-    let result = leviso::component::executor::execute(&ctx, &dir_component);
+    let result = leviso::component::executor::execute(&ctx, &dir_component, &tracker);
     assert!(result.is_ok(), "Op::Dir should succeed: {:?}", result);
 
     let created_dir = env.initramfs.join("var/lib/deeply/nested/directory");
@@ -164,6 +171,8 @@ fn test_component_writefile_creates_content() {
     let env = TestEnv::new();
     create_mock_rootfs(&env.rootfs);
     let ctx = env.build_context();
+    let tracker = LicenseTracker::new();
+    let tracker = LicenseTracker::new();
 
     let content = "test-content-12345\nline two\n";
     let write_component = Component {
@@ -172,7 +181,7 @@ fn test_component_writefile_creates_content() {
         ops: &[Op::WriteFile("etc/test-config.conf", "test-content-12345\nline two\n")],
     };
 
-    let result = leviso::component::executor::execute(&ctx, &write_component);
+    let result = leviso::component::executor::execute(&ctx, &write_component, &tracker);
     assert!(result.is_ok(), "Op::WriteFile should succeed: {:?}", result);
 
     let file_path = env.initramfs.join("etc/test-config.conf");
@@ -198,6 +207,8 @@ fn test_component_symlink_creates_link() {
     let env = TestEnv::new();
     create_mock_rootfs(&env.rootfs);
     let ctx = env.build_context();
+    let tracker = LicenseTracker::new();
+    let tracker = LicenseTracker::new();
 
     let symlink_component = Component {
         name: "TestSymlink",
@@ -205,7 +216,7 @@ fn test_component_symlink_creates_link() {
         ops: &[Op::Symlink("bin", "usr/bin")],
     };
 
-    let result = leviso::component::executor::execute(&ctx, &symlink_component);
+    let result = leviso::component::executor::execute(&ctx, &symlink_component, &tracker);
     assert!(result.is_ok(), "Op::Symlink should succeed: {:?}", result);
 
     let link_path = env.initramfs.join("bin");
@@ -237,6 +248,8 @@ fn test_component_enable_creates_wants_symlink() {
     let env = TestEnv::new();
     create_mock_rootfs(&env.rootfs);
     let ctx = env.build_context();
+    let tracker = LicenseTracker::new();
+    let tracker = LicenseTracker::new();
 
     let enable_component = Component {
         name: "TestEnable",
@@ -244,7 +257,7 @@ fn test_component_enable_creates_wants_symlink() {
         ops: &[Op::Enable("test-service.service", Target::MultiUser)],
     };
 
-    let result = leviso::component::executor::execute(&ctx, &enable_component);
+    let result = leviso::component::executor::execute(&ctx, &enable_component, &tracker);
     assert!(result.is_ok(), "Op::Enable should succeed: {:?}", result);
 
     let wants_link = env
@@ -375,6 +388,8 @@ fn test_component_writefilemode_sets_permissions() {
     let env = TestEnv::new();
     create_mock_rootfs(&env.rootfs);
     let ctx = env.build_context();
+    let tracker = LicenseTracker::new();
+    let tracker = LicenseTracker::new();
 
     let write_component = Component {
         name: "TestWriteFileMode",
@@ -382,7 +397,7 @@ fn test_component_writefilemode_sets_permissions() {
         ops: &[Op::WriteFileMode("etc/shadow-test", "root:!:19000::::::", 0o600)],
     };
 
-    let result = leviso::component::executor::execute(&ctx, &write_component);
+    let result = leviso::component::executor::execute(&ctx, &write_component, &tracker);
     assert!(result.is_ok(), "Op::WriteFileMode should succeed: {:?}", result);
 
     let file_path = env.initramfs.join("etc/shadow-test");
@@ -415,6 +430,8 @@ fn test_component_dirmode_sets_permissions() {
     let env = TestEnv::new();
     create_mock_rootfs(&env.rootfs);
     let ctx = env.build_context();
+    let tracker = LicenseTracker::new();
+    let tracker = LicenseTracker::new();
 
     let dir_component = Component {
         name: "TestDirMode",
@@ -422,7 +439,7 @@ fn test_component_dirmode_sets_permissions() {
         ops: &[Op::DirMode("tmp", 0o1777)],
     };
 
-    let result = leviso::component::executor::execute(&ctx, &dir_component);
+    let result = leviso::component::executor::execute(&ctx, &dir_component, &tracker);
     assert!(result.is_ok(), "Op::DirMode should succeed: {:?}", result);
 
     let dir_path = env.initramfs.join("tmp");
@@ -457,6 +474,8 @@ fn test_component_copyfile_missing_fails() {
     let env = TestEnv::new();
     create_mock_rootfs(&env.rootfs);
     let ctx = env.build_context();
+    let tracker = LicenseTracker::new();
+    let tracker = LicenseTracker::new();
 
     let copy_component = Component {
         name: "TestCopyFileMissing",
@@ -464,7 +483,7 @@ fn test_component_copyfile_missing_fails() {
         ops: &[Op::CopyFile("etc/nonexistent-config-file.conf")],
     };
 
-    let result = leviso::component::executor::execute(&ctx, &copy_component);
+    let result = leviso::component::executor::execute(&ctx, &copy_component, &tracker);
     assert!(
         result.is_err(),
         "Op::CopyFile should fail when source file doesn't exist"
@@ -506,6 +525,8 @@ fn test_component_user_creates_entry() {
     ).unwrap();
 
     let ctx = env.build_context();
+    let tracker = LicenseTracker::new();
+    let tracker = LicenseTracker::new();
 
     let user_component = Component {
         name: "TestUserCreation",
@@ -519,7 +540,7 @@ fn test_component_user_creates_entry() {
         }],
     };
 
-    let result = leviso::component::executor::execute(&ctx, &user_component);
+    let result = leviso::component::executor::execute(&ctx, &user_component, &tracker);
     assert!(result.is_ok(), "Op::User should succeed: {:?}", result);
 
     let passwd_path = env.initramfs.join("etc/passwd");
@@ -563,6 +584,8 @@ fn test_component_group_creates_entry() {
     ).unwrap();
 
     let ctx = env.build_context();
+    let tracker = LicenseTracker::new();
+    let tracker = LicenseTracker::new();
 
     let group_component = Component {
         name: "TestGroupCreation",
@@ -573,7 +596,7 @@ fn test_component_group_creates_entry() {
         }],
     };
 
-    let result = leviso::component::executor::execute(&ctx, &group_component);
+    let result = leviso::component::executor::execute(&ctx, &group_component, &tracker);
     assert!(result.is_ok(), "Op::Group should succeed: {:?}", result);
 
     let group_path = env.initramfs.join("etc/group");
@@ -609,6 +632,8 @@ fn test_component_all_operations_execute() {
     let env = TestEnv::new();
     create_mock_rootfs(&env.rootfs);
     let ctx = env.build_context();
+    let tracker = LicenseTracker::new();
+    let tracker = LicenseTracker::new();
 
     let multi_op_component = Component {
         name: "TestMultiOp",
@@ -621,7 +646,7 @@ fn test_component_all_operations_execute() {
         ],
     };
 
-    let result = leviso::component::executor::execute(&ctx, &multi_op_component);
+    let result = leviso::component::executor::execute(&ctx, &multi_op_component, &tracker);
     assert!(result.is_ok(), "All operations should succeed: {:?}", result);
 
     // Verify all operations executed
@@ -663,6 +688,8 @@ fn test_component_dirs_creates_multiple() {
     let env = TestEnv::new();
     create_mock_rootfs(&env.rootfs);
     let ctx = env.build_context();
+    let tracker = LicenseTracker::new();
+    let tracker = LicenseTracker::new();
 
     let dirs_component = Component {
         name: "TestDirs",
@@ -674,7 +701,7 @@ fn test_component_dirs_creates_multiple() {
         ])],
     };
 
-    let result = leviso::component::executor::execute(&ctx, &dirs_component);
+    let result = leviso::component::executor::execute(&ctx, &dirs_component, &tracker);
     assert!(result.is_ok(), "Op::Dirs should succeed: {:?}", result);
 
     // All directories should exist
@@ -719,6 +746,8 @@ fn test_component_copytree_copies_structure() {
     fs::write(src_tree.join("subdir/nested.conf"), "nested config").unwrap();
 
     let ctx = env.build_context();
+    let tracker = LicenseTracker::new();
+    let tracker = LicenseTracker::new();
 
     let copytree_component = Component {
         name: "TestCopyTree",
@@ -726,7 +755,7 @@ fn test_component_copytree_copies_structure() {
         ops: &[Op::CopyTree("usr/share/test-config")],
     };
 
-    let result = leviso::component::executor::execute(&ctx, &copytree_component);
+    let result = leviso::component::executor::execute(&ctx, &copytree_component, &tracker);
     assert!(result.is_ok(), "Op::CopyTree should succeed: {:?}", result);
 
     // Verify entire tree was copied
@@ -762,6 +791,8 @@ fn test_component_copytree_preserves_symlinks() {
     std::os::unix::fs::symlink("real.conf", src_tree.join("link.conf")).unwrap();
 
     let ctx = env.build_context();
+    let tracker = LicenseTracker::new();
+    let tracker = LicenseTracker::new();
 
     let copytree_component = Component {
         name: "TestCopyTreeSymlink",
@@ -769,7 +800,7 @@ fn test_component_copytree_preserves_symlinks() {
         ops: &[Op::CopyTree("etc/test-service")],
     };
 
-    let result = leviso::component::executor::execute(&ctx, &copytree_component);
+    let result = leviso::component::executor::execute(&ctx, &copytree_component, &tracker);
     assert!(result.is_ok(), "Op::CopyTree should succeed: {:?}", result);
 
     // Verify symlink was preserved
@@ -813,6 +844,8 @@ fn test_component_units_copies_unit_files() {
     ).unwrap();
 
     let ctx = env.build_context();
+    let tracker = LicenseTracker::new();
+    let tracker = LicenseTracker::new();
 
     let units_component = Component {
         name: "TestUnits",
@@ -820,7 +853,7 @@ fn test_component_units_copies_unit_files() {
         ops: &[Op::Units(&["test-service.service", "test-socket.socket"])],
     };
 
-    let result = leviso::component::executor::execute(&ctx, &units_component);
+    let result = leviso::component::executor::execute(&ctx, &units_component, &tracker);
     assert!(result.is_ok(), "Op::Units should succeed: {:?}", result);
 
     // Verify units were copied
@@ -856,6 +889,8 @@ fn test_component_copyfile_copies_existing() {
     fs::write(&src_config, "setting=value\nother=123\n").unwrap();
 
     let ctx = env.build_context();
+    let tracker = LicenseTracker::new();
+    let tracker = LicenseTracker::new();
 
     let copyfile_component = Component {
         name: "TestCopyFileSuccess",
@@ -863,7 +898,7 @@ fn test_component_copyfile_copies_existing() {
         ops: &[Op::CopyFile("etc/test-app.conf")],
     };
 
-    let result = leviso::component::executor::execute(&ctx, &copyfile_component);
+    let result = leviso::component::executor::execute(&ctx, &copyfile_component, &tracker);
     assert!(result.is_ok(), "Op::CopyFile should succeed: {:?}", result);
 
     // Verify file was copied with correct content

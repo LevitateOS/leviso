@@ -58,6 +58,11 @@ fn build_full(base_dir: &Path, _config: &Config) -> Result<()> {
     println!("\nExtracting supplementary packages...");
     recipe::packages(base_dir)?;
 
+    // 1c. Download and extract EPEL packages (btrfs-progs, ntfs-3g, screen, pv, etc.)
+    // These packages are required but not available in Rocky 10 DVD
+    println!("\nDownloading EPEL packages...");
+    recipe::epel(base_dir)?;
+
     // 2. Build kernel via recipe (acquire + build + install)
     // The recipe has is_acquired/is_built/is_installed checks for incremental builds
     let needs_compile = rebuild::kernel_needs_compile(base_dir);
@@ -160,7 +165,8 @@ fn verify_hardware_compat(base_dir: &Path) -> Result<()> {
     for p in all_profiles {
         match checker.verify_profile(p.as_ref()) {
             Ok(report) => {
-                report.print_summary();
+                // Only show failures by default (verbose=false)
+                report.print_summary(false);
                 if report.has_critical_failures() {
                     failures += 1;
                 }

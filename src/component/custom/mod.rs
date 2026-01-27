@@ -18,14 +18,18 @@ use anyhow::Result;
 
 use super::CustomOp;
 use crate::build::context::BuildContext;
+use crate::build::licenses::LicenseTracker;
 
 // Re-export public API
 pub use live::create_live_overlay_at;
 
 /// Execute a custom operation.
-pub fn execute(ctx: &BuildContext, op: CustomOp) -> Result<()> {
+///
+/// Some operations copy content that requires license tracking. The tracker
+/// is used to register packages for license compliance.
+pub fn execute(ctx: &BuildContext, op: CustomOp, tracker: &LicenseTracker) -> Result<()> {
     match op {
-        // Filesystem operations
+        // Filesystem operations (no content copying)
         CustomOp::CreateFhsSymlinks => filesystem::create_fhs_symlinks(ctx),
 
         // Live overlay
@@ -34,28 +38,50 @@ pub fn execute(ctx: &BuildContext, op: CustomOp) -> Result<()> {
         CustomOp::InstallTools => live::install_tools(ctx),
         CustomOp::SetupLiveSystemdConfigs => live::setup_live_systemd_configs(ctx),
 
-        // Firmware
-        CustomOp::CopyWifiFirmware => firmware::copy_wifi_firmware(ctx),
-        CustomOp::CopyAllFirmware => firmware::copy_all_firmware(ctx),
+        // Firmware - register linux-firmware package
+        CustomOp::CopyWifiFirmware => {
+            tracker.register_package("linux-firmware");
+            firmware::copy_wifi_firmware(ctx)
+        }
+        CustomOp::CopyAllFirmware => {
+            tracker.register_package("linux-firmware");
+            tracker.register_package("microcode_ctl");
+            firmware::copy_all_firmware(ctx)
+        }
 
-        // Kernel modules
+        // Kernel modules - register kernel package
         CustomOp::RunDepmod => modules::run_depmod(ctx),
-        CustomOp::CopyModules => modules::copy_modules(ctx),
+        CustomOp::CopyModules => {
+            tracker.register_package("kernel");
+            modules::copy_modules(ctx)
+        }
 
         // /etc configuration
         CustomOp::CreateEtcFiles => etc::create_etc_files(ctx),
-        CustomOp::CopyTimezoneData => etc::copy_timezone_data(ctx),
-        CustomOp::CopyLocales => etc::copy_locales(ctx),
+        CustomOp::CopyTimezoneData => {
+            tracker.register_package("tzdata");
+            etc::copy_timezone_data(ctx)
+        }
+        CustomOp::CopyLocales => {
+            // Locale archive is from glibc, already tracked via binaries
+            etc::copy_locales(ctx)
+        }
         CustomOp::CreateSshHostKeys => etc::create_ssh_host_keys(ctx),
 
-        // PAM and security
+        // PAM and security (config files only, no content copying)
         CustomOp::CreatePamFiles => pam::create_pam_files(ctx),
         CustomOp::CreateSecurityConfig => pam::create_security_config(ctx),
         CustomOp::DisableSelinux => pam::disable_selinux(ctx),
 
         // Package manager and bootloader
-        CustomOp::CopySystemdBootEfi => packages::copy_systemd_boot_efi(ctx),
-        CustomOp::CopyKeymaps => packages::copy_keymaps(ctx),
+        CustomOp::CopySystemdBootEfi => {
+            // systemd-boot is part of systemd, already tracked
+            packages::copy_systemd_boot_efi(ctx)
+        }
+        CustomOp::CopyKeymaps => {
+            tracker.register_package("kbd");
+            packages::copy_keymaps(ctx)
+        }
         CustomOp::CopyRecipe => packages::copy_recipe(ctx),
         CustomOp::SetupRecipeConfig => packages::setup_recipe_config(ctx),
         CustomOp::CopyDocsTui => install_docs_tui(ctx),

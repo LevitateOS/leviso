@@ -71,6 +71,7 @@ pub fn rootfs_needs_rebuild(base_dir: &Path) -> bool {
 
     // Key files that affect rootfs content
     let rootfs_marker = base_dir.join("downloads/rootfs/usr/bin/bash");
+
     // Track all component source files that affect rootfs content
     let definitions = base_dir.join("src/component/definitions.rs");
     let component_mod = base_dir.join("src/component/mod.rs");
@@ -78,6 +79,32 @@ pub fn rootfs_needs_rebuild(base_dir: &Path) -> bool {
     let custom_pam = base_dir.join("src/component/custom/pam.rs");
     let custom_live = base_dir.join("src/component/custom/live.rs");
     let custom_packages = base_dir.join("src/component/custom/packages.rs");
+
+    // Track profile files that are included at compile time via include_str!()
+    // These affect the rootfs content but were previously missing from cache invalidation
+    // (documented in TEAM_137_reproducibility-violations-fix.md)
+    //
+    // Critical auth files (from etc.rs)
+    let profile_shadow = base_dir.join("profile/etc/shadow");
+    let profile_passwd = base_dir.join("profile/etc/passwd");
+    let profile_group = base_dir.join("profile/etc/group");
+    let profile_gshadow = base_dir.join("profile/etc/gshadow");
+    let profile_sudoers = base_dir.join("profile/etc/sudoers");
+    let profile_motd = base_dir.join("profile/etc/motd");
+
+    // PAM authentication files (from pam.rs) - CRITICAL for login to work
+    let pam_system_auth = base_dir.join("profile/etc/pam.d/system-auth");
+    let pam_login = base_dir.join("profile/etc/pam.d/login");
+    let pam_sshd = base_dir.join("profile/etc/pam.d/sshd");
+    let pam_sudo = base_dir.join("profile/etc/pam.d/sudo");
+    let pam_su = base_dir.join("profile/etc/pam.d/su");
+    let pam_passwd = base_dir.join("profile/etc/pam.d/passwd");
+    let pam_chpasswd = base_dir.join("profile/etc/pam.d/chpasswd");
+    let limits_conf = base_dir.join("profile/etc/security/limits.conf");
+
+    // Recipe package manager config (from packages.rs)
+    let recipe_conf = base_dir.join("profile/etc/recipe.conf");
+    let recipe_sh = base_dir.join("profile/etc/profile.d/recipe.sh");
 
     let inputs: Vec<&Path> = vec![
         &rootfs_marker,
@@ -87,6 +114,25 @@ pub fn rootfs_needs_rebuild(base_dir: &Path) -> bool {
         &custom_pam,
         &custom_live,
         &custom_packages,
+        // Profile files - auth
+        &profile_shadow,
+        &profile_passwd,
+        &profile_group,
+        &profile_gshadow,
+        &profile_sudoers,
+        &profile_motd,
+        // PAM files - critical for authentication
+        &pam_system_auth,
+        &pam_login,
+        &pam_sshd,
+        &pam_sudo,
+        &pam_su,
+        &pam_passwd,
+        &pam_chpasswd,
+        &limits_conf,
+        // Recipe config
+        &recipe_conf,
+        &recipe_sh,
     ];
     let current_hash = match cache::hash_files(&inputs) {
         Some(h) => h,
@@ -163,6 +209,13 @@ pub fn iso_needs_rebuild(base_dir: &Path) -> bool {
     let initramfs = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
     let vmlinuz = base_dir.join("output/staging/boot/vmlinuz");
 
+    // Live overlay files affect ISO content (from live.rs include_str!)
+    let live_shadow = base_dir.join("profile/live-overlay/etc/shadow");
+    let live_autologin = base_dir.join("profile/live-overlay/etc/systemd/system/console-autologin.service");
+    let live_serial = base_dir.join("profile/live-overlay/etc/systemd/system/serial-console.service");
+    let live_docs = base_dir.join("profile/live-overlay/etc/profile.d/live-docs.sh");
+    let live_test = base_dir.join("profile/live-overlay/etc/profile.d/00-levitate-test.sh");
+
     if !iso.exists() {
         return true;
     }
@@ -175,6 +228,12 @@ pub fn iso_needs_rebuild(base_dir: &Path) -> bool {
         || cache::is_newer(&rootfs, &iso)
         || cache::is_newer(&initramfs, &iso)
         || cache::is_newer(&vmlinuz, &iso)
+        // Live overlay changes should trigger ISO rebuild
+        || cache::is_newer(&live_shadow, &iso)
+        || cache::is_newer(&live_autologin, &iso)
+        || cache::is_newer(&live_serial, &iso)
+        || cache::is_newer(&live_docs, &iso)
+        || cache::is_newer(&live_test, &iso)
 }
 
 /// Cache the kernel input hash after a successful kernel build.
@@ -201,6 +260,28 @@ pub fn cache_rootfs_hash(base_dir: &Path) {
     let custom_live = base_dir.join("src/component/custom/live.rs");
     let custom_packages = base_dir.join("src/component/custom/packages.rs");
 
+    // Profile files (must match rootfs_needs_rebuild)
+    let profile_shadow = base_dir.join("profile/etc/shadow");
+    let profile_passwd = base_dir.join("profile/etc/passwd");
+    let profile_group = base_dir.join("profile/etc/group");
+    let profile_gshadow = base_dir.join("profile/etc/gshadow");
+    let profile_sudoers = base_dir.join("profile/etc/sudoers");
+    let profile_motd = base_dir.join("profile/etc/motd");
+
+    // PAM files (must match rootfs_needs_rebuild)
+    let pam_system_auth = base_dir.join("profile/etc/pam.d/system-auth");
+    let pam_login = base_dir.join("profile/etc/pam.d/login");
+    let pam_sshd = base_dir.join("profile/etc/pam.d/sshd");
+    let pam_sudo = base_dir.join("profile/etc/pam.d/sudo");
+    let pam_su = base_dir.join("profile/etc/pam.d/su");
+    let pam_passwd = base_dir.join("profile/etc/pam.d/passwd");
+    let pam_chpasswd = base_dir.join("profile/etc/pam.d/chpasswd");
+    let limits_conf = base_dir.join("profile/etc/security/limits.conf");
+
+    // Recipe config (must match rootfs_needs_rebuild)
+    let recipe_conf = base_dir.join("profile/etc/recipe.conf");
+    let recipe_sh = base_dir.join("profile/etc/profile.d/recipe.sh");
+
     let inputs: Vec<&Path> = vec![
         &rootfs_marker,
         &definitions,
@@ -209,6 +290,25 @@ pub fn cache_rootfs_hash(base_dir: &Path) {
         &custom_pam,
         &custom_live,
         &custom_packages,
+        // Profile files - auth
+        &profile_shadow,
+        &profile_passwd,
+        &profile_group,
+        &profile_gshadow,
+        &profile_sudoers,
+        &profile_motd,
+        // PAM files
+        &pam_system_auth,
+        &pam_login,
+        &pam_sshd,
+        &pam_sudo,
+        &pam_su,
+        &pam_passwd,
+        &pam_chpasswd,
+        &limits_conf,
+        // Recipe config
+        &recipe_conf,
+        &recipe_sh,
     ];
     if let Some(hash) = cache::hash_files(&inputs) {
         let _ = cache::write_cached_hash(&base_dir.join("output/.rootfs-inputs.hash"), &hash);

@@ -43,19 +43,27 @@ pub mod service;
 pub use builder::build_system;
 pub use service::{Group, Service, Symlink, User};
 
+use std::borrow::Cow;
 use std::fmt;
 
 /// Trait for anything that can be installed by the executor.
 ///
 /// Both static `Component` definitions and dynamic `Service` definitions
 /// implement this trait.
+///
+/// Returns `Cow<'static, [Op]>` to avoid heap allocation when returning
+/// static slices (Component), while still supporting dynamic ops (Service).
 pub trait Installable {
     /// Name for logging.
     fn name(&self) -> &str;
     /// Build phase for ordering.
     fn phase(&self) -> Phase;
     /// Generate the operations to perform.
-    fn ops(&self) -> Vec<Op>;
+    ///
+    /// Returns `Cow<'static, [Op]>` to allow:
+    /// - `Cow::Borrowed` for static `Component` definitions (zero-copy)
+    /// - `Cow::Owned` for dynamic `Service` definitions
+    fn ops(&self) -> Cow<'static, [Op]>;
 }
 
 /// A system component that can be installed.
@@ -84,8 +92,8 @@ impl Installable for Component {
         self.phase
     }
 
-    fn ops(&self) -> Vec<Op> {
-        self.ops.to_vec()
+    fn ops(&self) -> Cow<'static, [Op]> {
+        Cow::Borrowed(self.ops)
     }
 }
 
@@ -98,8 +106,8 @@ impl Installable for &Component {
         self.phase
     }
 
-    fn ops(&self) -> Vec<Op> {
-        self.ops.to_vec()
+    fn ops(&self) -> Cow<'static, [Op]> {
+        Cow::Borrowed(self.ops)
     }
 }
 
@@ -112,8 +120,8 @@ impl Installable for Service {
         self.phase
     }
 
-    fn ops(&self) -> Vec<Op> {
-        self.ops()
+    fn ops(&self) -> Cow<'static, [Op]> {
+        Cow::Owned(self.ops())
     }
 }
 
@@ -205,8 +213,12 @@ pub enum Op {
     // ─────────────────────────────────────────────────────────────────────
     // Systemd operations
     // ─────────────────────────────────────────────────────────────────────
-    /// Copy systemd unit files.
+    /// Copy systemd unit files (from /usr/lib/systemd/system/).
     Units(&'static [&'static str]),
+
+    /// Copy systemd user unit files (from /usr/lib/systemd/user/).
+    /// Used for per-user services like PipeWire.
+    UserUnits(&'static [&'static str]),
 
     /// Enable a unit by creating symlink in target.wants.
     Enable(&'static str, Target),
@@ -377,6 +389,11 @@ pub const fn units(names: &'static [&'static str]) -> Op {
     Op::Units(names)
 }
 
+/// Copy systemd user unit files (for per-user services like PipeWire).
+pub const fn user_units(names: &'static [&'static str]) -> Op {
+    Op::UserUnits(names)
+}
+
 /// Enable a unit for multi-user.target.
 pub const fn enable_multi_user(unit: &'static str) -> Op {
     Op::Enable(unit, Target::MultiUser)
@@ -452,5 +469,49 @@ impl fmt::Display for Phase {
             Phase::Firmware => write!(f, "Firmware"),
             Phase::Final => write!(f, "Final"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Ensure Op enum doesn't grow unexpectedly.
+    ///
+    /// Op uses &'static str and &'static [&'static str] throughout,
+    /// avoiding heap allocation. Largest variant determines size.
+    #[test]
+    fn op_size() {
+        let size = std::mem::size_of::<Op>();
+        // Largest variant is Op::User with 5 fields:
+        // - name, home, shell: &'static str (16 bytes each = 48)
+        // - uid, gid: u32 (4 bytes each = 8)
+        // + discriminant (1) + padding to align = 64 bytes
+        assert!(size <= 64, "Op grew too large: {} bytes (max 64)", size);
+        eprintln!("Op size: {} bytes", size);
+    }
+
+    /// Ensure Phase enum uses minimal space.
+    #[test]
+    fn phase_size() {
+        let size = std::mem::size_of::<Phase>();
+        // #[repr(u8)] should make this 1 byte
+        assert_eq!(size, 1, "Phase should be 1 byte (repr(u8))");
+    }
+
+    /// Ensure Component struct is compact.
+    #[test]
+    fn component_size() {
+        let size = std::mem::size_of::<Component>();
+        // name: &'static str (16)
+        // phase: Phase (1)
+        // ops: &'static [Op] (16)
+        // + padding = ~40 bytes
+        assert!(
+            size <= 48,
+            "Component grew too large: {} bytes (max 48)",
+            size
+        );
+        eprintln!("Component size: {} bytes", size);
     }
 }

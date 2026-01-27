@@ -17,18 +17,23 @@ use crate::build::libdeps::{
     copy_bash, copy_binary_with_libs, copy_dir_tree, copy_file, copy_sbin_binary_with_libs,
     copy_systemd_units, make_executable,
 };
+use crate::build::licenses::LicenseTracker;
 use crate::build::users;
 use leviso_elf::create_symlink_if_missing;
 
 /// Execute all operations in an installable component.
-pub fn execute(ctx: &BuildContext, component: &impl Installable) -> Result<()> {
+pub fn execute(
+    ctx: &BuildContext,
+    component: &impl Installable,
+    tracker: &LicenseTracker,
+) -> Result<()> {
     let name = component.name();
     let ops = component.ops();
 
     println!("Installing {}...", name);
 
-    for op in &ops {
-        execute_op(ctx, op)
+    for op in ops.iter() {
+        execute_op(ctx, op, tracker)
             .with_context(|| format!("in component '{}': {:?}", name, op))?;
     }
 
@@ -36,7 +41,7 @@ pub fn execute(ctx: &BuildContext, component: &impl Installable) -> Result<()> {
 }
 
 /// Execute a single operation.
-fn execute_op(ctx: &BuildContext, op: &Op) -> Result<()> {
+fn execute_op(ctx: &BuildContext, op: &Op, tracker: &LicenseTracker) -> Result<()> {
     match op {
         // ─────────────────────────────────────────────────────────────────
         // Directory operations
@@ -62,8 +67,8 @@ fn execute_op(ctx: &BuildContext, op: &Op) -> Result<()> {
         // ─────────────────────────────────────────────────────────────────
         Op::Bin(name, dest) => {
             let found = match dest {
-                Dest::Bin => copy_binary_with_libs(ctx, name, "usr/bin")?,
-                Dest::Sbin => copy_sbin_binary_with_libs(ctx, name)?,
+                Dest::Bin => copy_binary_with_libs(ctx, name, "usr/bin", Some(tracker))?,
+                Dest::Sbin => copy_sbin_binary_with_libs(ctx, name, Some(tracker))?,
             };
             if !found {
                 bail!("{} not found", name);
@@ -74,8 +79,8 @@ fn execute_op(ctx: &BuildContext, op: &Op) -> Result<()> {
             let mut missing = Vec::new();
             for name in *names {
                 let found = match dest {
-                    Dest::Bin => copy_binary_with_libs(ctx, name, "usr/bin")?,
-                    Dest::Sbin => copy_sbin_binary_with_libs(ctx, name)?,
+                    Dest::Bin => copy_binary_with_libs(ctx, name, "usr/bin", Some(tracker))?,
+                    Dest::Sbin => copy_sbin_binary_with_libs(ctx, name, Some(tracker))?,
                 };
                 if !found {
                     missing.push(*name);
@@ -87,10 +92,12 @@ fn execute_op(ctx: &BuildContext, op: &Op) -> Result<()> {
         }
 
         Op::Bash => {
-            copy_bash(ctx)?;
+            copy_bash(ctx, Some(tracker))?;
         }
 
         Op::SystemdBinaries(binaries) => {
+            // Register systemd for license tracking
+            tracker.register_binary("systemd");
             // Copy main systemd binary
             let systemd_src = ctx.source.join("usr/lib/systemd/systemd");
             let systemd_dst = ctx.staging.join("usr/lib/systemd/systemd");
@@ -124,9 +131,27 @@ fn execute_op(ctx: &BuildContext, op: &Op) -> Result<()> {
                     }
                 }
             }
+
+            // Copy system-generators (e.g., systemd-fstab-generator)
+            let generators_src = ctx.source.join("usr/lib/systemd/system-generators");
+            if generators_src.exists() {
+                let generators_dst = ctx.staging.join("usr/lib/systemd/system-generators");
+                fs::create_dir_all(&generators_dst)?;
+                for entry in fs::read_dir(&generators_src)? {
+                    let entry = entry?;
+                    let dst = generators_dst.join(entry.file_name());
+                    if entry.path().is_file() && !dst.exists() {
+                        fs::copy(entry.path(), &dst)?;
+                        make_executable(&dst)?;
+                    }
+                }
+            }
         }
 
         Op::SudoLibs(libs) => {
+            // Register sudo for license tracking
+            tracker.register_binary("sudo");
+
             let src_dir = ctx.source.join("usr/libexec/sudo");
             let dst_dir = ctx.staging.join("usr/libexec/sudo");
 
@@ -200,6 +225,26 @@ fn execute_op(ctx: &BuildContext, op: &Op) -> Result<()> {
             copy_systemd_units(ctx, names)?;
         }
 
+        Op::UserUnits(names) => {
+            // Copy user-level systemd units (e.g., PipeWire)
+            let src_dir = ctx.source.join("usr/lib/systemd/user");
+            let dst_dir = ctx.staging.join("usr/lib/systemd/user");
+            fs::create_dir_all(&dst_dir)?;
+
+            for name in *names {
+                let src = src_dir.join(name);
+                let dst = dst_dir.join(name);
+                if src.exists() {
+                    fs::copy(&src, &dst)?;
+                } else if src.is_symlink() {
+                    let target = fs::read_link(&src)?;
+                    if !dst.exists() {
+                        std::os::unix::fs::symlink(&target, &dst)?;
+                    }
+                }
+            }
+        }
+
         Op::Enable(unit, target) => {
             let wants_dir = ctx.staging.join(target.wants_dir());
             fs::create_dir_all(&wants_dir)?;
@@ -227,6 +272,9 @@ fn execute_op(ctx: &BuildContext, op: &Op) -> Result<()> {
         }
 
         Op::UdevHelpers(helpers) => {
+            // Udev helpers are part of systemd
+            tracker.register_binary("systemd");
+
             let udev_src = ctx.source.join("usr/lib/udev");
             let udev_dst = ctx.staging.join("usr/lib/udev");
             fs::create_dir_all(&udev_dst)?;
@@ -262,7 +310,7 @@ fn execute_op(ctx: &BuildContext, op: &Op) -> Result<()> {
         // Custom operations (dispatch to custom.rs)
         // ─────────────────────────────────────────────────────────────────
         Op::Custom(custom_op) => {
-            super::custom::execute(ctx, *custom_op)?;
+            super::custom::execute(ctx, *custom_op, tracker)?;
         }
     }
 

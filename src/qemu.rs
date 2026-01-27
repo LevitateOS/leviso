@@ -1,16 +1,21 @@
+//! QEMU launcher for LevitateOS development and testing.
+//!
+//! Provides `run_iso()` for GUI testing and `test_iso()` for headless boot verification.
+//! Uses the shared `recqemu` crate for QEMU command building.
+
 use anyhow::{bail, Context, Result};
 use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::path::Path;
+use std::process::Stdio;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use distro_builder::process::Cmd;
 use distro_spec::levitate::{
     ISO_FILENAME,
     QEMU_MEMORY_GB, QEMU_DISK_GB,
-    QEMU_DISK_FILENAME, QEMU_SERIAL_LOG, QEMU_CPU_MODE,
+    QEMU_DISK_FILENAME, QEMU_SERIAL_LOG,
 };
+use recqemu::{QemuBuilder, find_ovmf, create_disk};
 
 /// Success patterns - if we see any of these, boot succeeded.
 const SUCCESS_PATTERNS: &[&str] = &[
@@ -35,142 +40,7 @@ const FAILURE_PATTERNS: &[&str] = &[
     "Boot Failed",
 ];
 
-/// Builder for QEMU commands - consolidates common configuration patterns
-#[derive(Default)]
-struct QemuBuilder {
-    cdrom: Option<PathBuf>,
-    disk: Option<PathBuf>,
-    ovmf: Option<PathBuf>,
-    vga: Option<String>,
-}
-
-impl QemuBuilder {
-    fn new() -> Self {
-        Self::default()
-    }
-
-    /// Set ISO for CD-ROM boot
-    fn cdrom(mut self, path: PathBuf) -> Self {
-        self.cdrom = Some(path);
-        self
-    }
-
-    /// Add virtio disk
-    fn disk(mut self, path: PathBuf) -> Self {
-        self.disk = Some(path);
-        self
-    }
-
-    /// Enable UEFI boot with OVMF firmware
-    fn uefi(mut self, ovmf_path: PathBuf) -> Self {
-        self.ovmf = Some(ovmf_path);
-        self
-    }
-
-    /// Set VGA adapter type (e.g., "std", "virtio")
-    fn vga(mut self, vga_type: &str) -> Self {
-        self.vga = Some(vga_type.to_string());
-        self
-    }
-
-    /// Build the QEMU command
-    fn build(self) -> Command {
-        let mut cmd = Command::new("qemu-system-x86_64");
-
-        // Enable KVM acceleration if available (massive performance boost)
-        let kvm_available = std::path::Path::new("/dev/kvm").exists();
-        if kvm_available {
-            cmd.args(["-enable-kvm", "-cpu", "host"]);
-        } else {
-            // Fallback to TCG software emulation (no KVM)
-            cmd.args(["-cpu", QEMU_CPU_MODE]);
-        }
-
-        // SMP: 4 cores for reasonable performance
-        cmd.args(["-smp", "4"]);
-
-        // Memory (4G - LevitateOS is a daily driver OS, not a toy)
-        cmd.args(["-m", &format!("{}G", QEMU_MEMORY_GB)]);
-
-        // CD-ROM (use virtio-scsi for better compatibility with modern kernels)
-        if let Some(cdrom) = &self.cdrom {
-            // Add virtio-scsi controller and attach CD-ROM as SCSI device
-            cmd.args([
-                "-device", "virtio-scsi-pci,id=scsi0",
-                "-device", "scsi-cd,drive=cdrom0,bus=scsi0.0",
-                "-drive", &format!("id=cdrom0,if=none,format=raw,readonly=on,file={}", cdrom.display()),
-            ]);
-        }
-
-        // Virtio disk
-        if let Some(disk) = &self.disk {
-            cmd.args([
-                "-drive",
-                &format!("file={},format=qcow2,if=virtio", disk.display()),
-            ]);
-        }
-
-        // UEFI firmware
-        if let Some(ovmf) = &self.ovmf {
-            cmd.args([
-                "-drive",
-                &format!("if=pflash,format=raw,readonly=on,file={}", ovmf.display()),
-            ]);
-        }
-
-        // Network: virtio-net with user-mode NAT (provides DHCP)
-        cmd.args([
-            "-netdev", "user,id=net0",
-            "-device", "virtio-net-pci,netdev=net0",
-        ]);
-
-        // Display options
-        if let Some(vga) = &self.vga {
-            if vga == "virtio" {
-                // Use virtio-gpu-gl with explicit resolution for 1920x1080 display
-                // virtio-vga doesn't support xres/yres, but virtio-gpu-gl does
-                cmd.args([
-                    "-display", "gtk,gl=on",
-                    "-device", "virtio-gpu-gl,xres=1920,yres=1080",
-                ]);
-            } else {
-                cmd.args(["-vga", vga]);
-            }
-            // Add serial port even in GUI mode so kernel messages are captured
-            // Kernel cmdline in grub.cfg has console=ttyS0 which needs a serial device
-            cmd.args(["-serial", &format!("file:{}", QEMU_SERIAL_LOG)]);
-        }
-
-        cmd
-    }
-}
-
-/// Find OVMF firmware for UEFI boot
-fn find_ovmf() -> Option<PathBuf> {
-    // Common OVMF locations across distros
-    let candidates = [
-        // Fedora/RHEL
-        "/usr/share/edk2/ovmf/OVMF_CODE.fd",
-        "/usr/share/OVMF/OVMF_CODE.fd",
-        // Debian/Ubuntu
-        "/usr/share/OVMF/OVMF_CODE_4M.fd",
-        "/usr/share/qemu/OVMF.fd",
-        // Arch
-        "/usr/share/edk2-ovmf/x64/OVMF_CODE.fd",
-        // NixOS
-        "/run/libvirt/nix-ovmf/OVMF_CODE.fd",
-    ];
-
-    for path in candidates {
-        let p = PathBuf::from(path);
-        if p.exists() {
-            return Some(p);
-        }
-    }
-    None
-}
-
-/// Run the ISO in QEMU GUI (closest to bare metal)
+/// Run the ISO in QEMU GUI (closest to bare metal).
 pub fn run_iso(base_dir: &Path, disk_size: Option<String>) -> Result<()> {
     let output_dir = base_dir.join("output");
     let iso_path = output_dir.join(ISO_FILENAME);
@@ -186,16 +56,11 @@ pub fn run_iso(base_dir: &Path, disk_size: Option<String>) -> Result<()> {
     println!("  ISO: {}", iso_path.display());
 
     // Check KVM availability
-    let kvm_available = std::path::Path::new("/dev/kvm").exists();
-    if kvm_available {
+    if recqemu::kvm_available() {
         println!("  Acceleration: KVM (hardware virtualization)");
     } else {
         println!("  Acceleration: TCG (software emulation - slower)");
     }
-
-    // Use virtio-gpu - kernel has CONFIG_DRM_VIRTIO_GPU=y
-    // Note: "std" VGA requires efifb/simpledrm for UEFI boot which the kernel lacks
-    let mut builder = QemuBuilder::new().cdrom(iso_path.clone()).vga("virtio");
 
     // Always include a virtual disk (default 20GB, like a real system)
     let size = disk_size.unwrap_or_else(|| format!("{}G", QEMU_DISK_GB));
@@ -204,16 +69,9 @@ pub fn run_iso(base_dir: &Path, disk_size: Option<String>) -> Result<()> {
     // Create disk if it doesn't exist
     if !disk_path.exists() {
         println!("  Creating {} virtual disk...", size);
-        Cmd::new("qemu-img")
-            .args(["create", "-f", "qcow2"])
-            .arg_path(&disk_path)
-            .arg(&size)
-            .error_msg("qemu-img create failed. Install: sudo dnf install qemu-img")
-            .run()?;
+        create_disk(&disk_path, &size)?;
     }
-
     println!("  Disk: {}", disk_path.display());
-    builder = builder.disk(disk_path);
 
     // LevitateOS requires UEFI boot
     let ovmf_path = find_ovmf().context(
@@ -223,12 +81,19 @@ pub fn run_iso(base_dir: &Path, disk_size: Option<String>) -> Result<()> {
          - Debian/Ubuntu: sudo apt install ovmf\n\
          - Arch: sudo pacman -S edk2-ovmf",
     )?;
-
     println!("  Boot: UEFI ({})", ovmf_path.display());
-    builder = builder.uefi(ovmf_path);
 
-    let status = builder
-        .build()
+    // Build and run QEMU
+    let status = QemuBuilder::new()
+        .memory(&format!("{}G", QEMU_MEMORY_GB))
+        .cdrom(&iso_path)
+        .disk(&disk_path)
+        .uefi(&ovmf_path)
+        .user_network()
+        .display("gtk,gl=on")
+        .vga("virtio")
+        .serial_file(output_dir.join(QEMU_SERIAL_LOG))
+        .build_interactive()
         .status()
         .context("Failed to run qemu-system-x86_64. Is QEMU installed?")?;
 
@@ -265,35 +130,18 @@ pub fn test_iso(base_dir: &Path, timeout_secs: u64) -> Result<()> {
     // Find OVMF
     let ovmf_path = find_ovmf().context("OVMF not found - UEFI boot required")?;
 
-    // Build headless QEMU command with serial console
-    let mut cmd = Command::new("qemu-system-x86_64");
-
-    // Enable KVM if available
-    let kvm_available = std::path::Path::new("/dev/kvm").exists();
-    if kvm_available {
-        cmd.args(["-enable-kvm", "-cpu", "host"]);
-    } else {
-        cmd.args(["-cpu", QEMU_CPU_MODE]);
-    }
-
-    cmd.args(["-smp", "2"]);
-    cmd.args(["-m", &format!("{}G", QEMU_MEMORY_GB)]);
-
-    // CD-ROM via AHCI (like real SATA hardware - tests ahci, libata, sr_mod)
-    cmd.args([
-        "-device", "ahci,id=ahci0",
-        "-device", "ide-cd,drive=cdrom0,bus=ahci0.0",
-        "-drive", &format!("id=cdrom0,if=none,format=raw,readonly=on,file={}", iso_path.display()),
-    ]);
-
-    // UEFI firmware
-    cmd.args([
-        "-drive",
-        &format!("if=pflash,format=raw,readonly=on,file={}", ovmf_path.display()),
-    ]);
-
-    // Headless with serial console
-    cmd.args(["-nographic", "-serial", "mon:stdio", "-no-reboot"]);
+    // Build headless QEMU command
+    // Note: We use build() + manual stdio setup because test needs piped stdout
+    // but different serial config than build_piped() provides
+    let mut cmd = QemuBuilder::new()
+        .memory(&format!("{}G", QEMU_MEMORY_GB))
+        .smp(2)
+        .cdrom(&iso_path)
+        .uefi(&ovmf_path)
+        .nographic()
+        .serial_stdio()
+        .no_reboot()
+        .build();
 
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -318,7 +166,7 @@ pub fn test_iso(base_dir: &Path, timeout_secs: u64) -> Result<()> {
     // Watch for patterns
     let start = Instant::now();
     let timeout = Duration::from_secs(timeout_secs);
-    let stall_timeout = Duration::from_secs(30); // No output for 30s = stall
+    let stall_timeout = Duration::from_secs(30);
     let mut last_output = Instant::now();
     let mut output_buffer: Vec<String> = Vec::new();
 

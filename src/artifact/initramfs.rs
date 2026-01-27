@@ -26,9 +26,13 @@
 //! ```
 
 use anyhow::{bail, Context, Result};
+use leviso_cheat_guard::cheat_bail;
 use std::env;
 use std::fs;
 use std::path::Path;
+
+use fsdbg::checklist::ChecklistType;
+use fsdbg::cpio::CpioReader;
 
 use distro_spec::levitate::{
     BOOT_DEVICE_PROBE_ORDER, BUSYBOX_URL, BUSYBOX_URL_ENV, CPIO_GZIP_LEVEL, INITRAMFS_INSTALLED_OUTPUT,
@@ -82,7 +86,13 @@ pub fn build_tiny_initramfs(base_dir: &Path) -> Result<()> {
         check_builtin: true,
     };
 
-    recinit::build_tiny_initramfs(&config, true)
+    recinit::build_tiny_initramfs(&config, true)?;
+
+    // Verify the built initramfs
+    let output_path = output_dir.join(INITRAMFS_LIVE_OUTPUT);
+    verify_live_initramfs(&output_path)?;
+
+    Ok(())
 }
 
 /// Build a full initramfs for installed systems.
@@ -132,7 +142,13 @@ pub fn build_install_initramfs(base_dir: &Path) -> Result<()> {
         include_firmware: false,
     };
 
-    recinit::build_install_initramfs(&config, true)
+    recinit::build_install_initramfs(&config, true)?;
+
+    // Verify the built initramfs
+    let output_path = output_dir.join(INITRAMFS_INSTALLED_OUTPUT);
+    verify_install_initramfs(&output_path)?;
+
+    Ok(())
 }
 
 /// Find the kernel modules directory.
@@ -188,4 +204,68 @@ fn find_kernel_version(modules_dir: &Path) -> Result<String> {
              This indicates a corrupted or incomplete rootfs extraction.",
             modules_dir.display()
         ))
+}
+
+/// Verify the live initramfs using fsdbg checklist.
+pub fn verify_live_initramfs(path: &Path) -> Result<()> {
+    do_verify_initramfs(path, ChecklistType::LiveInitramfs)
+}
+
+/// Verify the install initramfs using fsdbg checklist.
+pub fn verify_install_initramfs(path: &Path) -> Result<()> {
+    do_verify_initramfs(path, ChecklistType::InstallInitramfs)
+}
+
+/// Internal: Verify initramfs using fsdbg.
+fn do_verify_initramfs(path: &Path, checklist_type: ChecklistType) -> Result<()> {
+    print!("  Verifying {}... ", checklist_type.name());
+
+    let reader = CpioReader::open(path)
+        .with_context(|| format!("Failed to open initramfs for verification: {}", path.display()))?;
+
+    let report = match checklist_type {
+        ChecklistType::InstallInitramfs => fsdbg::checklist::install_initramfs::verify(&reader),
+        ChecklistType::LiveInitramfs => fsdbg::checklist::live_initramfs::verify(&reader),
+        // This function is for CPIO initramfs only - other types shouldn't reach here
+        _ => bail!(
+            "do_verify_initramfs() only handles initramfs types, got {:?}",
+            checklist_type
+        ),
+    };
+
+    let passed = report.passed();
+    let total = report.total();
+
+    if report.is_success() {
+        println!("OK ({}/{} checks)", passed, total);
+        Ok(())
+    } else {
+        println!("FAILED ({}/{} checks)", passed, total);
+        let mut missing_items = Vec::new();
+        for result in &report.results {
+            if !result.passed {
+                let msg = result.message.as_deref().unwrap_or("Missing");
+                println!("    ✗ {} - {}", result.item, msg);
+                missing_items.push(result.item.clone());
+            }
+        }
+        cheat_bail!(
+            protects = "Users can boot LevitateOS from ISO or installed system",
+            severity = "CRITICAL",
+            cheats = [
+                "Move missing items to an OPTIONAL list",
+                "Remove items from REQUIRED list",
+                "Skip verification entirely",
+                "Mark test as ignored or skipped",
+                "Return Ok() without checking report.is_success()"
+            ],
+            consequence = "System fails to boot. Users see kernel panic or 'init not found' error.",
+            "Initramfs verification FAILED: {} missing files.\n\
+             Missing: {}\n\n\
+             The built initramfs is incomplete and will not boot correctly.\n\
+             Fix the build process to include ALL required files.",
+            report.failed(),
+            missing_items.join(", ")
+        );
+    }
 }

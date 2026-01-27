@@ -4,33 +4,32 @@
 //! - UKIs (~50MB each) - kernel + initramfs + cmdline in signed PE binary
 //! - EROFS image (~350MB) - complete base system
 //! - Live overlay - live-specific configs (autologin, serial console, empty root password)
+//!
+//! Delegates to the standalone `reciso` crate for core ISO building.
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
+use leviso_cheat_guard::cheat_bail;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use distro_builder::{
-    copy_dir_recursive, create_efi_dirs_in_fat, create_fat16_image, generate_iso_checksum,
-    mcopy_to_fat, run_xorriso, setup_iso_structure,
-};
-use distro_builder::process::Cmd;
 use distro_spec::levitate::{
     // Identity
     ISO_LABEL, ISO_FILENAME,
     // Rootfs (EROFS)
-    ROOTFS_NAME, ROOTFS_ISO_PATH,
+    ROOTFS_NAME,
     // Boot files
-    KERNEL_ISO_PATH, INITRAMFS_LIVE_ISO_PATH,
     INITRAMFS_LIVE_OUTPUT, INITRAMFS_INSTALLED_OUTPUT, INITRAMFS_INSTALLED_ISO_PATH,
-    // ISO structure
-    ISO_EFI_DIR, LIVE_OVERLAY_ISO_PATH,
-    // EFI / UKI
-    EFIBOOT_FILENAME, EFIBOOT_SIZE_MB, EFI_BOOTLOADER,
-    UKI_EFI_DIR, LOADER_ENTRIES_DIR, SYSTEMD_BOOT_EFI,
+    // UKI entries
+    UKI_ENTRIES, UKI_INSTALLED_ENTRIES,
     // Installed UKIs
     UKI_INSTALLED_ISO_DIR,
+    // OS identity
+    OS_NAME, OS_ID, OS_VERSION,
+    // Checksum
+    ISO_CHECKSUM_SUFFIX,
 };
+use reciso::{IsoConfig, UkiSource};
 use crate::component::custom::create_live_overlay_at;
 
 /// Get ISO volume label from environment or use default.
@@ -46,7 +45,6 @@ struct IsoPaths {
     initramfs_live: PathBuf,
     initramfs_installed: PathBuf,
     iso_output: PathBuf,
-    iso_root: PathBuf,
 }
 
 impl IsoPaths {
@@ -58,7 +56,6 @@ impl IsoPaths {
             initramfs_live: output_dir.join(INITRAMFS_LIVE_OUTPUT),
             initramfs_installed: output_dir.join(INITRAMFS_INSTALLED_OUTPUT),
             iso_output: output_dir.join(ISO_FILENAME),
-            iso_root: output_dir.join("iso-root"),
         }
     }
 }
@@ -93,37 +90,82 @@ pub fn create_iso(base_dir: &Path) -> Result<()> {
     // This is ONLY applied during live boot, NOT extracted to installed systems
     create_live_overlay_at(&paths.output_dir)?;
 
-    // Stage 3: Set up ISO directory structure
-    setup_iso_dirs(&paths)?;
+    // Stage 3: Build installed UKIs (for users to copy during installation)
+    // These need to be created before the ISO since they go into boot/uki/
+    let installed_uki_dir = paths.output_dir.join("installed-ukis");
+    fs::create_dir_all(&installed_uki_dir)?;
+    crate::artifact::uki::build_installed_ukis(
+        &kernel_path,
+        &paths.initramfs_installed,
+        &installed_uki_dir,
+    )?;
 
-    // Stage 4: Copy boot files and artifacts (including live overlay)
-    copy_iso_artifacts(&paths, &kernel_path)?;
+    // Stage 4: Build reciso config
+    let label = iso_label();
+    let mut config = IsoConfig::new(
+        &kernel_path,
+        &paths.initramfs_live,
+        &paths.rootfs,
+        &label,
+        paths.output_dir.join(format!("{}.tmp", ISO_FILENAME)),
+    )
+    .with_os_release(OS_NAME, OS_ID, OS_VERSION)
+    .with_overlay(&paths.output_dir.join("live-overlay"));
 
-    // Stage 5: Set up UEFI boot
-    setup_uefi_boot(&paths)?;
+    // Add LevitateOS-specific UKI entries
+    for entry in UKI_ENTRIES {
+        config.ukis.push(UkiSource::Build {
+            name: entry.name.to_string(),
+            extra_cmdline: entry.extra_cmdline.to_string(),
+            filename: entry.filename.to_string(),
+        });
+    }
 
-    // Stage 6: Create the ISO to a temporary file (Atomic Artifacts)
-    let temp_iso = paths.output_dir.join(format!("{}.tmp", distro_spec::levitate::ISO_FILENAME));
-    run_xorriso_to(&paths, &temp_iso)?;
+    // Add installed initramfs as extra file
+    config.extra_files.push((
+        paths.initramfs_installed.clone(),
+        INITRAMFS_INSTALLED_ISO_PATH.to_string(),
+    ));
 
-    // Stage 7: Generate checksum for the temporary ISO
-    generate_checksum(&temp_iso)?;
+    // Add installed UKIs as extra files
+    fs::create_dir_all(paths.output_dir.join("iso-staging").join(UKI_INSTALLED_ISO_DIR))?;
+    for entry in UKI_INSTALLED_ENTRIES {
+        let src = installed_uki_dir.join(entry.filename);
+        if src.exists() {
+            config.extra_files.push((
+                src,
+                format!("{}/{}", UKI_INSTALLED_ISO_DIR, entry.filename),
+            ));
+        }
+    }
 
-    // Stage 8: Verify hardware compatibility (WARN only, don't block ISO creation)
-    // TODO: Re-enable blocking once Server/Workstation firmware issues are resolved
+    // Stage 5: Create the ISO using reciso (to temp file for atomicity)
+    println!("Creating ISO via reciso...");
+    reciso::create_iso(&config)?;
+
+    // Stage 6: Verify hardware compatibility (WARN only, don't block ISO creation)
     println!("\nVerifying hardware compatibility...");
     let has_critical = verify_hardware_compat(base_dir)?;
     if has_critical {
         println!("[WARN] Hardware compatibility verification has critical errors, but continuing ISO build.");
     }
 
-    // Atomic rename to final destination
+    // Stage 7: Atomic rename to final destination
+    let temp_iso = paths.output_dir.join(format!("{}.tmp", ISO_FILENAME));
     fs::rename(&temp_iso, &paths.iso_output)?;
 
     // Also move the checksum
-    let temp_checksum = temp_iso.with_extension(distro_spec::levitate::ISO_CHECKSUM_SUFFIX.trim_start_matches('.'));
-    let final_checksum = paths.iso_output.with_extension(distro_spec::levitate::ISO_CHECKSUM_SUFFIX.trim_start_matches('.'));
-    fs::rename(&temp_checksum, &final_checksum)?;
+    let temp_checksum = temp_iso.with_extension(ISO_CHECKSUM_SUFFIX.trim_start_matches('.'));
+    let final_checksum = paths.iso_output.with_extension(ISO_CHECKSUM_SUFFIX.trim_start_matches('.'));
+    if temp_checksum.exists() {
+        fs::rename(&temp_checksum, &final_checksum)?;
+    }
+
+    // Cleanup
+    let _ = fs::remove_dir_all(&installed_uki_dir);
+
+    // Stage 8: Verify ISO contents - MUST pass before declaring success
+    verify_iso(&paths.iso_output)?;
 
     print_iso_summary(&paths.iso_output);
     Ok(())
@@ -202,8 +244,6 @@ fn validate_iso_inputs(paths: &IsoPaths) -> Result<()> {
 
         if let Some(version) = modules_version {
             println!("  [CHECK] Staging kernel modules version: {}", version);
-            // We could store the version during kernel build in a file to be 100% sure
-            // but for now, the presence of a matching directory is a strong indicator.
         } else {
             bail!("Staging directory exists but contains no kernel modules!");
         }
@@ -225,125 +265,71 @@ fn find_kernel(paths: &IsoPaths) -> Result<PathBuf> {
     Ok(kernel)
 }
 
-/// Stage 3: Create ISO directory structure.
-fn setup_iso_dirs(paths: &IsoPaths) -> Result<()> {
-    setup_iso_structure(&paths.iso_root)
-}
-
-/// Stage 4: Copy kernel, initramfs, EROFS rootfs, and live overlay to ISO.
-fn copy_iso_artifacts(paths: &IsoPaths, kernel_path: &Path) -> Result<()> {
-    // Copy kernel and live initramfs (tiny - for live boot)
-    fs::copy(kernel_path, paths.iso_root.join(KERNEL_ISO_PATH))?;
-    fs::copy(&paths.initramfs_live, paths.iso_root.join(INITRAMFS_LIVE_ISO_PATH))?;
-
-    // Copy installed initramfs (full - boots the daily driver OS)
-    // This is REQUIRED - copied to installed systems during installation
-    if !paths.initramfs_installed.exists() {
-        bail!(
-            "Installed initramfs not found at {}.\n\
-             Run 'leviso build' to generate it.",
-            paths.initramfs_installed.display()
-        );
-    }
-    println!("Copying installed initramfs to ISO...");
-    fs::copy(&paths.initramfs_installed, paths.iso_root.join(INITRAMFS_INSTALLED_ISO_PATH))?;
-
-    // Copy EROFS rootfs to /live/
-    println!("Copying EROFS rootfs to ISO...");
-    fs::copy(&paths.rootfs, paths.iso_root.join(ROOTFS_ISO_PATH))?;
-
-    // Copy live overlay to /live/overlay/
-    // This contains live-specific configs (autologin, serial console, empty root password)
-    // that are layered on top of EROFS during live boot only
-    let live_overlay_src = paths.output_dir.join("live-overlay");
-    let live_overlay_dst = paths.iso_root.join(LIVE_OVERLAY_ISO_PATH);
-    if live_overlay_src.exists() {
-        println!("Copying live overlay to ISO...");
-        copy_dir_recursive(&live_overlay_src, &live_overlay_dst)?;
-    } else {
-        bail!(
-            "Live overlay not found at {}.\n\
-             This should have been created by create_live_overlay().",
-            live_overlay_src.display()
-        );
-    }
-
-    Ok(())
-}
-
-/// Stage 5: Set up UEFI boot with systemd-boot and UKIs.
+/// Verify ISO contents using fsdbg checklist.
 ///
-/// This replaces GRUB with the modern UKI boot flow:
-/// 1. Build UKIs (kernel + initramfs + cmdline in single PE binary)
-/// 2. Copy systemd-boot as the bootloader
-/// 3. Create loader.conf for boot menu configuration
-fn setup_uefi_boot(paths: &IsoPaths) -> Result<()> {
-    println!("Setting up UEFI boot with UKI...");
+/// Fails fast if the ISO is missing critical components or if verification tools are missing.
+pub fn verify_iso(path: &Path) -> Result<()> {
+    use fsdbg::checklist::iso::verify;
+    use fsdbg::iso::IsoReader;
 
-    // Verify systemd-boot is available
-    let systemd_boot = Path::new(SYSTEMD_BOOT_EFI);
-    if !systemd_boot.exists() {
-        bail!(
-            "systemd-boot not found at {}.\n\
-             Install: sudo dnf install systemd-boot",
-            systemd_boot.display()
+    print!("  Verifying ISO... ");
+
+    let reader = match IsoReader::open(path) {
+        Ok(r) => r,
+        Err(e) => {
+            let err_str = e.to_string();
+            if err_str.contains("isoinfo not found") {
+                println!("FAILED");
+                bail!(
+                    "ISO verification requires 'isoinfo' tool.\n\n\
+                     Install it:\n\
+                     \x20 Fedora/RHEL:   sudo dnf install genisoimage\n\
+                     \x20 Debian/Ubuntu: sudo apt install genisoimage\n\
+                     \x20 Arch Linux:    sudo pacman -S cdrtools\n\n\
+                     Then re-run the build."
+                );
+            }
+            println!("FAILED");
+            bail!("Failed to open ISO: {}", e);
+        }
+    };
+
+    let report = verify(&reader);
+
+    if !report.is_success() {
+        println!("FAILED");
+        let failed: Vec<_> = report.results.iter().filter(|r| !r.passed).collect();
+        let missing_items: Vec<_> = failed.iter().map(|r| r.item.as_str()).collect();
+        cheat_bail!(
+            protects = "Users can boot LevitateOS live ISO and install the system",
+            severity = "CRITICAL",
+            cheats = [
+                "Move missing items to an OPTIONAL list",
+                "Remove items from REQUIRED list",
+                "Skip ISO verification entirely",
+                "Accept partial ISO as complete",
+                "Return Ok() without checking report.is_success()"
+            ],
+            consequence = "ISO fails to boot. Users cannot install LevitateOS.",
+            "ISO verification failed. {} items missing:\n{}\n\n\
+             Missing: {}\n\n\
+             The ISO is incomplete and will not boot correctly.\n\
+             Fix the ISO build process to include ALL required files.",
+            failed.len(),
+            failed
+                .iter()
+                .map(|r| format!(
+                    "  - {} ({})",
+                    r.item,
+                    r.message.as_deref().unwrap_or("Missing")
+                ))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            missing_items.join(", ")
         );
     }
 
-    // Find kernel and initramfs
-    let kernel = paths.output_dir.join("staging/boot/vmlinuz");
-    let initramfs = &paths.initramfs_live;
-    let label = iso_label();
-
-    // Create UKI directory in ISO root
-    let uki_dir = paths.iso_root.join(UKI_EFI_DIR);
-    fs::create_dir_all(&uki_dir)?;
-
-    // Build UKIs using our uki module
-    crate::artifact::uki::build_live_ukis(&kernel, initramfs, &uki_dir, &label)?;
-
-    // Build installed UKIs (for users to copy during installation)
-    // These use the full initramfs and boot from disk
-    let installed_uki_dir = paths.iso_root.join(UKI_INSTALLED_ISO_DIR);
-    fs::create_dir_all(&installed_uki_dir)?;
-    crate::artifact::uki::build_installed_ukis(
-        &kernel,
-        &paths.initramfs_installed,
-        &installed_uki_dir,
-    )?;
-
-    // Copy systemd-boot as the primary bootloader
-    fs::copy(
-        systemd_boot,
-        paths.iso_root.join(ISO_EFI_DIR).join(EFI_BOOTLOADER),
-    )?;
-
-    // Create loader.conf for systemd-boot
-    let loader_dir = paths.iso_root.join(LOADER_ENTRIES_DIR);
-    fs::create_dir_all(&loader_dir)?;
-    fs::write(
-        loader_dir.join("loader.conf"),
-        "timeout 5\ndefault levitateos-live.efi\n",
-    )?;
-
-    // Create EFI boot image with UKIs
-    let efiboot_img = paths.output_dir.join(EFIBOOT_FILENAME);
-    build_efi_boot_image_uki(&paths.iso_root, &efiboot_img)?;
-
-    Ok(())
-}
-
-/// Stage 6: Run xorriso to create the final ISO.
-fn run_xorriso_to(paths: &IsoPaths, output: &Path) -> Result<()> {
-    println!("Creating UEFI bootable ISO with xorriso...");
-    let label = iso_label();
-    run_xorriso(&paths.iso_root, output, &label, EFIBOOT_FILENAME)
-}
-
-/// Stage 7: Generate SHA512 checksum for download verification.
-fn generate_checksum(iso_path: &Path) -> Result<()> {
-    println!("Generating SHA512 checksum...");
-    generate_iso_checksum(iso_path)?;
+    println!("OK ({} items checked)", report.total());
     Ok(())
 }
 
@@ -365,59 +351,4 @@ fn print_iso_summary(iso_output: &Path) {
     println!("  - Installed UKIs: boot/uki/ (copy to /boot/EFI/Linux/ during install)");
     println!("\nTo run in QEMU:");
     println!("  cargo run -- run");
-}
-
-/// Create EFI boot image with systemd-boot and UKIs for xorriso.
-///
-/// UKIs are larger than traditional boot files (~50MB each), so we need
-/// a 200MB image to hold systemd-boot + 3 UKIs + loader.conf.
-fn build_efi_boot_image_uki(iso_root: &Path, efiboot_img: &Path) -> Result<()> {
-    println!("Creating EFI boot image with UKIs...");
-
-    // Create larger FAT16 image for UKIs (200MB)
-    create_fat16_image(efiboot_img, EFIBOOT_SIZE_MB)?;
-
-    // Create standard EFI directory structure
-    create_efi_dirs_in_fat(efiboot_img)?;
-
-    // Create EFI/Linux directory for UKIs
-    let img_str = efiboot_img.to_string_lossy();
-    Cmd::new("mmd")
-        .args(["-i", &img_str, "::EFI/Linux"])
-        .error_msg("mmd failed to create ::EFI/Linux directory")
-        .run()?;
-
-    // Copy systemd-boot bootloader
-    mcopy_to_fat(
-        efiboot_img,
-        &iso_root.join(ISO_EFI_DIR).join(EFI_BOOTLOADER),
-        "::EFI/BOOT/",
-    )?;
-
-    // Copy all UKIs from EFI/Linux
-    let uki_src_dir = iso_root.join(UKI_EFI_DIR);
-    for entry in fs::read_dir(&uki_src_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().map_or(false, |e| e == "efi") {
-            mcopy_to_fat(efiboot_img, &path, "::EFI/Linux/")?;
-        }
-    }
-
-    // Create loader directory and copy loader.conf
-    Cmd::new("mmd")
-        .args(["-i", &img_str, "::loader"])
-        .error_msg("mmd failed to create ::loader directory")
-        .run()?;
-
-    mcopy_to_fat(
-        efiboot_img,
-        &iso_root.join(LOADER_ENTRIES_DIR).join("loader.conf"),
-        "::loader/",
-    )?;
-
-    // Copy efiboot.img into iso-root for xorriso
-    fs::copy(efiboot_img, iso_root.join(EFIBOOT_FILENAME))?;
-
-    Ok(())
 }

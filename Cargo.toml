@@ -20,6 +20,13 @@ distro-builder = { path = "../distro-builder" }
 leviso-elf = { path = "../leviso-elf" }
 hardware-compat = { path = "../testing/hardware-compat" }
 recinit = { path = "../tools/recinit" }
+recuki = { path = "../tools/recuki" }
+reciso = { path = "../tools/reciso" }
+recqemu = { path = "../tools/recqemu" }
+fsdbg = { path = "../testing/fsdbg" }
+
+# Anti-cheat
+leviso-cheat-guard = { path = "../testing/cheat-guard" }
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "time", "process"] }

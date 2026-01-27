@@ -1,20 +1,25 @@
 //! UKI (Unified Kernel Image) builder.
 //!
-//! Builds UKIs using `ukify` from systemd. UKIs combine kernel + initramfs + cmdline
+//! Builds UKIs using the standalone `recuki` crate. UKIs combine kernel + initramfs + cmdline
 //! into a single signed PE binary for simplified boot and Secure Boot support.
+//!
+//! This module provides LevitateOS-specific wrappers around recuki, handling:
+//! - OS branding (LevitateOS name/version in boot menu)
+//! - Predefined UKI entries (live, emergency, debug, installed)
+//! - Base cmdline construction from distro-spec constants
 
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
-use distro_builder::process::Cmd;
 use distro_spec::levitate::{
     EFI_DEBUG, SELINUX_DISABLE, SERIAL_CONSOLE, VGA_CONSOLE, UKI_ENTRIES, UKI_INSTALLED_ENTRIES,
     OS_NAME, OS_ID, OS_VERSION,
 };
+use recuki::UkiConfig;
 
 /// Build a UKI from kernel + initramfs + cmdline.
 ///
-/// Uses `ukify` from systemd. No fallbacks - install systemd-ukify or fail.
+/// Uses `recuki` library which wraps `ukify` from systemd.
 ///
 /// # Arguments
 ///
@@ -30,38 +35,10 @@ pub fn build_uki(
 ) -> Result<()> {
     println!("  Building UKI: {}", output.display());
 
-    // Write cmdline to temp file (ukify reads from file with @ prefix)
-    let cmdline_file = output.with_extension("cmdline");
-    std::fs::write(&cmdline_file, cmdline)?;
+    let config = UkiConfig::new(kernel, initramfs, cmdline, output)
+        .with_os_release(OS_NAME, OS_ID, OS_VERSION);
 
-    // Write os-release to temp file (for branding in boot menu)
-    // Without this, ukify uses the host's os-release (e.g., Ultramarine)
-    let os_release_file = output.with_extension("os-release");
-    let os_release_content = format!(
-        "NAME=\"{}\"\n\
-         ID={}\n\
-         VERSION=\"{}\"\n\
-         PRETTY_NAME=\"{} {}\"\n",
-        OS_NAME, OS_ID, OS_VERSION, OS_NAME, OS_VERSION
-    );
-    std::fs::write(&os_release_file, &os_release_content)?;
-
-    let result = Cmd::new("ukify")
-        .arg("build")
-        .args(["--linux", &kernel.to_string_lossy()])
-        .args(["--initrd", &initramfs.to_string_lossy()])
-        .args(["--cmdline", &format!("@{}", cmdline_file.display())])
-        .args(["--os-release", &format!("@{}", os_release_file.display())])
-        .args(["--output", &output.to_string_lossy()])
-        .error_msg("ukify failed. Install systemd-ukify: sudo dnf install systemd-ukify")
-        .run();
-
-    // Cleanup temp files regardless of result
-    let _ = std::fs::remove_file(&cmdline_file);
-    let _ = std::fs::remove_file(&os_release_file);
-
-    result?;
-    Ok(())
+    recuki::build_uki(&config)
 }
 
 /// Build all UKIs for the live ISO (normal, emergency, debug).

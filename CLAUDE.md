@@ -23,12 +23,14 @@ Builds the LevitateOS ISO and rootfs tarball. Downloads Rocky Linux, extracts pa
 ## Commands
 
 ```bash
-cargo run -- build          # Full build (download, extract, assemble)
-cargo run -- initramfs      # Rebuild initramfs only
-cargo run -- iso            # Rebuild ISO only
-cargo run -- run            # Boot ISO in QEMU (GUI, UEFI)
-cargo run -- test           # Boot ISO in QEMU (terminal, serial)
-cargo run -- test -c "cmd"  # Run command after boot, exit
+cargo run -- build              # Full build (download, extract, assemble)
+cargo run -- build kernel       # Rebuild kernel only
+cargo run -- build rootfs       # Rebuild rootfs image only
+cargo run -- build initramfs    # Rebuild tiny initramfs only
+cargo run -- build iso          # Rebuild ISO only
+cargo run -- run                # Boot ISO in QEMU (GUI, UEFI)
+cargo run -- test               # Boot ISO in QEMU (terminal, serial)
+cargo run -- test -c "cmd"      # Run command after boot, exit
 ```
 
 ## Directory Structure

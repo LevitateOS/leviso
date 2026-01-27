@@ -3,7 +3,8 @@
 use std::path::Path;
 
 use anyhow::Result;
-use leviso_deps::DependencyResolver;
+
+use crate::recipe;
 
 use super::types::CheckResult;
 use super::validators::{validate_executable, validate_rocky_iso_size};
@@ -11,10 +12,9 @@ use super::validators::{validate_executable, validate_rocky_iso_size};
 /// Check all build dependencies.
 pub fn check_dependencies(base_dir: &Path) -> Result<Vec<CheckResult>> {
     let mut results = Vec::new();
-    let resolver = DependencyResolver::new(base_dir)?;
 
     // Linux source
-    if resolver.has_linux() {
+    if recipe::has_linux_source(base_dir) {
         results.push(CheckResult::pass_with(
             "Linux source",
             "Found (submodule or downloaded)",

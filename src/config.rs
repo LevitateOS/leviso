@@ -114,3 +114,65 @@ impl Config {
         modules
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+
+    #[test]
+    fn test_module_defaults_contain_essentials() {
+        let modules = module_defaults::ESSENTIAL_MODULES;
+
+        // Must have virtio for VM disk access
+        assert!(modules.iter().any(|m| m.contains("virtio_blk")));
+        // Must have ext4 for root filesystem
+        assert!(modules.iter().any(|m| m.contains("ext4")));
+        // Must have FAT for EFI partition
+        assert!(modules.iter().any(|m| m.contains("fat") || m.contains("vfat")));
+    }
+
+    #[test]
+    #[serial]
+    fn test_config_all_modules_includes_extras() {
+        // Set env var directly
+        env::set_var(
+            "EXTRA_MODULES",
+            "kernel/drivers/nvme/host/nvme.ko.xz,kernel/fs/xfs/xfs.ko.xz",
+        );
+
+        let config = Config::load();
+
+        // Clean up before assertions
+        env::remove_var("EXTRA_MODULES");
+
+        let all_modules = config.all_modules();
+
+        // Should include defaults
+        assert!(all_modules.iter().any(|m| m.contains("virtio_blk")));
+        assert!(all_modules.iter().any(|m| m.contains("ext4")));
+
+        // Should include extras
+        assert!(all_modules.iter().any(|m| m.contains("nvme")));
+        assert!(all_modules.iter().any(|m| m.contains("xfs")));
+    }
+
+    #[test]
+    #[serial]
+    fn test_config_empty_extra_modules() {
+        // Set empty env var
+        env::set_var("EXTRA_MODULES", "");
+
+        let config = Config::load();
+
+        // Clean up
+        env::remove_var("EXTRA_MODULES");
+
+        // Extra modules should be empty
+        assert!(config.extra_modules.is_empty());
+
+        // But all_modules should still have defaults
+        let all_modules = config.all_modules();
+        assert!(!all_modules.is_empty());
+    }
+}

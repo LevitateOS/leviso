@@ -3,8 +3,6 @@
 use anyhow::Result;
 use std::path::Path;
 
-use leviso_deps::DependencyResolver;
-
 use crate::recipe;
 
 /// Download target for the download command.
@@ -20,11 +18,7 @@ pub enum DownloadTarget {
 }
 
 /// Execute the download command.
-pub fn cmd_download(
-    base_dir: &Path,
-    target: DownloadTarget,
-    resolver: &DependencyResolver,
-) -> Result<()> {
+pub fn cmd_download(base_dir: &Path, target: DownloadTarget) -> Result<()> {
     match target {
         DownloadTarget::All => {
             println!("Resolving all dependencies...\n");
@@ -33,8 +27,9 @@ pub fn cmd_download(
             let rocky = recipe::rocky(base_dir)?;
             println!("Rocky: {} [OK]", rocky.iso.display());
 
-            // Linux via leviso-deps (TODO: migrate to recipe)
-            resolver.linux()?;
+            // Linux via recipe
+            let linux = recipe::linux(base_dir)?;
+            println!("Linux: {} [OK]", linux.source.display());
 
             // Tools via recipe
             recipe::install_tools(base_dir)?;
@@ -42,8 +37,11 @@ pub fn cmd_download(
             println!("\nAll dependencies resolved.");
         }
         DownloadTarget::Linux => {
-            let linux = resolver.linux()?;
-            println!("Linux source: {}", linux.path.display());
+            let linux = recipe::linux(base_dir)?;
+            println!("Linux source: {}", linux.source.display());
+            if linux.is_installed() {
+                println!("Kernel: {} (installed)", linux.version);
+            }
         }
         DownloadTarget::Rocky => {
             // Use recipe for Rocky

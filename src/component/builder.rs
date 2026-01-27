@@ -68,9 +68,9 @@ pub fn build_system(ctx: &BuildContext) -> Result<()> {
     t.finish();
 
     // Phase 7: Packages
+    // NOTE: DRACUT removed - initramfs built using custom rootless builder
     let t = Timer::start("Packages");
     executor::execute(ctx, &RECIPE)?;
-    executor::execute(ctx, &DRACUT)?;
     executor::execute(ctx, &BOOTLOADER)?;
     t.finish();
 
@@ -115,7 +115,6 @@ mod tests {
             (MODULES.name(), MODULES.phase()),
             (ETC_CONFIG.name(), ETC_CONFIG.phase()),
             (RECIPE.name(), RECIPE.phase()),
-            (DRACUT.name(), DRACUT.phase()),
             (BOOTLOADER.name(), BOOTLOADER.phase()),
             (FIRMWARE.name(), FIRMWARE.phase()),
             (FINAL.name(), FINAL.phase()),

@@ -29,7 +29,7 @@ let ctx = #{
     name: "packages",
     packages_extracted: 46,
     rootfs_path: "",
-    version: "1.0.1",
+    version: "1.0.2",
 };
 
 // === ACQUIRE ===
@@ -110,9 +110,9 @@ fn is_built(ctx) {
     }
 
     // Verify expected package count (catch partial extractions)
-    // 46 packages as of version 1.0.1
-    if manifest.len() < 40 {
-        throw "manifest has only " + manifest.len() + " packages (expected 46+) - rebuild required";
+    // 43 packages as of version 1.0.2 (dracut removed)
+    if manifest.len() < 38 {
+        throw "manifest has only " + manifest.len() + " packages (expected 43+) - rebuild required";
     }
 
     ctx.packages_extracted = manifest.len();
@@ -146,8 +146,6 @@ fn build(ctx) {
         "parted",
         // KEYBOARD/LOCALE
         "kbd", "kbd-misc",
-        // DRACUT (initramfs generator)
-        "dracut", "dracut-config-generic", "dracut-network",
         // GLIBC EXTRAS
         "glibc-common",
         // KMOD (module tools)
@@ -291,8 +289,6 @@ fn install(ctx) {
         ["usr/sbin/parted", "parted", "disk partitioning"],
         // KEYBOARD
         ["usr/bin/loadkeys", "kbd", "keyboard layout"],
-        // DRACUT
-        ["usr/bin/dracut", "dracut", "initramfs generation"],
         // KMOD
         ["usr/sbin/modprobe", "kmod", "module loading"],
         // SQUASHFS

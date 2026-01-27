@@ -54,12 +54,50 @@ pub fn execute(ctx: &BuildContext, op: CustomOp) -> Result<()> {
         CustomOp::DisableSelinux => pam::disable_selinux(ctx),
 
         // Package manager and bootloader
-        CustomOp::CopyDracutModules => packages::copy_dracut_modules(ctx),
         CustomOp::CopySystemdBootEfi => packages::copy_systemd_boot_efi(ctx),
         CustomOp::CopyKeymaps => packages::copy_keymaps(ctx),
         CustomOp::CopyRecipe => packages::copy_recipe(ctx),
         CustomOp::SetupRecipeConfig => packages::setup_recipe_config(ctx),
-        CustomOp::CreateDracutConfig => packages::create_dracut_config(ctx),
-        CustomOp::CopyDocsTui => packages::copy_docs_tui(ctx),
+        CustomOp::CopyDocsTui => install_docs_tui(ctx),
     }
+}
+
+/// Install docs-tui (levitate-docs) to staging.
+///
+/// Copies directly to ctx.staging instead of hardcoded path.
+fn install_docs_tui(ctx: &BuildContext) -> Result<()> {
+    use anyhow::{bail, Context};
+    use leviso_elf::make_executable;
+    use std::fs;
+
+    let monorepo_dir = ctx.base_dir
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| ctx.base_dir.to_path_buf());
+
+    let bin_dir = ctx.staging.join("usr/bin");
+    fs::create_dir_all(&bin_dir)?;
+
+    let dest = bin_dir.join("levitate-docs");
+
+    // Check for built binary in docs/tui
+    let docs_tui_binary = monorepo_dir.join("docs/tui/levitate-docs");
+    if docs_tui_binary.exists() {
+        fs::copy(&docs_tui_binary, &dest)
+            .with_context(|| "Failed to copy levitate-docs to staging")?;
+        make_executable(&dest)?;
+        let size_mb = fs::metadata(&dest)?.len() as f64 / 1_000_000.0;
+        println!("  Installed levitate-docs ({:.1} MB)", size_mb);
+        return Ok(());
+    }
+
+    bail!(
+        "levitate-docs binary not found at {}.\n\
+         \n\
+         Build it:\n\
+           cd docs/tui && bun build --compile --minify --outfile levitate-docs src/index.tsx\n\
+         \n\
+         The docs TUI shows installation instructions in the live ISO.",
+        docs_tui_binary.display()
+    );
 }

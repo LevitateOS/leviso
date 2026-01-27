@@ -13,7 +13,6 @@ pub mod resolve;
 pub mod timing;
 
 // Re-export extracted crates
-pub use leviso_deps as deps;
 pub use leviso_elf as elf;
 
 // Re-export process module from distro-builder for backwards compatibility

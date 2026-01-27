@@ -151,3 +151,128 @@ pub fn create_root_user(staging: &Path) -> Result<()> {
     fs::write(staging.join("etc/group"), "root:x:0:\n")?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn create_mock_rootfs(rootfs: &Path) {
+        fs::create_dir_all(rootfs.join("etc")).unwrap();
+        fs::write(
+            rootfs.join("etc/passwd"),
+            "root:x:0:0:root:/root:/bin/bash\ndbus:x:81:81:System message bus:/:/sbin/nologin\n",
+        )
+        .unwrap();
+        fs::write(rootfs.join("etc/group"), "root:x:0:\ndbus:x:81:\n").unwrap();
+    }
+
+    #[test]
+    fn test_read_uid_from_rootfs_exists() {
+        let temp = TempDir::new().unwrap();
+        let rootfs = temp.path();
+        create_mock_rootfs(rootfs);
+
+        let result = read_uid_from_rootfs(rootfs, "dbus").unwrap();
+        assert!(result.is_some());
+        let (uid, gid) = result.unwrap();
+        assert_eq!(uid, 81);
+        assert_eq!(gid, 81);
+    }
+
+    #[test]
+    fn test_read_uid_from_rootfs_not_found() {
+        let temp = TempDir::new().unwrap();
+        let rootfs = temp.path();
+        create_mock_rootfs(rootfs);
+
+        let result = read_uid_from_rootfs(rootfs, "nonexistent").unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_read_gid_from_rootfs_exists() {
+        let temp = TempDir::new().unwrap();
+        let rootfs = temp.path();
+        create_mock_rootfs(rootfs);
+
+        let result = read_gid_from_rootfs(rootfs, "dbus").unwrap();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), 81);
+    }
+
+    #[test]
+    fn test_ensure_user_creates_entry() {
+        let temp = TempDir::new().unwrap();
+        let rootfs = temp.path();
+        let initramfs = temp.path().join("initramfs");
+        create_mock_rootfs(rootfs);
+        fs::create_dir_all(initramfs.join("etc")).unwrap();
+
+        // Start with empty passwd
+        fs::write(initramfs.join("etc/passwd"), "").unwrap();
+
+        ensure_user(rootfs, &initramfs, "testuser", 1000, 1000, "/home/test", "/bin/bash")
+            .expect("ensure_user should succeed");
+
+        let content = fs::read_to_string(initramfs.join("etc/passwd")).unwrap();
+        assert!(content.contains("testuser:x:1000:1000"));
+    }
+
+    #[test]
+    fn test_ensure_user_idempotent() {
+        let temp = TempDir::new().unwrap();
+        let rootfs = temp.path();
+        let initramfs = temp.path().join("initramfs");
+        create_mock_rootfs(rootfs);
+        fs::create_dir_all(initramfs.join("etc")).unwrap();
+
+        // Start with existing user
+        fs::write(
+            initramfs.join("etc/passwd"),
+            "testuser:x:1000:1000:testuser:/home:/bin/bash\n",
+        )
+        .unwrap();
+
+        // Call ensure_user again
+        ensure_user(rootfs, &initramfs, "testuser", 1000, 1000, "/home", "/bin/bash")
+            .expect("ensure_user should succeed");
+
+        // Should not duplicate
+        let content = fs::read_to_string(initramfs.join("etc/passwd")).unwrap();
+        let count = content.lines().filter(|line| line.starts_with("testuser:")).count();
+        assert_eq!(count, 1, "User should not be duplicated");
+    }
+
+    #[test]
+    fn test_ensure_group_creates_entry() {
+        let temp = TempDir::new().unwrap();
+        let rootfs = temp.path();
+        let initramfs = temp.path().join("initramfs");
+        create_mock_rootfs(rootfs);
+        fs::create_dir_all(initramfs.join("etc")).unwrap();
+
+        // Start with empty group file
+        fs::write(initramfs.join("etc/group"), "").unwrap();
+
+        ensure_group(rootfs, &initramfs, "testgroup", 1000).expect("ensure_group should succeed");
+
+        let content = fs::read_to_string(initramfs.join("etc/group")).unwrap();
+        assert!(content.contains("testgroup:x:1000:"));
+    }
+
+    #[test]
+    fn test_create_root_user() {
+        let temp = TempDir::new().unwrap();
+        let initramfs = temp.path();
+        fs::create_dir_all(initramfs.join("etc")).unwrap();
+
+        create_root_user(initramfs).expect("create_root_user should succeed");
+
+        let passwd = fs::read_to_string(initramfs.join("etc/passwd")).unwrap();
+        let group = fs::read_to_string(initramfs.join("etc/group")).unwrap();
+
+        assert!(passwd.contains("root:x:0:0:root:/root:"));
+        assert!(group.contains("root:x:0:"));
+    }
+}

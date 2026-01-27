@@ -297,8 +297,6 @@ pub enum CustomOp {
     CopyTimezoneData,
     /// Copy locales.
     CopyLocales,
-    /// Copy dracut modules.
-    CopyDracutModules,
     /// Copy systemd-boot EFI files.
     CopySystemdBootEfi,
     /// Copy keymaps.
@@ -319,8 +317,6 @@ pub enum CustomOp {
     SetupRecipeConfig,
     /// Setup live systemd configs.
     SetupLiveSystemdConfigs,
-    /// Create dracut config.
-    CreateDracutConfig,
     /// Copy docs-tui binary.
     CopyDocsTui,
     /// Generate SSH host keys during build.

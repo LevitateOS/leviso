@@ -99,12 +99,56 @@ pub fn create_welcome_message(ctx: &BuildContext) -> Result<()> {
     Ok(())
 }
 
-/// Install installation tools (recstrap, recfstab, recchroot) to staging via recipes.
+/// Install installation tools (recstrap, recfstab, recchroot) to staging.
 ///
-/// This is now a thin wrapper that calls the recipe module.
-/// The actual work is done by deps/recstrap.rhai, deps/recfstab.rhai, deps/recchroot.rhai.
+/// Copies the tools directly from the workspace target directory to ctx.staging.
+/// This ensures tools are installed to the correct staging directory being built,
+/// not a hardcoded path.
 pub fn install_tools(ctx: &BuildContext) -> Result<()> {
-    crate::recipe::install_tools(&ctx.base_dir)
+    use anyhow::{bail, Context};
+    use leviso_elf::make_executable;
+
+    let monorepo_dir = ctx.base_dir
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| ctx.base_dir.to_path_buf());
+
+    let bin_dir = ctx.staging.join("usr/bin");
+    fs::create_dir_all(&bin_dir)?;
+
+    for tool in ["recstrap", "recfstab", "recchroot"] {
+        let dest = bin_dir.join(tool);
+
+        // Check workspace target (most common for workspace members)
+        let workspace_binary = monorepo_dir.join("target/release").join(tool);
+        if workspace_binary.exists() {
+            fs::copy(&workspace_binary, &dest)
+                .with_context(|| format!("Failed to copy {} to staging", tool))?;
+            make_executable(&dest)?;
+            println!("  Installed {} from workspace", tool);
+            continue;
+        }
+
+        // Fallback: crate-local target
+        let local_binary = monorepo_dir.join(format!("tools/{}/target/release/{}", tool, tool));
+        if local_binary.exists() {
+            fs::copy(&local_binary, &dest)
+                .with_context(|| format!("Failed to copy {} to staging", tool))?;
+            make_executable(&dest)?;
+            println!("  Installed {} from local target", tool);
+            continue;
+        }
+
+        bail!(
+            "{} binary not found. Build it first:\n\
+             cargo build --release -p {}\n\
+             \n\
+             Or: RECIPE_BINARY=... leviso build",
+            tool, tool
+        );
+    }
+
+    Ok(())
 }
 
 /// Set up live systemd configurations (volatile journal, no suspend).

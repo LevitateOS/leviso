@@ -161,8 +161,6 @@ const BIN_UTILS: &[&str] = &[
     "less", "more",
     // === UTIL-LINUX ===
     "getopt",
-    // === DRACUT ===
-    "dracut",
     // === GLIBC UTILITIES ===
     "getent", "ldd",
     // === CHECKSUMS ===
@@ -604,14 +602,8 @@ pub static RECIPE: Component = Component {
     ],
 };
 
-pub static DRACUT: Component = Component {
-    name: "dracut",
-    phase: Phase::Packages,
-    ops: &[
-        custom(CustomOp::CopyDracutModules),
-        custom(CustomOp::CreateDracutConfig),
-    ],
-};
+// DRACUT component removed - initramfs is now built using custom builder.
+// See TEAM_125 and .teams/KNOWLEDGE_no-dracut.md for details.
 
 pub static BOOTLOADER: Component = Component {
     name: "bootloader",

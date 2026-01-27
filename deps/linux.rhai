@@ -13,14 +13,13 @@
 // 2. Git clone from github.com/LevitateOS/linux (fallback)
 
 let ctx = #{
+    build_dir: "/home/vince/Projects/LevitateOS/leviso/output/kernel-build",
     description: "Linux kernel source (LevitateOS fork)",
-    name: "linux",
     git_url: "https://github.com/LevitateOS/linux.git",
-    // Paths filled in by phases
-    source_path: "",
+    kernel_version: "6.19.0-rc6-levitate-gcf38b2340c0e",
+    name: "linux",
+    source_path: "/home/vince/Projects/LevitateOS/linux",
     submodule_path: "",
-    build_dir: "",
-    kernel_version: "",
 };
 
 // === ACQUIRE ===

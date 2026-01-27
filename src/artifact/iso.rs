@@ -236,8 +236,8 @@ fn copy_iso_artifacts(paths: &IsoPaths, kernel_path: &Path) -> Result<()> {
     fs::copy(kernel_path, paths.iso_root.join(KERNEL_ISO_PATH))?;
     fs::copy(&paths.initramfs_live, paths.iso_root.join(INITRAMFS_LIVE_ISO_PATH))?;
 
-    // Copy installed initramfs (full dracut - boots the daily driver OS)
-    // This is REQUIRED - copied to installed systems instead of running dracut
+    // Copy installed initramfs (full - boots the daily driver OS)
+    // This is REQUIRED - copied to installed systems during installation
     if !paths.initramfs_installed.exists() {
         bail!(
             "Installed initramfs not found at {}.\n\
@@ -303,7 +303,7 @@ fn setup_uefi_boot(paths: &IsoPaths) -> Result<()> {
     crate::artifact::uki::build_live_ukis(&kernel, initramfs, &uki_dir, &label)?;
 
     // Build installed UKIs (for users to copy during installation)
-    // These use the full dracut initramfs and boot from disk
+    // These use the full initramfs and boot from disk
     let installed_uki_dir = paths.iso_root.join(UKI_INSTALLED_ISO_DIR);
     fs::create_dir_all(&installed_uki_dir)?;
     crate::artifact::uki::build_installed_ukis(

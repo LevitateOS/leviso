@@ -112,14 +112,14 @@ pub fn build_live_ukis(
 
 /// Build UKIs for installed systems.
 ///
-/// These UKIs use the full dracut initramfs and boot from disk (not ISO).
+/// These UKIs use the full initramfs and boot from disk (not ISO).
 /// Users copy these to /boot/EFI/Linux/ during installation.
 /// systemd-boot auto-discovers UKIs in that directory.
 ///
 /// # Arguments
 ///
 /// * `kernel` - Path to the kernel image
-/// * `initramfs` - Path to the full dracut initramfs (not the tiny live one!)
+/// * `initramfs` - Path to the full initramfs (not the tiny live one!)
 /// * `output_dir` - Directory to write UKIs to
 ///
 /// # Cmdline

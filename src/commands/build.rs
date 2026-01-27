@@ -97,7 +97,7 @@ fn build_full(base_dir: &Path, _config: &Config) -> Result<()> {
     }
 
     // 5b. Build install initramfs (REQUIRED for installation)
-    // This is copied to installed systems instead of running dracut (saves 2-3 min)
+    // This is copied to installed systems during installation
     // The initramfs is generic (no hostonly) so it works on any hardware
     let install_initramfs = base_dir.join("output").join(INITRAMFS_INSTALLED_OUTPUT);
     if !install_initramfs.exists() {

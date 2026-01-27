@@ -12,9 +12,12 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 use distro_spec::levitate::{
-    EFI_DEBUG, SELINUX_DISABLE, SERIAL_CONSOLE, VGA_CONSOLE, UKI_ENTRIES, UKI_INSTALLED_ENTRIES,
+    EFI_DEBUG, SELINUX_DISABLE, SERIAL_CONSOLE, VGA_CONSOLE, UKI_INSTALLED_ENTRIES,
     OS_NAME, OS_ID, OS_VERSION,
 };
+
+#[cfg(test)]
+use distro_spec::levitate::UKI_ENTRIES;
 use recuki::UkiConfig;
 
 /// Build a UKI from kernel + initramfs + cmdline.
@@ -39,53 +42,6 @@ pub fn build_uki(
         .with_os_release(OS_NAME, OS_ID, OS_VERSION);
 
     recuki::build_uki(&config)
-}
-
-/// Build all UKIs for the live ISO (normal, emergency, debug).
-///
-/// Creates one UKI for each entry defined in `UKI_ENTRIES`.
-///
-/// # Arguments
-///
-/// * `kernel` - Path to the kernel image
-/// * `initramfs` - Path to the initramfs image
-/// * `output_dir` - Directory to write UKIs to
-/// * `iso_label` - ISO volume label for root= parameter
-///
-/// # Returns
-///
-/// Vector of paths to the created UKI files.
-pub fn build_live_ukis(
-    kernel: &Path,
-    initramfs: &Path,
-    output_dir: &Path,
-    iso_label: &str,
-) -> Result<Vec<PathBuf>> {
-    println!("Building UKIs for live ISO...");
-
-    // Base cmdline used for all entries
-    // efi=debug helps diagnose UKI boot issues by showing EFI stub activity
-    let base_cmdline = format!(
-        "root=LABEL={} {} {} {} {}",
-        iso_label, SERIAL_CONSOLE, VGA_CONSOLE, SELINUX_DISABLE, EFI_DEBUG
-    );
-
-    let mut outputs = Vec::new();
-
-    for entry in UKI_ENTRIES {
-        let cmdline = if entry.extra_cmdline.is_empty() {
-            base_cmdline.clone()
-        } else {
-            format!("{} {}", base_cmdline, entry.extra_cmdline)
-        };
-
-        let output = output_dir.join(entry.filename);
-        build_uki(kernel, initramfs, &cmdline, &output)?;
-        outputs.push(output);
-    }
-
-    println!("  Created {} UKIs", outputs.len());
-    Ok(outputs)
 }
 
 /// Build UKIs for installed systems.

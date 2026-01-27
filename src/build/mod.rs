@@ -8,13 +8,13 @@
 //!
 //! - `context`: BuildContext for paths during build
 //! - `filesystem`: Filesystem structure creation utilities
-//! - `kernel`: Interactive kernel compilation (stays imperative)
 //! - `libdeps`: Library dependency resolution utilities
 //! - `users`: User/group file manipulation utilities
+//!
+//! Note: Kernel building is now handled by `crate::recipe::linux()`.
 
 pub mod context;
 pub mod filesystem;
-pub mod kernel;
 pub mod libdeps;
 pub mod users;
 

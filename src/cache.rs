@@ -3,18 +3,10 @@
 //! Uses SHA256 hashes to detect actual content changes, not just mtimes.
 //! This prevents unnecessary rebuilds when files are touched but unchanged.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::Path;
-
-/// Compute SHA256 hash of a file's contents.
-pub fn hash_file(path: &Path) -> Result<String> {
-    let content = fs::read(path)
-        .with_context(|| format!("Failed to read file for hashing: {}", path.display()))?;
-    let hash = Sha256::digest(&content);
-    Ok(format!("{:x}", hash))
-}
 
 /// Compute SHA256 hash of multiple files concatenated.
 /// Returns None if any file doesn't exist.

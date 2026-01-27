@@ -17,15 +17,11 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-/// How the recipe binary was resolved.
+/// How the recipe binary was built from source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RecipeSource {
-    /// Found in system PATH.
-    SystemPath,
+enum RecipeSource {
     /// Built from monorepo submodule.
     Monorepo,
-    /// Explicit binary path via RECIPE_BIN.
-    EnvBin,
     /// Built from source via RECIPE_SRC.
     EnvSrc,
 }
@@ -35,8 +31,6 @@ pub enum RecipeSource {
 pub struct RecipeBinary {
     /// Path to the binary.
     pub path: PathBuf,
-    /// How it was resolved.
-    pub source: RecipeSource,
 }
 
 impl RecipeBinary {
@@ -81,10 +75,7 @@ impl RecipeBinary {
 pub fn find_recipe(monorepo_dir: &Path) -> Result<RecipeBinary> {
     // 1. Check system PATH
     if let Ok(path) = which::which("recipe") {
-        return Ok(RecipeBinary {
-            path,
-            source: RecipeSource::SystemPath,
-        });
+        return Ok(RecipeBinary { path });
     }
 
     // 2. Check monorepo submodule
@@ -97,10 +88,7 @@ pub fn find_recipe(monorepo_dir: &Path) -> Result<RecipeBinary> {
     if let Ok(bin_path) = env::var("RECIPE_BIN") {
         let path = PathBuf::from(&bin_path);
         if path.exists() {
-            let binary = RecipeBinary {
-                path,
-                source: RecipeSource::EnvBin,
-            };
+            let binary = RecipeBinary { path };
             if binary.is_valid() {
                 return Ok(binary);
             }
@@ -155,7 +143,6 @@ fn build_from_source(crate_path: &Path, monorepo_dir: &Path, source: RecipeSourc
     let source_desc = match source {
         RecipeSource::Monorepo => "monorepo",
         RecipeSource::EnvSrc => "RECIPE_SRC",
-        _ => "local",
     };
 
     println!("  Building recipe ({})...", source_desc);
@@ -197,10 +184,7 @@ fn build_from_source(crate_path: &Path, monorepo_dir: &Path, source: RecipeSourc
         let local_binary = crate_path.join("target").join(profile).join("recipe");
         if local_binary.exists() {
             println!("    Built: {}", local_binary.display());
-            return Ok(RecipeBinary {
-                path: local_binary,
-                source,
-            });
+            return Ok(RecipeBinary { path: local_binary });
         }
         bail!(
             "Built binary not found at:\n  - {}\n  - {}",
@@ -211,10 +195,7 @@ fn build_from_source(crate_path: &Path, monorepo_dir: &Path, source: RecipeSourc
 
     println!("    Built: {}", binary.display());
 
-    Ok(RecipeBinary {
-        path: binary,
-        source,
-    })
+    Ok(RecipeBinary { path: binary })
 }
 
 /// Run a recipe using the recipe binary, returning the ctx as JSON.
@@ -406,52 +387,6 @@ pub fn install_tools(base_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Install docs-tui (levitate-docs) to staging using its recipe.
-///
-/// This builds the terminal documentation viewer using bun and installs it
-/// to staging. Unlike the Rust tools, this requires bun to be installed.
-///
-/// # Arguments
-/// * `base_dir` - leviso crate root (e.g., `/path/to/leviso`)
-pub fn install_docs_tui(base_dir: &Path) -> Result<()> {
-    let monorepo_dir = base_dir
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| base_dir.to_path_buf());
-
-    let downloads_dir = base_dir.join("downloads");
-    let staging_bin = base_dir.join("output/staging/usr/bin");
-    let installed_path = staging_bin.join("levitate-docs");
-
-    // Skip if already installed
-    if installed_path.exists() {
-        println!("  levitate-docs already installed");
-        return Ok(());
-    }
-
-    let recipe_path = base_dir.join("deps/docs-tui.rhai");
-    if !recipe_path.exists() {
-        bail!(
-            "docs-tui recipe not found at: {}\n\
-             Expected docs-tui.rhai in leviso/deps/",
-            recipe_path.display()
-        );
-    }
-
-    let recipe_bin = find_recipe(&monorepo_dir)?;
-    recipe_bin.run(&recipe_path, &downloads_dir)?;
-
-    // Verify installation
-    if !installed_path.exists() {
-        bail!(
-            "Recipe completed but levitate-docs not found at: {}",
-            installed_path.display()
-        );
-    }
-
-    Ok(())
-}
-
 // ============================================================================
 // Supplementary packages via recipe
 // ============================================================================
@@ -516,8 +451,6 @@ pub fn packages(base_dir: &Path) -> Result<()> {
 pub struct LinuxPaths {
     /// Path to the kernel source tree.
     pub source: PathBuf,
-    /// Path to the kernel build directory.
-    pub build_dir: PathBuf,
     /// Path to vmlinuz in staging.
     pub vmlinuz: PathBuf,
     /// Kernel version string.
@@ -528,11 +461,6 @@ impl LinuxPaths {
     /// Check if kernel is built and installed.
     pub fn is_installed(&self) -> bool {
         self.vmlinuz.exists()
-    }
-
-    /// Check if kernel source is acquired.
-    pub fn is_acquired(&self) -> bool {
-        self.source.join("Makefile").exists()
     }
 }
 
@@ -580,11 +508,6 @@ pub fn linux(base_dir: &Path) -> Result<LinuxPaths> {
             }
         });
 
-    let build_dir = ctx["build_dir"]
-        .as_str()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| output_dir.join("kernel-build"));
-
     let version = ctx["kernel_version"]
         .as_str()
         .map(|s| s.to_string())
@@ -594,7 +517,6 @@ pub fn linux(base_dir: &Path) -> Result<LinuxPaths> {
 
     Ok(LinuxPaths {
         source,
-        build_dir,
         vmlinuz,
         version,
     })
@@ -630,16 +552,3 @@ pub fn clear_cache() -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_recipe_source_variants() {
-        // Just ensure the enum variants compile
-        let _s = RecipeSource::SystemPath;
-        let _m = RecipeSource::Monorepo;
-        let _b = RecipeSource::EnvBin;
-        let _e = RecipeSource::EnvSrc;
-    }
-}

@@ -7,7 +7,7 @@
 //!
 //! Delegates to the standalone `reciso` crate for core ISO building.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use leviso_cheat_guard::cheat_bail;
 use std::env;
 use std::fs;

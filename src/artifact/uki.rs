@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use distro_builder::process::Cmd;
 use distro_spec::levitate::{
-    SELINUX_DISABLE, SERIAL_CONSOLE, VGA_CONSOLE, UKI_ENTRIES, UKI_INSTALLED_ENTRIES,
+    EFI_DEBUG, SELINUX_DISABLE, SERIAL_CONSOLE, VGA_CONSOLE, UKI_ENTRIES, UKI_INSTALLED_ENTRIES,
     OS_NAME, OS_ID, OS_VERSION,
 };
 
@@ -87,9 +87,10 @@ pub fn build_live_ukis(
     println!("Building UKIs for live ISO...");
 
     // Base cmdline used for all entries
+    // efi=debug helps diagnose UKI boot issues by showing EFI stub activity
     let base_cmdline = format!(
-        "root=LABEL={} {} {} {}",
-        iso_label, SERIAL_CONSOLE, VGA_CONSOLE, SELINUX_DISABLE
+        "root=LABEL={} {} {} {} {}",
+        iso_label, SERIAL_CONSOLE, VGA_CONSOLE, SELINUX_DISABLE, EFI_DEBUG
     );
 
     let mut outputs = Vec::new();
@@ -140,9 +141,10 @@ pub fn build_installed_ukis(
     // Base cmdline for installed systems
     // Uses root=LABEL=root - user must label their root partition accordingly
     // Can be edited at boot time if needed (systemd-boot allows editing)
+    // efi=debug helps diagnose UKI boot issues by showing EFI stub activity
     let base_cmdline = format!(
-        "root=LABEL=root rw {} {} {}",
-        SERIAL_CONSOLE, VGA_CONSOLE, SELINUX_DISABLE
+        "root=LABEL=root rw {} {} {} {}",
+        SERIAL_CONSOLE, VGA_CONSOLE, SELINUX_DISABLE, EFI_DEBUG
     );
 
     let mut outputs = Vec::new();
@@ -171,14 +173,15 @@ mod tests {
     fn test_base_cmdline_format() {
         let label = "TESTISO";
         let cmdline = format!(
-            "root=LABEL={} {} {} {}",
-            label, SERIAL_CONSOLE, VGA_CONSOLE, SELINUX_DISABLE
+            "root=LABEL={} {} {} {} {}",
+            label, SERIAL_CONSOLE, VGA_CONSOLE, SELINUX_DISABLE, EFI_DEBUG
         );
 
         assert!(cmdline.contains("root=LABEL=TESTISO"));
         assert!(cmdline.contains("console=ttyS0"));
         assert!(cmdline.contains("console=tty0"));
         assert!(cmdline.contains("selinux=0"));
+        assert!(cmdline.contains("efi=debug"));
     }
 
     #[test]

@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, ISO_FILENAME, ROOTFS_NAME};
+use distro_spec::levitate::{INITRAMFS_INSTALLED_OUTPUT, INITRAMFS_LIVE_OUTPUT, ISO_FILENAME, ROOTFS_NAME};
 
 use crate::cache;
 
@@ -116,6 +116,46 @@ pub fn initramfs_needs_rebuild(base_dir: &Path) -> bool {
     cache::needs_rebuild(&current_hash, &hash_file, &initramfs)
 }
 
+/// Check if install initramfs needs to be rebuilt.
+///
+/// This is the systemd-based initramfs copied to installed systems.
+/// Uses hash of recinit source files since they determine initramfs content.
+pub fn install_initramfs_needs_rebuild(base_dir: &Path) -> bool {
+    let initramfs = base_dir.join("output").join(INITRAMFS_INSTALLED_OUTPUT);
+    let hash_file = base_dir.join("output/.install-initramfs-inputs.hash");
+
+    if !initramfs.exists() {
+        return true;
+    }
+
+    // Track recinit source files that affect install initramfs generation
+    let recinit_base = base_dir.join("../tools/recinit/src");
+    let systemd_rs = recinit_base.join("systemd.rs");
+    let install_rs = recinit_base.join("install.rs");
+    let lib_rs = recinit_base.join("lib.rs");
+    let elf_rs = recinit_base.join("elf.rs");
+    let cpio_rs = recinit_base.join("cpio.rs");
+    let modules_rs = recinit_base.join("modules.rs");
+    // Also track rootfs marker to rebuild if rootfs changes
+    let rootfs_marker = base_dir.join("downloads/rootfs/usr/bin/bash");
+
+    let inputs: Vec<&Path> = vec![
+        &systemd_rs,
+        &install_rs,
+        &lib_rs,
+        &elf_rs,
+        &cpio_rs,
+        &modules_rs,
+        &rootfs_marker,
+    ];
+    let current_hash = match cache::hash_files(&inputs) {
+        Some(h) => h,
+        None => return true,
+    };
+
+    cache::needs_rebuild(&current_hash, &hash_file, &initramfs)
+}
+
 /// Check if ISO needs to be rebuilt.
 pub fn iso_needs_rebuild(base_dir: &Path) -> bool {
     let iso = base_dir.join("output").join(ISO_FILENAME);
@@ -182,5 +222,30 @@ pub fn cache_initramfs_hash(base_dir: &Path) {
     let inputs: Vec<&Path> = vec![&init_script, &busybox];
     if let Some(hash) = cache::hash_files(&inputs) {
         let _ = cache::write_cached_hash(&base_dir.join("output/.initramfs-inputs.hash"), &hash);
+    }
+}
+
+/// Cache the install initramfs input hash after a successful build.
+pub fn cache_install_initramfs_hash(base_dir: &Path) {
+    let recinit_base = base_dir.join("../tools/recinit/src");
+    let systemd_rs = recinit_base.join("systemd.rs");
+    let install_rs = recinit_base.join("install.rs");
+    let lib_rs = recinit_base.join("lib.rs");
+    let elf_rs = recinit_base.join("elf.rs");
+    let cpio_rs = recinit_base.join("cpio.rs");
+    let modules_rs = recinit_base.join("modules.rs");
+    let rootfs_marker = base_dir.join("downloads/rootfs/usr/bin/bash");
+
+    let inputs: Vec<&Path> = vec![
+        &systemd_rs,
+        &install_rs,
+        &lib_rs,
+        &elf_rs,
+        &cpio_rs,
+        &modules_rs,
+        &rootfs_marker,
+    ];
+    if let Some(hash) = cache::hash_files(&inputs) {
+        let _ = cache::write_cached_hash(&base_dir.join("output/.install-initramfs-inputs.hash"), &hash);
     }
 }

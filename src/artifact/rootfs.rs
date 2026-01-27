@@ -41,13 +41,14 @@
 //! The actual EROFS building is done by `distro_builder::artifact::rootfs`.
 //! This module provides the LevitateOS-specific orchestration (staging, atomicity).
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use std::fs;
 use std::path::Path;
 
 use distro_spec::levitate::ROOTFS_NAME;
 use crate::build::BuildContext;
 use distro_builder::build_erofs_default;
+use fsdbg::checklist::rootfs as rootfs_checklist;
 
 /// Build the complete rootfs (EROFS) system image.
 ///
@@ -82,6 +83,10 @@ pub fn build_rootfs(base_dir: &Path) -> Result<()> {
     let build_result = (|| -> Result<()> {
         let ctx = BuildContext::new(base_dir, &work_staging)?;
         crate::component::build_system(&ctx)?;
+
+        // Verify staging directory before creating EROFS
+        verify_staging(&work_staging)?;
+
         // IMPORTANT: create_erofs_internal doesn't delete output first
         create_erofs_internal(&work_staging, &work_output)?;
         Ok(())
@@ -152,4 +157,75 @@ fn check_host_tools() -> Result<()> {
 fn create_erofs_internal(staging: &Path, output: &Path) -> Result<()> {
     // Use the shared distro-builder implementation
     build_erofs_default(staging, output)
+}
+
+/// Verify the staging directory contains required files before creating EROFS.
+///
+/// Uses fsdbg checklist constants to ensure the rootfs has all required components.
+/// Fails the build immediately if ANY required file is missing.
+fn verify_staging(staging: &Path) -> Result<()> {
+    println!();
+    println!("  Verifying staging directory with fsdbg checklist...");
+
+    let mut missing = Vec::new();
+    let mut passed = 0;
+
+    // Check binaries
+    for binary in rootfs_checklist::REQUIRED_BINARIES {
+        if staging.join(binary).exists() {
+            passed += 1;
+        } else {
+            missing.push(*binary);
+        }
+    }
+
+    // Check units
+    for unit in rootfs_checklist::REQUIRED_UNITS {
+        let unit_path = format!("usr/lib/systemd/system/{}", unit);
+        if staging.join(&unit_path).exists() {
+            passed += 1;
+        } else {
+            missing.push(*unit);
+        }
+    }
+
+    // Check directories
+    for dir in rootfs_checklist::REQUIRED_DIRS {
+        let dir_path = staging.join(dir);
+        // Check for either directory or symlink (bin -> usr/bin)
+        if dir_path.exists() || dir_path.is_symlink() {
+            passed += 1;
+        } else {
+            missing.push(*dir);
+        }
+    }
+
+    // Check /etc files
+    for etc_file in rootfs_checklist::REQUIRED_ETC {
+        if staging.join(etc_file).exists() {
+            passed += 1;
+        } else {
+            missing.push(*etc_file);
+        }
+    }
+
+    let total = passed + missing.len();
+
+    if missing.is_empty() {
+        println!("  ✓ Verification PASSED ({}/{} checks)", passed, total);
+        Ok(())
+    } else {
+        println!(
+            "  ✗ Verification FAILED ({}/{} checks)",
+            passed, total
+        );
+        for item in &missing {
+            println!("    ✗ {} - Missing", item);
+        }
+        bail!(
+            "Rootfs verification FAILED: {} missing files.\n\
+             The staging directory is incomplete and would produce a broken rootfs.",
+            missing.len()
+        );
+    }
 }

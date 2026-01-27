@@ -11,6 +11,6 @@ pub mod iso;
 pub mod rootfs;
 pub mod uki;
 
-pub use initramfs::{build_tiny_initramfs, build_install_initramfs};
-pub use iso::create_iso;
+pub use initramfs::{build_tiny_initramfs, build_install_initramfs, verify_live_initramfs, verify_install_initramfs};
+pub use iso::{create_iso, verify_iso};
 pub use rootfs::build_rootfs;

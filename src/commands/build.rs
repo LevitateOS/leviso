@@ -4,7 +4,7 @@ use anyhow::Result;
 use std::path::Path;
 use std::time::Instant;
 
-use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, INITRAMFS_INSTALLED_OUTPUT, ISO_FILENAME, ROOTFS_NAME};
+use distro_spec::levitate::{INITRAMFS_INSTALLED_OUTPUT, INITRAMFS_LIVE_OUTPUT, ISO_FILENAME, ROOTFS_NAME};
 
 use crate::artifact;
 use crate::config::Config;
@@ -99,14 +99,14 @@ fn build_full(base_dir: &Path, _config: &Config) -> Result<()> {
     // 5b. Build install initramfs (REQUIRED for installation)
     // This is copied to installed systems during installation
     // The initramfs is generic (no hostonly) so it works on any hardware
-    let install_initramfs = base_dir.join("output").join(INITRAMFS_INSTALLED_OUTPUT);
-    if !install_initramfs.exists() {
+    if rebuild::install_initramfs_needs_rebuild(base_dir) {
         println!("\nBuilding install initramfs...");
         let t = Timer::start("Install Initramfs");
         artifact::build_install_initramfs(base_dir)?;
+        rebuild::cache_install_initramfs_hash(base_dir);
         t.finish();
     } else {
-        println!("\n[SKIP] Install initramfs already built");
+        println!("\n[SKIP] Install initramfs already built (inputs unchanged)");
     }
 
     // 6. Build ISO (skip if components unchanged)
@@ -119,7 +119,15 @@ fn build_full(base_dir: &Path, _config: &Config) -> Result<()> {
         println!("\n[SKIP] ISO already built (components unchanged)");
     }
 
-    // 7. Verify hardware compatibility
+    // 7. ALWAYS verify all artifacts (whether just built or skipped)
+    // This catches broken artifacts from previous runs
+    println!("\n=== Artifact Verification ===");
+    let output_dir = base_dir.join("output");
+    artifact::verify_live_initramfs(&output_dir.join(INITRAMFS_LIVE_OUTPUT))?;
+    artifact::verify_install_initramfs(&output_dir.join(INITRAMFS_INSTALLED_OUTPUT))?;
+    artifact::verify_iso(&output_dir.join(ISO_FILENAME))?;
+
+    // 8. Verify hardware compatibility
     verify_hardware_compat(base_dir)?;
 
     let total = build_start.elapsed().as_secs_f64();
@@ -216,6 +224,8 @@ fn build_rootfs_only(base_dir: &Path) -> Result<()> {
         println!("[SKIP] Rootfs already built (inputs unchanged)");
         println!("  Use 'clean rootfs' then rebuild to force");
     }
+    // Rootfs verification happens inside build_rootfs() via verify_staging()
+    // No separate verification needed here since EROFS is always built fresh
     Ok(())
 }
 
@@ -228,13 +238,18 @@ fn build_initramfs_only(base_dir: &Path) -> Result<()> {
         println!("[SKIP] Initramfs already built (inputs unchanged)");
         println!("  Use 'clean iso' then rebuild to force");
     }
+
+    // Always verify (whether just built or skipped)
+    let output_dir = base_dir.join("output");
+    artifact::verify_live_initramfs(&output_dir.join(INITRAMFS_LIVE_OUTPUT))?;
     Ok(())
 }
 
 /// Build ISO only.
 fn build_iso_only(base_dir: &Path) -> Result<()> {
-    let rootfs_path = base_dir.join("output").join(ROOTFS_NAME);
-    let initramfs_path = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
+    let output_dir = base_dir.join("output");
+    let rootfs_path = output_dir.join(ROOTFS_NAME);
+    let initramfs_path = output_dir.join(INITRAMFS_LIVE_OUTPUT);
 
     if !rootfs_path.exists() {
         println!("Rootfs not found, building...");
@@ -244,7 +259,22 @@ fn build_iso_only(base_dir: &Path) -> Result<()> {
         println!("Tiny initramfs not found, building...");
         artifact::build_tiny_initramfs(base_dir)?;
     }
+    // Rebuild install initramfs if inputs changed (needed for installation)
+    if rebuild::install_initramfs_needs_rebuild(base_dir) {
+        println!("Building install initramfs...");
+        artifact::build_install_initramfs(base_dir)?;
+        rebuild::cache_install_initramfs_hash(base_dir);
+    }
+
+    // Verify all components BEFORE creating ISO
+    println!("\n=== Pre-ISO Verification ===");
+    artifact::verify_live_initramfs(&output_dir.join(INITRAMFS_LIVE_OUTPUT))?;
+    artifact::verify_install_initramfs(&output_dir.join(INITRAMFS_INSTALLED_OUTPUT))?;
+
     artifact::create_iso(base_dir)?;
+
+    // Verify final ISO
+    artifact::verify_iso(&output_dir.join(ISO_FILENAME))?;
     Ok(())
 }
 

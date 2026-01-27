@@ -57,7 +57,7 @@ LevitateOS aims for parity with archiso - the Arch Linux installation ISO. This 
 | Autologin to root shell | ✅ Like archiso |
 | machine-id empty | ✅ Regenerates on first boot |
 | Hostname set ("levitateos") | ✅ Configured |
-| recstrap (squashfs extraction) | ✅ Working |
+| recstrap (EROFS extraction) | ✅ Working |
 | recfstab (genfstab equivalent) | ✅ Implemented |
 | recchroot (arch-chroot equivalent) | ✅ Implemented |
 | systemd as PID 1 | ✅ Verified |
@@ -114,31 +114,31 @@ Each item should have:
 
 ## Architecture
 
-The ISO uses a squashfs-based live environment (like Arch, Ubuntu, Fedora):
+The ISO uses an EROFS-based live environment (Enhanced Read-Only File System):
 
 ```
 ISO
 ├── boot/
 │   ├── vmlinuz           # Kernel
-│   └── initramfs.img     # Tiny (~10MB) - mounts squashfs
+│   └── initramfs.img     # Tiny (~5MB) - mounts EROFS
 ├── live/
-│   └── filesystem.squashfs  # COMPLETE system (~350MB compressed)
+│   └── filesystem.erofs  # COMPLETE system (~350MB compressed)
 └── EFI/...               # Bootloader
 ```
 
 **Boot flow:**
 1. Kernel + tiny initramfs boot
-2. Initramfs mounts filesystem.squashfs (read-only)
+2. Initramfs mounts filesystem.erofs (read-only)
 3. Initramfs mounts overlay (tmpfs for writes)
-4. switch_root to squashfs
+4. switch_root to overlay
 5. User has FULL daily driver system
 
 **Installation flow:**
-1. Boot ISO → live environment (from squashfs)
+1. Boot ISO → live environment (from EROFS)
 2. Run: `recstrap /dev/vda`
 3. Reboot into installed system
 
-**Key insight:** The squashfs IS the complete system. Live = Installed.
+**Key insight:** The EROFS rootfs IS the complete system. Live = Installed.
 
 ---
 
@@ -172,9 +172,9 @@ ISO
 ## System Extractor: `recstrap`
 
 > **NOTE:** recstrap is like pacstrap. NOT like archinstall!
-> It extracts squashfs to target. User does EVERYTHING else manually.
+> It extracts rootfs to target. User does EVERYTHING else manually.
 
-### Why squashfs + recstrap?
+### Why EROFS + recstrap?
 
 Like Arch's `pacstrap`, LevitateOS uses `recstrap` (recipe + strap) to extract the system.
 
@@ -183,17 +183,17 @@ Like Arch's `pacstrap`, LevitateOS uses `recstrap` (recipe + strap) to extract t
 - Two sources of truth (initramfs + tarball have different content)
 - Need complex logic to copy networking from initramfs to installed system
 
-**Solution - squashfs architecture:**
-- Single source of truth: filesystem.squashfs has EVERYTHING
-- Less RAM: squashfs reads from disk, not all in RAM
-- Simple installation: just unsquash to disk
+**Solution - EROFS architecture:**
+- Single source of truth: filesystem.erofs has EVERYTHING
+- Less RAM: EROFS reads from disk, not all in RAM
+- Better random-access performance than squashfs
 - **Live = Installed:** exact same files
 
 ### What recstrap does
 
 ```bash
-recstrap /mnt                    # Extract squashfs to /mnt
-recstrap /mnt --squashfs /path   # Custom squashfs location
+recstrap /mnt                    # Extract rootfs to /mnt
+recstrap /mnt --rootfs /path     # Custom rootfs location
 ```
 
 That's it. **recstrap only extracts**. Like pacstrap, NOT like archinstall.
@@ -208,44 +208,44 @@ User does EVERYTHING else manually (like Arch):
 - Users (useradd)
 - Timezone, locale, hostname
 
-### Squashfs architecture
+### EROFS architecture
 
 ```
 ISO (~400MB):
-├── initramfs.img (~10MB) - tiny, just mounts squashfs
-└── live/filesystem.squashfs (~350MB compressed)
+├── initramfs.img (~5MB) - tiny, just mounts EROFS
+└── live/filesystem.erofs (~350MB compressed)
     ├── All binaries (bash, coreutils, systemd...)
     ├── NetworkManager + wpa_supplicant
     ├── ALL firmware (WiFi, GPU, sound, BT)
     ├── recipe package manager
     └── recstrap binary
 
-Live boot: squashfs mounted + overlay for writes
-Installation: unsquash squashfs to /mnt
+Live boot: EROFS mounted + overlay for writes
+Installation: extract EROFS to /mnt
 Result: Live = Installed (same files!)
 ```
 
 ### Implementation status
 
-**Squashfs builder:**
-- [x] Create `src/squashfs/mod.rs` - build complete system
+**EROFS rootfs builder:**
+- [x] Create `src/artifact/rootfs.rs` - build complete system
 - [x] Include ALL binaries (combine rootfs + initramfs content)
 - [x] Include NetworkManager, wpa_supplicant
 - [x] Include ALL firmware (~350MB)
-- [x] Generate filesystem.squashfs with mksquashfs
+- [x] Generate filesystem.erofs with mkfs.erofs
 
 **Tiny initramfs:**
-- [x] Create `src/initramfs/mod.rs` - minimal boot initramfs (~5MB)
-- [x] Mount squashfs read-only
+- [x] Create `src/artifact/initramfs.rs` - minimal boot initramfs (~5MB)
+- [x] Mount EROFS read-only
 - [x] Mount overlay (tmpfs) for writes
 - [x] switch_root to live system
 
 **recstrap (sibling directory: ../recstrap/):**
-- [x] Extract squashfs to target directory
+- [x] Extract EROFS rootfs to target directory
 
 **Integration:**
 - [x] Update ISO builder for new layout
-- [x] Include recstrap in squashfs
+- [x] Include recstrap in rootfs
 - [x] Update welcome message to show manual install steps
 
 ---
@@ -290,7 +290,7 @@ Result: Live = Installed (same files!)
 
 ## What's Missing from Live Environment
 
-These are known gaps in the live environment (squashfs):
+These are known gaps in the live environment (EROFS rootfs):
 
 ### Critical Tools (P0 - IMPLEMENTED)
 - [x] `recfstab` - generate fstab from mounted filesystems (genfstab equivalent)
@@ -388,7 +388,7 @@ archiso has a KMS hook for proper graphics mode switching.
 - [ ] Test: `nmcli device wifi list` shows networks (on real hardware)
 
 ### Recipe Package Manager
-- [x] `recipe` binary in squashfs (/usr/bin/recipe)
+- [x] `recipe` binary in rootfs (/usr/bin/recipe)
 - [x] Recipe configuration in /etc/recipe/config.toml
 - [ ] `recipe search` / `recipe install` commands (package manager functionality)
 
@@ -440,7 +440,7 @@ cargo run -- run        # Full QEMU GUI with disk
 # Step by step
 cargo run -- download   # Download Rocky ISO
 cargo run -- extract rocky  # Extract ISO contents
-cargo run -- build rootfs   # Build rootfs tarball
+cargo run -- build rootfs   # Build EROFS rootfs image
 cargo run -- build initramfs # Build initramfs
 cargo run -- build iso      # Build ISO
 ```
@@ -477,7 +477,7 @@ tar xpf /media/cdrom/levitateos-base.tar.xz -C /mnt
 
 - **Rocky Linux is the binary source** - Userspace binaries extracted from Rocky/Fedora RPMs (build in minutes, not hours)
 - **Kernel is independent** - Built from kernel.org, not a Rocky rebrand
-- **Squashfs-based architecture** - Tiny initramfs (~5MB) mounts squashfs + overlay, then switch_root
+- **EROFS-based architecture** - Tiny initramfs (~5MB) mounts EROFS rootfs + overlay, then switch_root
 - **`recipe` handles everything** - Both live queries AND installation to target disk
 
 ---
@@ -517,7 +517,7 @@ archiso provides checksum files so users can verify their download.
 - [x] Partition disk (GPT for UEFI) - verified in E2E test
 - [x] Format partitions (ext4, FAT32 for ESP) - verified in E2E test
 - [x] Mount target filesystem - verified in E2E test
-- [x] Extract squashfs to disk - verified in E2E test
+- [x] Extract rootfs to disk - verified in E2E test
 - [x] Generate fstab with UUIDs - `recfstab -U /mnt >> /mnt/etc/fstab`
 - [ ] Set timezone (manual: timedatectl)
 - [ ] Set locale (manual: localectl)
@@ -558,8 +558,8 @@ archiso provides checksum files so users can verify their download.
 - [x] Common drivers: e1000, e1000e, r8169 (in config.rs)
 
 ### 2.3 WiFi
-- [x] wpa_supplicant installed (in squashfs via network.rs)
-- [x] nmcli can scan networks (in squashfs)
+- [x] wpa_supplicant installed (in rootfs via network.rs)
+- [x] nmcli can scan networks (in rootfs)
 - [ ] Can connect to WPA2-PSK network (untested on real hardware)
 - [ ] Can connect to WPA3 network (untested)
 - [ ] Can connect to WPA2-Enterprise (802.1X)
@@ -600,7 +600,7 @@ archiso provides checksum files so users can verify their download.
 
 ### 3.1 Partitioning Tools
 - [x] `fdisk` - MBR/GPT partitioning (in rootfs)
-- [x] `parted` - GPT partitioning (in squashfs)
+- [x] `parted` - GPT partitioning (in rootfs)
 - [ ] **`gdisk` / `sgdisk`** - P1: GPT-specific tools (better than fdisk for GPT)
 - [x] `lsblk` - list block devices (in rootfs)
 - [x] `blkid` - show UUIDs and labels (in rootfs)
@@ -614,7 +614,7 @@ archiso provides checksum files so users can verify their download.
 - [ ] NTFS read/write (ntfs-3g) - P2: for Windows drives
 - [ ] exFAT (exfatprogs) - P2: for USB drives and SD cards
 - [x] ISO9660 (mount -t iso9660) - kernel module in initramfs
-- [x] squashfs (for live systems) - kernel module + mksquashfs
+- [x] EROFS (for live systems) - kernel module + mkfs.erofs
 
 ### 3.3 LVM & RAID
 - [ ] **LVM2 (pvcreate, vgcreate, lvcreate)** - P0 CRITICAL: Common storage setup
@@ -1147,7 +1147,7 @@ Arch Linux ISO includes these packages. Status in LevitateOS noted.
 - `lvm2` - ✅ INCLUDED
 - `mdadm` - MISSING (P2)
 - `nvme-cli` - ✅ INCLUDED
-- `parted` - ✅ INCLUDED (in squashfs)
+- `parted` - ✅ INCLUDED (in rootfs)
 - `sdparm` - MISSING (P3)
 - `smartmontools` - ✅ INCLUDED
 

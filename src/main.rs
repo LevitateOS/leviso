@@ -24,7 +24,6 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 use config::Config;
-use leviso_deps::DependencyResolver;
 
 #[derive(Parser)]
 #[command(name = "leviso")]
@@ -101,7 +100,7 @@ enum BuildTarget {
         clean: bool,
     },
     /// Build rootfs image (EROFS, complete live system)
-    Squashfs,
+    Rootfs,
     /// Build tiny initramfs (mounts rootfs, ~5MB)
     Initramfs,
     /// Build only the ISO image
@@ -113,7 +112,7 @@ enum ShowTarget {
     /// Show current configuration
     Config,
     /// Show rootfs contents (EROFS)
-    Squashfs,
+    Rootfs,
     /// Show build status (what needs rebuilding)
     Status,
 }
@@ -125,7 +124,7 @@ enum CleanTarget {
     /// Clean ISO and initramfs only
     Iso,
     /// Clean rootfs only (EROFS image + staging)
-    Squashfs,
+    Rootfs,
     /// Clean downloaded sources (Rocky ISO, Linux source)
     Downloads,
     /// Clean cached tool binaries (~/.cache/levitate/)
@@ -152,8 +151,8 @@ enum DownloadTarget {
 enum ExtractTarget {
     /// Extract Rocky ISO contents
     Rocky,
-    /// Extract rootfs for inspection (mounts EROFS)
-    Squashfs {
+    /// Extract rootfs for inspection (extracts EROFS)
+    Rootfs {
         /// Output directory (default: output/rootfs-extracted)
         #[arg(short, long)]
         output: Option<PathBuf>,
@@ -163,8 +162,10 @@ enum ExtractTarget {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let base_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let resolver = DependencyResolver::new(&base_dir)?;
-    let config = Config::load(); // .env loaded by resolver
+
+    // Load .env if present
+    dotenvy::dotenv().ok();
+    let config = Config::load();
 
     match cli.command {
         Commands::Build { target } => {
@@ -173,11 +174,11 @@ fn main() -> Result<()> {
                 Some(BuildTarget::Kernel { clean }) => {
                     commands::build::BuildTarget::Kernel { clean }
                 }
-                Some(BuildTarget::Squashfs) => commands::build::BuildTarget::Rootfs,
+                Some(BuildTarget::Rootfs) => commands::build::BuildTarget::Rootfs,
                 Some(BuildTarget::Initramfs) => commands::build::BuildTarget::Initramfs,
                 Some(BuildTarget::Iso) => commands::build::BuildTarget::Iso,
             };
-            commands::cmd_build(&base_dir, build_target, &resolver, &config)?;
+            commands::cmd_build(&base_dir, build_target, &config)?;
         }
 
         Commands::Run { no_disk, disk_size } => {
@@ -193,21 +194,21 @@ fn main() -> Result<()> {
                 None => commands::clean::CleanTarget::Outputs,
                 Some(CleanTarget::Kernel) => commands::clean::CleanTarget::Kernel,
                 Some(CleanTarget::Iso) => commands::clean::CleanTarget::Iso,
-                Some(CleanTarget::Squashfs) => commands::clean::CleanTarget::Squashfs,
+                Some(CleanTarget::Rootfs) => commands::clean::CleanTarget::Rootfs,
                 Some(CleanTarget::Downloads) => commands::clean::CleanTarget::Downloads,
                 Some(CleanTarget::Cache) => commands::clean::CleanTarget::Cache,
                 Some(CleanTarget::All) => commands::clean::CleanTarget::All,
             };
-            commands::cmd_clean(&base_dir, clean_target, &resolver)?;
+            commands::cmd_clean(&base_dir, clean_target)?;
         }
 
         Commands::Show { what } => {
             let show_target = match what {
                 ShowTarget::Config => commands::show::ShowTarget::Config,
-                ShowTarget::Squashfs => commands::show::ShowTarget::Squashfs,
+                ShowTarget::Rootfs => commands::show::ShowTarget::Rootfs,
                 ShowTarget::Status => commands::show::ShowTarget::Status,
             };
-            commands::cmd_show(&base_dir, show_target, &config, &resolver)?;
+            commands::cmd_show(&base_dir, show_target, &config)?;
         }
 
         Commands::Download { what } => {
@@ -217,14 +218,14 @@ fn main() -> Result<()> {
                 Some(DownloadTarget::Rocky) => commands::download::DownloadTarget::Rocky,
                 Some(DownloadTarget::Tools) => commands::download::DownloadTarget::Tools,
             };
-            commands::cmd_download(&base_dir, download_target, &resolver)?;
+            commands::cmd_download(&base_dir, download_target)?;
         }
 
         Commands::Extract { what } => {
             let extract_target = match what {
                 ExtractTarget::Rocky => commands::extract::ExtractTarget::Rocky,
-                ExtractTarget::Squashfs { output } => {
-                    commands::extract::ExtractTarget::Squashfs { output }
+                ExtractTarget::Rootfs { output } => {
+                    commands::extract::ExtractTarget::Rootfs { output }
                 }
             };
             commands::cmd_extract(&base_dir, extract_target)?;

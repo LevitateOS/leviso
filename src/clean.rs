@@ -140,11 +140,11 @@ pub fn clean_iso(base_dir: &Path) -> Result<()> {
 }
 
 /// Clean rootfs (EROFS) only.
-pub fn clean_squashfs(base_dir: &Path) -> Result<()> {
+pub fn clean_rootfs(base_dir: &Path) -> Result<()> {
     let rootfs = base_dir.join("output").join(ROOTFS_NAME);
-    let rootfs_staging = base_dir.join("output/squashfs-root");  // Keep dir name for compat
-    let rootfs_extracted = base_dir.join("output/squashfs-extracted");
-    let rootfs_hash = base_dir.join("output/.squashfs-inputs.hash");
+    let rootfs_staging = base_dir.join("output/rootfs-staging");
+    let rootfs_extracted = base_dir.join("output/rootfs-extracted");
+    let rootfs_hash = base_dir.join("output/.rootfs-inputs.hash");
 
     let mut cleaned = false;
 

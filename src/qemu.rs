@@ -28,7 +28,7 @@ const FAILURE_PATTERNS: &[&str] = &[
     "VFS: Cannot open root device",
     "No init found",
     "can't find /init",
-    "SQUASHFS error",
+    "EROFS error",
     "failed to mount",
     "emergency.target",
     "No bootable device",

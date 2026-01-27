@@ -54,7 +54,7 @@ fn create_tmpfiles_configs(ctx: &BuildContext) -> Result<()> {
     let tmpfiles_dir = ctx.staging.join("usr/lib/tmpfiles.d");
 
     // sshd needs /run/sshd for privilege separation
-    // Can't put it in squashfs since /run is tmpfs
+    // Can't put it in the rootfs image since /run is tmpfs
     fs::write(
         tmpfiles_dir.join("sshd.conf"),
         "# /run/sshd is needed by sshd for privilege separation\nd /run/sshd 0755 root root -\n",

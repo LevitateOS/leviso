@@ -6,16 +6,16 @@ use std::path::Path;
 use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, ISO_FILENAME, ROOTFS_NAME};
 
 use crate::config::Config;
+use crate::recipe;
 use distro_builder::process::Cmd;
 use crate::rebuild;
-use leviso_deps::DependencyResolver;
 
 /// Show target for the show command.
 pub enum ShowTarget {
     /// Show configuration
     Config,
-    /// Show squashfs contents
-    Squashfs,
+    /// Show rootfs (EROFS) contents
+    Rootfs,
     /// Show build status
     Status,
 }
@@ -25,18 +25,17 @@ pub fn cmd_show(
     base_dir: &Path,
     target: ShowTarget,
     config: &Config,
-    resolver: &DependencyResolver,
 ) -> Result<()> {
     match target {
         ShowTarget::Config => {
             config.print();
             println!();
-            resolver.print_status();
+            print_dependency_status(base_dir);
         }
-        ShowTarget::Squashfs => {
+        ShowTarget::Rootfs => {
             let rootfs = base_dir.join("output").join(ROOTFS_NAME);
             if !rootfs.exists() {
-                anyhow::bail!("Rootfs not found. Run 'leviso build squashfs' first.");
+                anyhow::bail!("Rootfs not found. Run 'leviso build rootfs' first.");
             }
             // Use fsck.erofs to show EROFS image info
             println!("=== EROFS Rootfs Info ===\n");
@@ -86,7 +85,7 @@ fn show_build_status(base_dir: &Path) -> Result<()> {
     }
 
     // Rootfs (EROFS)
-    let rootfs_rebuild = rebuild::squashfs_needs_rebuild(base_dir);
+    let rootfs_rebuild = rebuild::rootfs_needs_rebuild(base_dir);
     print!("Rootfs (EROFS):    ");
     if !rootfs.exists() {
         println!("MISSING → will build");
@@ -128,4 +127,35 @@ fn show_build_status(base_dir: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Print dependency status (replaces resolver.print_status()).
+fn print_dependency_status(base_dir: &Path) {
+    let monorepo = base_dir.parent().unwrap_or(base_dir);
+
+    println!("Dependency Status:");
+    println!("  Base dir:     {}", base_dir.display());
+    println!("  Monorepo dir: {}", monorepo.display());
+    println!();
+
+    // Linux
+    if recipe::has_linux_source(base_dir) {
+        let submodule = monorepo.join("linux");
+        let downloaded = base_dir.join("downloads/linux");
+        if submodule.join("Makefile").exists() {
+            println!("  Linux: FOUND at {} (submodule)", submodule.display());
+        } else if downloaded.join("Makefile").exists() {
+            println!("  Linux: FOUND at {} (downloaded)", downloaded.display());
+        }
+    } else {
+        println!("  Linux: NOT FOUND (will download via recipe)");
+    }
+
+    // Rocky
+    let iso_path = base_dir.join("downloads/Rocky-10.1-x86_64-dvd1.iso");
+    if iso_path.exists() {
+        println!("  Rocky: FOUND at {}", iso_path.display());
+    } else {
+        println!("  Rocky: NOT FOUND (will download via recipe)");
+    }
 }

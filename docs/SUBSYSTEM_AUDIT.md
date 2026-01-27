@@ -31,7 +31,7 @@
 - `src/deps/download.rs` - 3 calls
 - `src/qemu.rs` - 2 calls
 - `src/initramfs/mod.rs` - 2 calls
-- `src/squashfs/system.rs` - 2 calls
+- `src/artifact/rootfs.rs` - 2 calls
 - Plus 7 more files with 1 call each
 
 ### Inconsistencies
@@ -67,8 +67,8 @@ let chmod_status = Command::new("chmod")
 
 | File | Commands | Status |
 |------|----------|--------|
-| `src/squashfs/pack.rs` | 1 | DONE ✓ |
-| `src/squashfs/mod.rs` | 1 | DONE ✓ |
+| `src/artifact/rootfs.rs` (was squashfs/pack.rs) | 1 | DONE ✓ |
+| `src/artifact/mod.rs` (was squashfs/mod.rs) | 1 | DONE ✓ |
 | `src/iso.rs` | 9 | DONE ✓ |
 | `src/build/kernel.rs` | 5 | DONE ✓ |
 | `src/extract.rs` | 4 | DONE ✓ |
@@ -78,7 +78,7 @@ let chmod_status = Command::new("chmod")
 | `src/deps/download.rs` | 3 | SKIP (async, uses tokio Command) |
 | `src/qemu.rs` | 1 | DONE ✓ |
 | `src/initramfs/mod.rs` | 2 | DONE ✓ |
-| `src/squashfs/system.rs` | 2 | DONE ✓ |
+| `src/artifact/rootfs.rs` (was squashfs/system.rs) | 2 | DONE ✓ |
 | `src/build/modules.rs` | 1 | DONE ✓ |
 | `src/build/libdeps.rs` | 1 | DONE ✓ |
 | `src/deps/tools.rs` | 1 | DONE ✓ |
@@ -253,7 +253,7 @@ struct IsoPaths {
 ### Bad Pattern (main.rs, scattered)
 ```rust
 let vmlinuz = base_dir.join("output/staging/boot/vmlinuz");
-let squashfs_path = base_dir.join("output/filesystem.squashfs");
+let rootfs_path = base_dir.join("output/filesystem.erofs");
 let initramfs_path = base_dir.join("output/initramfs-tiny.cpio.gz");
 let iso_path = base_dir.join("output/levitateos.iso");
 ```
@@ -274,7 +274,7 @@ pub struct OutputPaths {
     pub staging: PathBuf,
     pub vmlinuz: PathBuf,
     pub initramfs: PathBuf,
-    pub squashfs: PathBuf,
+    pub rootfs: PathBuf,
     pub iso: PathBuf,
 }
 

@@ -92,9 +92,9 @@ pub fn validate_kconfig(path: &Path) -> Result<usize, String> {
 
     // Check for critical options that MUST be present for LevitateOS
     let critical_options = [
-        "CONFIG_SQUASHFS",      // Required to mount live filesystem
+        "CONFIG_SQUASHFS",      // Required to mount Rocky Linux's install.img during extraction
         "CONFIG_OVERLAY_FS",    // Required for live overlay
-        "CONFIG_BLK_DEV_LOOP",  // Required to mount squashfs
+        "CONFIG_BLK_DEV_LOOP",  // Required to mount EROFS/squashfs via loop device
     ];
 
     for opt in critical_options {

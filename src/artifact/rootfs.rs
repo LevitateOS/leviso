@@ -57,18 +57,16 @@ use distro_builder::process::{self, Cmd};
 /// never corrupts existing artifacts:
 /// - Build into `.work` files (rootfs-staging.work, filesystem.erofs.work)
 /// - Only swap to final locations after successful completion
-/// - If cancelled mid-build, existing squashfs-root/ and filesystem.erofs are preserved
+/// - If cancelled mid-build, existing rootfs-staging/ and filesystem.erofs are preserved
 pub fn build_rootfs(base_dir: &Path) -> Result<()> {
     println!("=== Building EROFS System Image ===\n");
 
     check_host_tools()?;
 
     // Gentoo-style: separate "work" vs "final" locations
-    // NOTE: We keep "squashfs-root" name for staging directory for backward compatibility
-    // with scripts that might reference it. The final artifact is EROFS.
-    let work_staging = base_dir.join("output/squashfs-root.work");
+    let work_staging = base_dir.join("output/rootfs-staging.work");
     let work_output = base_dir.join("output/filesystem.erofs.work");
-    let final_staging = base_dir.join("output/squashfs-root");
+    let final_staging = base_dir.join("output/rootfs-staging");
     let final_output = base_dir.join("output").join(ROOTFS_NAME);
 
     // 1. Clean WORK directories only (preserve final)
@@ -100,7 +98,7 @@ pub fn build_rootfs(base_dir: &Path) -> Result<()> {
     let _ = fs::remove_dir_all(&final_staging);
     let _ = fs::remove_file(&final_output);
     fs::rename(&work_staging, &final_staging)
-        .context("Failed to move squashfs-root.work to squashfs-root")?;
+        .context("Failed to move rootfs-staging.work to rootfs-staging")?;
     fs::rename(&work_output, &final_output)
         .context("Failed to move filesystem.erofs.work to filesystem.erofs")?;
 
@@ -111,14 +109,6 @@ pub fn build_rootfs(base_dir: &Path) -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Backward-compatible alias for build_rootfs.
-///
-/// This allows existing code that calls `build_squashfs` to continue working.
-/// New code should use `build_rootfs` directly.
-pub fn build_squashfs(base_dir: &Path) -> Result<()> {
-    build_rootfs(base_dir)
 }
 
 /// Check that required host tools are available.

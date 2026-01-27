@@ -60,7 +60,7 @@ pub fn copy_modules(ctx: &BuildContext) -> Result<()> {
 
     if is_custom_kernel {
         // Custom kernel: Copy ENTIRE modules directory (all 249+ modules)
-        // The squashfs needs all modules for complete hardware support
+        // The EROFS rootfs needs all modules for complete hardware support
         copy_modules_recursive(&src_modules, &dst_modules)?;
     } else {
         // Rocky kernel: Copy only modules from config (legacy behavior)

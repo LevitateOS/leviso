@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, ISO_FILENAME, SQUASHFS_NAME};
+use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, ISO_FILENAME, ROOTFS_NAME};
 
 use crate::cache;
 
@@ -58,20 +58,20 @@ pub fn kernel_needs_install(base_dir: &Path) -> bool {
     cache::is_newer(&bzimage, &vmlinuz)
 }
 
-/// Check if squashfs needs to be rebuilt.
+/// Check if rootfs (EROFS) needs to be rebuilt.
 ///
 /// Uses hash of key input files. Falls back to mtime if hash file missing.
-pub fn squashfs_needs_rebuild(base_dir: &Path) -> bool {
-    let squashfs = base_dir.join("output").join(SQUASHFS_NAME);
-    let hash_file = base_dir.join("output/.squashfs-inputs.hash");
+pub fn rootfs_needs_rebuild(base_dir: &Path) -> bool {
+    let rootfs = base_dir.join("output").join(ROOTFS_NAME);
+    let hash_file = base_dir.join("output/.rootfs-inputs.hash");
 
-    if !squashfs.exists() {
+    if !rootfs.exists() {
         return true;
     }
 
-    // Key files that affect squashfs content
+    // Key files that affect rootfs content
     let rootfs_marker = base_dir.join("downloads/rootfs/usr/bin/bash");
-    // Track all component source files that affect squashfs content
+    // Track all component source files that affect rootfs content
     let definitions = base_dir.join("src/component/definitions.rs");
     let component_mod = base_dir.join("src/component/mod.rs");
     let custom_etc = base_dir.join("src/component/custom/etc.rs");
@@ -93,7 +93,7 @@ pub fn squashfs_needs_rebuild(base_dir: &Path) -> bool {
         None => return true,
     };
 
-    cache::needs_rebuild(&current_hash, &hash_file, &squashfs)
+    cache::needs_rebuild(&current_hash, &hash_file, &rootfs)
 }
 
 /// Check if initramfs needs to be rebuilt.
@@ -119,7 +119,7 @@ pub fn initramfs_needs_rebuild(base_dir: &Path) -> bool {
 /// Check if ISO needs to be rebuilt.
 pub fn iso_needs_rebuild(base_dir: &Path) -> bool {
     let iso = base_dir.join("output").join(ISO_FILENAME);
-    let squashfs = base_dir.join("output").join(SQUASHFS_NAME);
+    let rootfs = base_dir.join("output").join(ROOTFS_NAME);
     let initramfs = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
     let vmlinuz = base_dir.join("output/staging/boot/vmlinuz");
 
@@ -129,10 +129,10 @@ pub fn iso_needs_rebuild(base_dir: &Path) -> bool {
 
     // ISO needs rebuild if any component is missing (will be built first)
     // or if any component is newer than the ISO
-    !squashfs.exists()
+    !rootfs.exists()
         || !initramfs.exists()
         || !vmlinuz.exists()
-        || cache::is_newer(&squashfs, &iso)
+        || cache::is_newer(&rootfs, &iso)
         || cache::is_newer(&initramfs, &iso)
         || cache::is_newer(&vmlinuz, &iso)
 }
@@ -151,8 +151,8 @@ pub fn cache_kernel_hash(base_dir: &Path) {
     }
 }
 
-/// Cache the squashfs input hash after a successful build.
-pub fn cache_squashfs_hash(base_dir: &Path) {
+/// Cache the rootfs input hash after a successful build.
+pub fn cache_rootfs_hash(base_dir: &Path) {
     let rootfs_marker = base_dir.join("downloads/rootfs/usr/bin/bash");
     let definitions = base_dir.join("src/component/definitions.rs");
     let component_mod = base_dir.join("src/component/mod.rs");
@@ -171,7 +171,7 @@ pub fn cache_squashfs_hash(base_dir: &Path) {
         &custom_packages,
     ];
     if let Some(hash) = cache::hash_files(&inputs) {
-        let _ = cache::write_cached_hash(&base_dir.join("output/.squashfs-inputs.hash"), &hash);
+        let _ = cache::write_cached_hash(&base_dir.join("output/.rootfs-inputs.hash"), &hash);
     }
 }
 

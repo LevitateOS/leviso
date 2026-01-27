@@ -1,7 +1,7 @@
 //! Initramfs builders for LevitateOS.
 //!
 //! Two initramfs types are built:
-//! - **Live initramfs** (`build_tiny_initramfs`): ~5MB, busybox-based, mounts ISO squashfs
+//! - **Live initramfs** (`build_tiny_initramfs`): ~5MB, busybox-based, mounts ISO EROFS
 //! - **Install initramfs** (`build_install_initramfs`): ~30-50MB, systemd-based, boots from disk
 //!
 //! Both use recinit for the actual build - this module provides leviso-specific wrappers
@@ -12,7 +12,7 @@
 //! ```text
 //! 1. GRUB loads kernel + live initramfs
 //! 2. Kernel extracts initramfs to rootfs, runs /init (busybox script)
-//! 3. /init mounts ISO, squashfs, creates overlay
+//! 3. /init mounts ISO, EROFS rootfs, creates overlay
 //! 4. switch_root to overlay, systemd takes over
 //! ```
 //!
@@ -45,7 +45,7 @@ fn busybox_url() -> String {
 ///
 /// This creates a small (~5MB) busybox-based initramfs that:
 /// 1. Loads kernel modules for CDROM/storage access
-/// 2. Finds and mounts the squashfs/erofs root filesystem
+/// 2. Finds and mounts the EROFS root filesystem
 /// 3. Creates an overlay for writable storage
 /// 4. switch_root to the live system
 pub fn build_tiny_initramfs(base_dir: &Path) -> Result<()> {
@@ -100,7 +100,7 @@ pub fn build_install_initramfs(base_dir: &Path) -> Result<()> {
     let downloads_rootfs = base_dir.join("downloads/rootfs");
 
     // Use downloads/rootfs for install initramfs - it has the full systemd units
-    // including initrd.target which squashfs-root lacks (stripped for live use)
+    // including initrd.target which rootfs-staging lacks (stripped for live use)
     if !downloads_rootfs.exists() {
         bail!(
             "downloads/rootfs not found at {}.\n\
@@ -121,13 +121,15 @@ pub fn build_install_initramfs(base_dir: &Path) -> Result<()> {
     };
 
     // Build using recinit
+    // Note: Firmware is NOT included - it's available on root filesystem once mounted.
+    // For initramfs we only need drivers to detect/mount root, not full firmware.
     let config = InstallConfig {
         rootfs: downloads_rootfs,
         modules_path,
         output: output_dir.join(INITRAMFS_INSTALLED_OUTPUT),
         module_preset: ModulePreset::Install,
         gzip_level: CPIO_GZIP_LEVEL,
-        include_firmware: true,
+        include_firmware: false,
     };
 
     recinit::build_install_initramfs(&config, true)

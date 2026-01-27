@@ -63,24 +63,24 @@ impl IsoPaths {
     }
 }
 
-/// Create ISO using squashfs-based architecture.
+/// Create ISO using EROFS-based architecture.
 ///
 /// This creates an ISO with:
-/// - Tiny initramfs (~5MB) - mounts squashfs + overlay
-/// - Squashfs image (~350MB) - complete base system
+/// - Tiny initramfs (~5MB) - mounts EROFS + overlay
+/// - EROFS image (~350MB) - complete base system
 /// - Live overlay - live-specific configs (autologin, serial console, empty root password)
 ///
 /// Boot flow:
 /// 1. kernel -> tiny initramfs
-/// 2. init_tiny mounts squashfs as lower layer
+/// 2. init_tiny mounts EROFS as lower layer
 /// 3. init_tiny mounts /live/overlay from ISO as middle layer
 /// 4. init_tiny mounts tmpfs as upper layer (for writes)
 /// 5. switch_root -> systemd
 ///
 /// This architecture ensures:
 /// - Live ISO has autologin and empty root password (via overlay)
-/// - Installed systems (via recstrap) have proper security (squashfs only)
-pub fn create_squashfs_iso(base_dir: &Path) -> Result<()> {
+/// - Installed systems (via recstrap) have proper security (EROFS only)
+pub fn create_iso(base_dir: &Path) -> Result<()> {
     let paths = IsoPaths::new(base_dir);
 
     println!("=== Building LevitateOS ISO (Atomic) ===\n");
@@ -132,10 +132,10 @@ pub fn create_squashfs_iso(base_dir: &Path) -> Result<()> {
 /// Helper to run hardware compat verification.
 fn verify_hardware_compat(base_dir: &Path) -> Result<bool> {
     let output_dir = base_dir.join("output");
-    // Firmware is installed to squashfs-root during squashfs build, not staging
+    // Firmware is installed to rootfs-staging during rootfs build, not staging
     let checker = hardware_compat::HardwareCompatChecker::new(
         output_dir.join("kernel-build/.config"),
-        output_dir.join("squashfs-root/usr/lib/firmware"),
+        output_dir.join("rootfs-staging/usr/lib/firmware"),
     );
 
     let all_profiles = hardware_compat::profiles::get_all_profiles();
@@ -230,7 +230,7 @@ fn setup_iso_dirs(paths: &IsoPaths) -> Result<()> {
     setup_iso_structure(&paths.iso_root)
 }
 
-/// Stage 4: Copy kernel, initramfs, squashfs, and live overlay to ISO.
+/// Stage 4: Copy kernel, initramfs, EROFS rootfs, and live overlay to ISO.
 fn copy_iso_artifacts(paths: &IsoPaths, kernel_path: &Path) -> Result<()> {
     // Copy kernel and live initramfs (tiny - for live boot)
     fs::copy(kernel_path, paths.iso_root.join(KERNEL_ISO_PATH))?;
@@ -254,7 +254,7 @@ fn copy_iso_artifacts(paths: &IsoPaths, kernel_path: &Path) -> Result<()> {
 
     // Copy live overlay to /live/overlay/
     // This contains live-specific configs (autologin, serial console, empty root password)
-    // that are layered on top of squashfs during live boot only
+    // that are layered on top of EROFS during live boot only
     let live_overlay_src = paths.output_dir.join("live-overlay");
     let live_overlay_dst = paths.iso_root.join(LIVE_OVERLAY_ISO_PATH);
     if live_overlay_src.exists() {

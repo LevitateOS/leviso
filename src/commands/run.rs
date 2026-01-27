@@ -3,6 +3,8 @@
 use anyhow::Result;
 use std::path::Path;
 
+use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, ROOTFS_NAME};
+
 use crate::artifact;
 use crate::qemu;
 
@@ -12,16 +14,16 @@ pub fn cmd_run(base_dir: &Path, no_disk: bool, disk_size: String) -> Result<()> 
     let iso_path = base_dir.join("output/levitateos.iso");
     if !iso_path.exists() {
         println!("ISO not found, building...\n");
-        let squashfs_path = base_dir.join("output/filesystem.squashfs");
-        let initramfs_path = base_dir.join("output/initramfs-tiny.cpio.gz");
+        let rootfs_path = base_dir.join("output").join(ROOTFS_NAME);
+        let initramfs_path = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
 
-        if !squashfs_path.exists() {
-            artifact::build_squashfs(base_dir)?;
+        if !rootfs_path.exists() {
+            artifact::build_rootfs(base_dir)?;
         }
         if !initramfs_path.exists() {
             artifact::build_tiny_initramfs(base_dir)?;
         }
-        artifact::create_squashfs_iso(base_dir)?;
+        artifact::create_iso(base_dir)?;
     }
 
     let disk = if no_disk { None } else { Some(disk_size) };
@@ -36,16 +38,16 @@ pub fn cmd_test(base_dir: &Path, timeout: u64) -> Result<()> {
     let iso_path = base_dir.join("output/levitateos.iso");
     if !iso_path.exists() {
         println!("ISO not found, building...\n");
-        let squashfs_path = base_dir.join("output/filesystem.squashfs");
-        let initramfs_path = base_dir.join("output/initramfs-tiny.cpio.gz");
+        let rootfs_path = base_dir.join("output").join(ROOTFS_NAME);
+        let initramfs_path = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
 
-        if !squashfs_path.exists() {
-            artifact::build_squashfs(base_dir)?;
+        if !rootfs_path.exists() {
+            artifact::build_rootfs(base_dir)?;
         }
         if !initramfs_path.exists() {
             artifact::build_tiny_initramfs(base_dir)?;
         }
-        artifact::create_squashfs_iso(base_dir)?;
+        artifact::create_iso(base_dir)?;
     }
 
     qemu::test_iso(base_dir, timeout)?;

@@ -4,7 +4,7 @@ use anyhow::Result;
 use std::path::Path;
 
 use crate::clean;
-use leviso_deps::DependencyResolver;
+use crate::recipe;
 
 /// Clean target for the clean command.
 pub enum CleanTarget {
@@ -14,8 +14,8 @@ pub enum CleanTarget {
     Kernel,
     /// Clean ISO and initramfs
     Iso,
-    /// Clean squashfs
-    Squashfs,
+    /// Clean rootfs (EROFS)
+    Rootfs,
     /// Clean downloads
     Downloads,
     /// Clean tool cache
@@ -25,7 +25,7 @@ pub enum CleanTarget {
 }
 
 /// Execute the clean command.
-pub fn cmd_clean(base_dir: &Path, target: CleanTarget, resolver: &DependencyResolver) -> Result<()> {
+pub fn cmd_clean(base_dir: &Path, target: CleanTarget) -> Result<()> {
     match target {
         CleanTarget::Outputs => {
             clean::clean_outputs(base_dir)?;
@@ -36,20 +36,20 @@ pub fn cmd_clean(base_dir: &Path, target: CleanTarget, resolver: &DependencyReso
         CleanTarget::Iso => {
             clean::clean_iso(base_dir)?;
         }
-        CleanTarget::Squashfs => {
-            clean::clean_squashfs(base_dir)?;
+        CleanTarget::Rootfs => {
+            clean::clean_rootfs(base_dir)?;
         }
         CleanTarget::Downloads => {
             clean::clean_downloads(base_dir)?;
         }
         CleanTarget::Cache => {
             println!("Clearing tool cache (~/.cache/levitate/)...");
-            resolver.clear_cache()?;
+            recipe::clear_cache()?;
             println!("Cache cleared.");
         }
         CleanTarget::All => {
             clean::clean_all(base_dir)?;
-            resolver.clear_cache()?;
+            recipe::clear_cache()?;
         }
     }
     Ok(())

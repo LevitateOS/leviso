@@ -3,6 +3,8 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
+use distro_spec::levitate::ROOTFS_NAME;
+
 use crate::extract;
 use distro_builder::process::Cmd;
 
@@ -10,8 +12,8 @@ use distro_builder::process::Cmd;
 pub enum ExtractTarget {
     /// Extract Rocky ISO
     Rocky,
-    /// Extract squashfs
-    Squashfs { output: Option<PathBuf> },
+    /// Extract rootfs (EROFS)
+    Rootfs { output: Option<PathBuf> },
 }
 
 /// Execute the extract command.
@@ -22,19 +24,19 @@ pub fn cmd_extract(base_dir: &Path, target: ExtractTarget) -> Result<()> {
             let rocky = crate::recipe::rocky(base_dir)?;
             extract::extract_rocky_iso(base_dir, &rocky.iso)?;
         }
-        ExtractTarget::Squashfs { output } => {
-            let squashfs = base_dir.join("output/filesystem.squashfs");
-            if !squashfs.exists() {
-                anyhow::bail!("Squashfs not found. Run 'leviso build squashfs' first.");
+        ExtractTarget::Rootfs { output } => {
+            let rootfs = base_dir.join("output").join(ROOTFS_NAME);
+            if !rootfs.exists() {
+                anyhow::bail!("Rootfs not found. Run 'leviso build rootfs' first.");
             }
-            let output_dir = output.unwrap_or_else(|| base_dir.join("output/squashfs-extracted"));
-            println!("Extracting squashfs to {}...", output_dir.display());
-            Cmd::new("unsquashfs")
-                .args(["-d"])
-                .arg_path(&output_dir)
-                .arg("-f")
-                .arg_path(&squashfs)
-                .error_msg("unsquashfs failed. Install: sudo dnf install squashfs-tools")
+            let output_dir = output.unwrap_or_else(|| base_dir.join("output/rootfs-extracted"));
+            println!("Extracting EROFS rootfs to {}...", output_dir.display());
+            // EROFS extraction requires mounting or using fsck.erofs --extract
+            // For inspection, dump the image info instead
+            Cmd::new("fsck.erofs")
+                .args(["--extract", &output_dir.to_string_lossy()])
+                .arg_path(&rootfs)
+                .error_msg("fsck.erofs failed. Install: sudo dnf install erofs-utils")
                 .run_interactive()?;
             println!("Extracted to: {}", output_dir.display());
         }

@@ -12,5 +12,5 @@ pub mod rootfs;
 pub mod uki;
 
 pub use initramfs::{build_tiny_initramfs, build_install_initramfs};
-pub use iso::create_squashfs_iso;
-pub use rootfs::build_squashfs;
+pub use iso::create_iso;
+pub use rootfs::build_rootfs;

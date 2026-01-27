@@ -97,20 +97,33 @@ pub fn build_tiny_initramfs(base_dir: &Path) -> Result<()> {
 /// The initramfs is generic (all drivers) so it works on any hardware.
 pub fn build_install_initramfs(base_dir: &Path) -> Result<()> {
     let output_dir = base_dir.join("output");
-    let squashfs_root = output_dir.join("squashfs-root");
+    let downloads_rootfs = base_dir.join("downloads/rootfs");
 
-    // Verify squashfs-root exists (we need modules and systemd from it)
-    if !squashfs_root.exists() {
+    // Use downloads/rootfs for install initramfs - it has the full systemd units
+    // including initrd.target which squashfs-root lacks (stripped for live use)
+    if !downloads_rootfs.exists() {
         bail!(
-            "squashfs-root not found at {}.\n\
-             Run 'leviso build squashfs' first.",
-            squashfs_root.display()
+            "downloads/rootfs not found at {}.\n\
+             Run 'leviso build' to extract the Rocky Linux rootfs first.",
+            downloads_rootfs.display()
         );
     }
 
+    // Check for custom kernel modules - use those if available
+    // Custom kernel modules are in output/staging, Rocky modules are in downloads/rootfs
+    let custom_modules_path = output_dir.join("staging");
+    let modules_path = if custom_modules_path.join("usr/lib/modules").exists() {
+        println!("  Using CUSTOM kernel modules for install initramfs");
+        Some(custom_modules_path)
+    } else {
+        println!("  Using ROCKY kernel modules for install initramfs");
+        None
+    };
+
     // Build using recinit
     let config = InstallConfig {
-        rootfs: squashfs_root,
+        rootfs: downloads_rootfs,
+        modules_path,
         output: output_dir.join(INITRAMFS_INSTALLED_OUTPUT),
         module_preset: ModulePreset::Install,
         gzip_level: CPIO_GZIP_LEVEL,

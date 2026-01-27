@@ -35,16 +35,19 @@
 //! ```
 //!
 //! DESIGN: Live = Installed (same content, zero duplication)
+//!
+//! # Implementation
+//!
+//! The actual EROFS building is done by `distro_builder::artifact::rootfs`.
+//! This module provides the LevitateOS-specific orchestration (staging, atomicity).
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 
-use distro_spec::levitate::{
-    EROFS_CHUNK_SIZE, EROFS_COMPRESSION, EROFS_COMPRESSION_LEVEL, ROOTFS_NAME,
-};
+use distro_spec::levitate::ROOTFS_NAME;
 use crate::build::BuildContext;
-use distro_builder::process::{self, Cmd};
+use distro_builder::build_erofs_default;
 
 /// Build the complete rootfs (EROFS) system image.
 ///
@@ -113,6 +116,8 @@ pub fn build_rootfs(base_dir: &Path) -> Result<()> {
 
 /// Check that required host tools are available.
 fn check_host_tools() -> Result<()> {
+    use distro_builder::process;
+
     let tools = [
         ("mkfs.erofs", "erofs-utils"),
         ("readelf", "binutils"),
@@ -120,7 +125,7 @@ fn check_host_tools() -> Result<()> {
 
     for (tool, package) in tools {
         if !process::exists(tool) {
-            bail!(
+            anyhow::bail!(
                 "{} not found. Install {} package.\n\
                  On Fedora: sudo dnf install {}\n\
                  On Ubuntu: sudo apt install {}\n\
@@ -139,45 +144,12 @@ fn check_host_tools() -> Result<()> {
 
 /// Create an EROFS image from the staging directory (internal, non-destructive).
 ///
-/// Uses zstd compression at level 6 (Fedora's choice - good balance).
-/// Requires kernel CONFIG_EROFS_FS_ZIP_ZSTD=y (Linux 6.10+).
+/// Uses the shared implementation from `distro_builder::artifact::rootfs`.
+/// This ensures both LevitateOS and AcornOS use the same EROFS building code.
 ///
 /// NOTE: This does NOT delete the output file first - mkfs.erofs creates a fresh file.
 /// Caller is responsible for cleanup.
 fn create_erofs_internal(staging: &Path, output: &Path) -> Result<()> {
-    println!(
-        "Creating EROFS with {} compression (level {})...",
-        EROFS_COMPRESSION, EROFS_COMPRESSION_LEVEL
-    );
-
-    // Ensure output directory exists
-    if let Some(parent) = output.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    // Format compression argument: algorithm,level
-    let compression_arg = format!("{},{}", EROFS_COMPRESSION, EROFS_COMPRESSION_LEVEL);
-
-    // IMPORTANT: mkfs.erofs argument order is OUTPUT SOURCE (opposite of mksquashfs!)
-    Cmd::new("mkfs.erofs")
-        .args(["-z", &compression_arg])  // zstd,6
-        .args(["-C", &EROFS_CHUNK_SIZE.to_string()])  // 1MB chunks
-        .arg("--all-root")  // All files owned by root (required for sshd, etc.)
-        .arg("-T0")  // Reproducible builds (timestamp=0)
-        .arg_path(output)   // OUTPUT FIRST (different from mksquashfs!)
-        .arg_path(staging)  // SOURCE SECOND
-        .error_msg(
-            "mkfs.erofs failed. Install erofs-utils: sudo dnf install erofs-utils\n\
-             NOTE: erofs-utils 1.8+ is required for zstd compression."
-        )
-        .run_interactive()?;
-
-    // Print size
-    let metadata = fs::metadata(output)?;
-    println!(
-        "EROFS created: {} MB",
-        metadata.len() / 1024 / 1024
-    );
-
-    Ok(())
+    // Use the shared distro-builder implementation
+    build_erofs_default(staging, output)
 }

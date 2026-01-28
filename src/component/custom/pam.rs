@@ -1,29 +1,26 @@
 //! PAM and security configuration.
+//!
+//! This module creates PAM and security configuration files using constants from distro-spec.
+//! This ensures leviso uses the same PAM configs as the rest of the system.
+//!
+//! All PAM configuration content comes from distro_spec::shared::auth::pam (SINGLE SOURCE OF TRUTH).
+//! This prevents drift between what distro-spec declares and what leviso actually builds.
 
 use anyhow::Result;
 use std::fs;
 
 use crate::build::context::BuildContext;
 
-// PAM configs from profile/etc/pam.d/
-const PAM_SYSTEM_AUTH: &str = include_str!("../../../profile/etc/pam.d/system-auth");
-const PAM_LOGIN: &str = include_str!("../../../profile/etc/pam.d/login");
-const PAM_POSTLOGIN: &str = include_str!("../../../profile/etc/pam.d/postlogin");
-const PAM_SSHD: &str = include_str!("../../../profile/etc/pam.d/sshd");
-const PAM_RUNUSER: &str = include_str!("../../../profile/etc/pam.d/runuser");
-const PAM_RUNUSER_L: &str = include_str!("../../../profile/etc/pam.d/runuser-l");
-const PAM_CROND: &str = include_str!("../../../profile/etc/pam.d/crond");
-const PAM_REMOTE: &str = include_str!("../../../profile/etc/pam.d/remote");
-const PAM_SU: &str = include_str!("../../../profile/etc/pam.d/su");
-const PAM_SU_L: &str = include_str!("../../../profile/etc/pam.d/su-l");
-const PAM_SUDO: &str = include_str!("../../../profile/etc/pam.d/sudo");
-const PAM_SYSTEMD_USER: &str = include_str!("../../../profile/etc/pam.d/systemd-user");
-const PAM_PASSWD: &str = include_str!("../../../profile/etc/pam.d/passwd");
-const PAM_CHPASSWD: &str = include_str!("../../../profile/etc/pam.d/chpasswd");
-const PAM_CHFN: &str = include_str!("../../../profile/etc/pam.d/chfn");
-const PAM_CHSH: &str = include_str!("../../../profile/etc/pam.d/chsh");
-const PAM_OTHER: &str = include_str!("../../../profile/etc/pam.d/other");
-const LIMITS_CONF: &str = include_str!("../../../profile/etc/security/limits.conf");
+// Import PAM and security configuration contents from distro-spec (SINGLE SOURCE OF TRUTH)
+// This ensures leviso builds exactly what distro-spec expects
+use distro_spec::shared::auth::{
+    PAM_SYSTEM_AUTH, PAM_LOGIN, PAM_POSTLOGIN, PAM_SSHD,
+    PAM_RUNUSER, PAM_RUNUSER_L, PAM_CROND, PAM_REMOTE,
+    PAM_SU, PAM_SU_L, PAM_SUDO, PAM_SYSTEMD_USER,
+    PAM_PASSWD, PAM_CHPASSWD, PAM_CHFN, PAM_CHSH, PAM_OTHER,
+    // Security configuration files
+    LIMITS_CONF, ACCESS_CONF, NAMESPACE_CONF, PAM_ENV_CONF, PWQUALITY_CONF,
+};
 
 /// Create PAM configuration files.
 pub fn create_pam_files(ctx: &BuildContext) -> Result<()> {
@@ -67,20 +64,22 @@ pub fn create_pam_files(ctx: &BuildContext) -> Result<()> {
 }
 
 /// Create security configuration files.
+///
+/// Uses configuration constants from distro-spec::shared::auth::pam to ensure
+/// consistency with the rest of the system. This prevents drift between what
+/// distro-spec declares and what leviso builds.
 pub fn create_security_config(ctx: &BuildContext) -> Result<()> {
     println!("Creating security configuration...");
 
     let security_dir = ctx.staging.join("etc/security");
     fs::create_dir_all(&security_dir)?;
 
+    // Write all security configuration files using constants from distro-spec
     fs::write(security_dir.join("limits.conf"), LIMITS_CONF)?;
-    fs::write(security_dir.join("access.conf"), "+:root:LOCAL\n+:ALL:ALL\n")?;
-    fs::write(security_dir.join("namespace.conf"), "# Polyinstantiation config\n")?;
-    fs::write(security_dir.join("pam_env.conf"), "# Environment variables\n")?;
-    fs::write(
-        security_dir.join("pwquality.conf"),
-        "minlen = 12\nminclass = 3\ndcredit = -1\nucredit = -1\nmaxrepeat = 3\n",
-    )?;
+    fs::write(security_dir.join("access.conf"), ACCESS_CONF)?;
+    fs::write(security_dir.join("namespace.conf"), NAMESPACE_CONF)?;
+    fs::write(security_dir.join("pam_env.conf"), PAM_ENV_CONF)?;
+    fs::write(security_dir.join("pwquality.conf"), PWQUALITY_CONF)?;
 
     println!("  Created security configuration");
     Ok(())

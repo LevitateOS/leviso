@@ -1,234 +1,233 @@
 //! Rebuild detection logic.
 //!
 //! Uses hash-based caching to skip rebuilding artifacts that haven't changed.
-//! This provides faster incremental builds by detecting when inputs change.
+//! Each artifact defines its input files once, eliminating duplication between
+//! needs_rebuild and cache_hash functions.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use distro_spec::levitate::{INITRAMFS_INSTALLED_OUTPUT, INITRAMFS_LIVE_OUTPUT, ISO_FILENAME, ROOTFS_NAME};
+use distro_spec::levitate::{
+    INITRAMFS_INSTALLED_OUTPUT, INITRAMFS_LIVE_OUTPUT, ISO_FILENAME, ROOTFS_NAME,
+};
+use distro_spec::shared::QCOW2_IMAGE_FILENAME;
 
 use crate::cache;
 
-/// Check if kernel needs to be compiled (bzImage).
-///
-/// Uses hash-based detection for kconfig and kernel source version changes.
-/// Falls back to mtime comparison if hash file is missing.
-pub fn kernel_needs_compile(base_dir: &Path) -> bool {
-    let bzimage = base_dir.join("output/kernel-build/arch/x86/boot/bzImage");
-    let kconfig = base_dir.join("kconfig");
-    // Also track kernel source version via Makefile (contains VERSION, PATCHLEVEL, SUBLEVEL)
-    let kernel_makefile = base_dir.join("../linux/Makefile");
-    let hash_file = base_dir.join("output/.kernel-inputs.hash");
-
-    if !bzimage.exists() {
-        return true;
-    }
-
-    // Hash both kconfig and kernel Makefile (for version detection)
-    let inputs: Vec<&Path> = if kernel_makefile.exists() {
-        vec![&kconfig, &kernel_makefile]
-    } else {
-        vec![&kconfig]
-    };
-
-    let current_hash = match cache::hash_files(&inputs) {
-        Some(h) => h,
-        None => return true,
-    };
-
-    cache::needs_rebuild(&current_hash, &hash_file, &bzimage)
+/// An artifact that can be incrementally rebuilt.
+pub struct Artifact {
+    /// Path to the output file
+    pub output: PathBuf,
+    /// Path to the hash cache file
+    pub hash_file: PathBuf,
+    /// Input files that affect this artifact
+    pub inputs: Vec<PathBuf>,
 }
 
-/// Check if kernel needs to be installed (vmlinuz + modules).
-///
-/// Returns true if bzImage exists but vmlinuz doesn't, or if bzImage is newer.
+impl Artifact {
+    /// Check if this artifact needs to be rebuilt.
+    pub fn needs_rebuild(&self) -> bool {
+        if !self.output.exists() {
+            return true;
+        }
+
+        let input_refs: Vec<&Path> = self.inputs.iter().map(|p| p.as_path()).collect();
+        let current_hash = match cache::hash_files(&input_refs) {
+            Some(h) => h,
+            None => return true,
+        };
+
+        cache::needs_rebuild(&current_hash, &self.hash_file, &self.output)
+    }
+
+    /// Cache the input hash after a successful build.
+    pub fn cache_hash(&self) {
+        let input_refs: Vec<&Path> = self.inputs.iter().map(|p| p.as_path()).collect();
+        if let Some(hash) = cache::hash_files(&input_refs) {
+            let _ = cache::write_cached_hash(&self.hash_file, &hash);
+        }
+    }
+}
+
+// ============================================================================
+// Artifact definitions
+// ============================================================================
+
+/// Kernel compilation artifact (bzImage).
+pub fn kernel_artifact(base_dir: &Path) -> Artifact {
+    let kernel_makefile = base_dir.join("../linux/Makefile");
+    let mut inputs = vec![base_dir.join("kconfig")];
+    if kernel_makefile.exists() {
+        inputs.push(kernel_makefile);
+    }
+
+    Artifact {
+        output: base_dir.join("output/kernel-build/arch/x86/boot/bzImage"),
+        hash_file: base_dir.join("output/.kernel-inputs.hash"),
+        inputs,
+    }
+}
+
+/// Rootfs (EROFS) artifact.
+pub fn rootfs_artifact(base_dir: &Path) -> Artifact {
+    let distro_spec_base = base_dir.join("../distro-spec/src/shared");
+
+    Artifact {
+        output: base_dir.join("output").join(ROOTFS_NAME),
+        hash_file: base_dir.join("output/.rootfs-inputs.hash"),
+        inputs: vec![
+            // Rocky rootfs marker
+            base_dir.join("downloads/rootfs/usr/bin/bash"),
+            // Component source files
+            base_dir.join("src/component/definitions.rs"),
+            base_dir.join("src/component/mod.rs"),
+            base_dir.join("src/component/custom/etc.rs"),
+            base_dir.join("src/component/custom/pam.rs"),
+            base_dir.join("src/component/custom/live.rs"),
+            base_dir.join("src/component/custom/packages.rs"),
+            base_dir.join("src/component/custom/filesystem.rs"),
+            base_dir.join("src/component/custom/firmware.rs"),
+            base_dir.join("src/component/custom/modules.rs"),
+            // Build logic
+            base_dir.join("src/build/licenses.rs"),
+            base_dir.join("src/build/libdeps.rs"),
+            // distro-spec definitions
+            distro_spec_base.join("licenses.rs"),
+            distro_spec_base.join("components.rs"),
+            distro_spec_base.join("services.rs"),
+            // Profile files - auth
+            base_dir.join("profile/etc/shadow"),
+            base_dir.join("profile/etc/passwd"),
+            base_dir.join("profile/etc/group"),
+            base_dir.join("profile/etc/gshadow"),
+            base_dir.join("profile/etc/sudoers"),
+            base_dir.join("profile/etc/motd"),
+            // PAM files
+            base_dir.join("profile/etc/pam.d/system-auth"),
+            base_dir.join("profile/etc/pam.d/login"),
+            base_dir.join("profile/etc/pam.d/sshd"),
+            base_dir.join("profile/etc/pam.d/sudo"),
+            base_dir.join("profile/etc/pam.d/su"),
+            base_dir.join("profile/etc/pam.d/passwd"),
+            base_dir.join("profile/etc/pam.d/chpasswd"),
+            base_dir.join("profile/etc/security/limits.conf"),
+            // Recipe config
+            base_dir.join("profile/etc/recipe.conf"),
+            base_dir.join("profile/etc/profile.d/recipe.sh"),
+        ],
+    }
+}
+
+/// Live initramfs artifact (tiny busybox-based).
+pub fn initramfs_artifact(base_dir: &Path) -> Artifact {
+    Artifact {
+        output: base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT),
+        hash_file: base_dir.join("output/.initramfs-inputs.hash"),
+        inputs: vec![
+            base_dir.join("profile/init_tiny.template"),
+            base_dir.join("downloads/busybox-static"),
+        ],
+    }
+}
+
+/// Install initramfs artifact (systemd-based, copied to installed systems).
+pub fn install_initramfs_artifact(base_dir: &Path) -> Artifact {
+    let recinit_base = base_dir.join("../tools/recinit/src");
+    let distro_spec_base = base_dir.join("../distro-spec/src/shared");
+
+    Artifact {
+        output: base_dir.join("output").join(INITRAMFS_INSTALLED_OUTPUT),
+        hash_file: base_dir.join("output/.install-initramfs-inputs.hash"),
+        inputs: vec![
+            // recinit source files
+            recinit_base.join("systemd.rs"),
+            recinit_base.join("install.rs"),
+            recinit_base.join("lib.rs"),
+            recinit_base.join("elf.rs"),
+            recinit_base.join("cpio.rs"),
+            recinit_base.join("modules.rs"),
+            // distro-spec components (ESSENTIAL_UNITS, BIN_UTILS, etc.)
+            distro_spec_base.join("components.rs"),
+            distro_spec_base.join("udev.rs"),
+            // rootfs marker (source of binaries)
+            base_dir.join("downloads/rootfs/usr/bin/bash"),
+        ],
+    }
+}
+
+/// qcow2 VM disk image artifact.
+#[allow(dead_code)]
+pub fn qcow2_artifact(base_dir: &Path) -> Artifact {
+    Artifact {
+        output: base_dir.join("output").join(QCOW2_IMAGE_FILENAME),
+        hash_file: base_dir.join("output/.qcow2-inputs.hash"),
+        inputs: vec![
+            // Primary input: rootfs-staging directory marker
+            base_dir.join("output/rootfs-staging/usr/bin/bash"),
+            // Install initramfs (required for boot - changes trigger rebuild)
+            base_dir.join("output").join(INITRAMFS_INSTALLED_OUTPUT),
+            // qcow2-specific config
+            base_dir.join("src/artifact/qcow2.rs"),
+        ],
+    }
+}
+
+// ============================================================================
+// Public API (backwards compatible)
+// ============================================================================
+
+pub fn kernel_needs_compile(base_dir: &Path) -> bool {
+    kernel_artifact(base_dir).needs_rebuild()
+}
+
 pub fn kernel_needs_install(base_dir: &Path) -> bool {
     let bzimage = base_dir.join("output/kernel-build/arch/x86/boot/bzImage");
     let vmlinuz = base_dir.join("output/staging/boot/vmlinuz");
 
     if !bzimage.exists() {
-        return false; // Can't install what doesn't exist
+        return false;
     }
-
     if !vmlinuz.exists() {
         return true;
     }
-
-    // Reinstall if bzImage is newer than vmlinuz
     cache::is_newer(&bzimage, &vmlinuz)
 }
 
-/// Check if rootfs (EROFS) needs to be rebuilt.
-///
-/// Uses hash of key input files. Falls back to mtime if hash file missing.
 pub fn rootfs_needs_rebuild(base_dir: &Path) -> bool {
-    let rootfs = base_dir.join("output").join(ROOTFS_NAME);
-    let hash_file = base_dir.join("output/.rootfs-inputs.hash");
-
-    if !rootfs.exists() {
-        return true;
-    }
-
-    // Key files that affect rootfs content
-    let rootfs_marker = base_dir.join("downloads/rootfs/usr/bin/bash");
-
-    // Track all component source files that affect rootfs content
-    let definitions = base_dir.join("src/component/definitions.rs");
-    let component_mod = base_dir.join("src/component/mod.rs");
-    let custom_etc = base_dir.join("src/component/custom/etc.rs");
-    let custom_pam = base_dir.join("src/component/custom/pam.rs");
-    let custom_live = base_dir.join("src/component/custom/live.rs");
-    let custom_packages = base_dir.join("src/component/custom/packages.rs");
-
-    // Track profile files that are included at compile time via include_str!()
-    // These affect the rootfs content but were previously missing from cache invalidation
-    // (documented in TEAM_137_reproducibility-violations-fix.md)
-    //
-    // Critical auth files (from etc.rs)
-    let profile_shadow = base_dir.join("profile/etc/shadow");
-    let profile_passwd = base_dir.join("profile/etc/passwd");
-    let profile_group = base_dir.join("profile/etc/group");
-    let profile_gshadow = base_dir.join("profile/etc/gshadow");
-    let profile_sudoers = base_dir.join("profile/etc/sudoers");
-    let profile_motd = base_dir.join("profile/etc/motd");
-
-    // PAM authentication files (from pam.rs) - CRITICAL for login to work
-    let pam_system_auth = base_dir.join("profile/etc/pam.d/system-auth");
-    let pam_login = base_dir.join("profile/etc/pam.d/login");
-    let pam_sshd = base_dir.join("profile/etc/pam.d/sshd");
-    let pam_sudo = base_dir.join("profile/etc/pam.d/sudo");
-    let pam_su = base_dir.join("profile/etc/pam.d/su");
-    let pam_passwd = base_dir.join("profile/etc/pam.d/passwd");
-    let pam_chpasswd = base_dir.join("profile/etc/pam.d/chpasswd");
-    let limits_conf = base_dir.join("profile/etc/security/limits.conf");
-
-    // Recipe package manager config (from packages.rs)
-    let recipe_conf = base_dir.join("profile/etc/recipe.conf");
-    let recipe_sh = base_dir.join("profile/etc/profile.d/recipe.sh");
-
-    let inputs: Vec<&Path> = vec![
-        &rootfs_marker,
-        &definitions,
-        &component_mod,
-        &custom_etc,
-        &custom_pam,
-        &custom_live,
-        &custom_packages,
-        // Profile files - auth
-        &profile_shadow,
-        &profile_passwd,
-        &profile_group,
-        &profile_gshadow,
-        &profile_sudoers,
-        &profile_motd,
-        // PAM files - critical for authentication
-        &pam_system_auth,
-        &pam_login,
-        &pam_sshd,
-        &pam_sudo,
-        &pam_su,
-        &pam_passwd,
-        &pam_chpasswd,
-        &limits_conf,
-        // Recipe config
-        &recipe_conf,
-        &recipe_sh,
-    ];
-    let current_hash = match cache::hash_files(&inputs) {
-        Some(h) => h,
-        None => return true,
-    };
-
-    cache::needs_rebuild(&current_hash, &hash_file, &rootfs)
+    rootfs_artifact(base_dir).needs_rebuild()
 }
 
-/// Check if initramfs needs to be rebuilt.
 pub fn initramfs_needs_rebuild(base_dir: &Path) -> bool {
-    let initramfs = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
-    let hash_file = base_dir.join("output/.initramfs-inputs.hash");
-    let init_script = base_dir.join("profile/init_tiny.template");
-    let busybox = base_dir.join("downloads/busybox-static");
-
-    if !initramfs.exists() {
-        return true;
-    }
-
-    let inputs: Vec<&Path> = vec![&init_script, &busybox];
-    let current_hash = match cache::hash_files(&inputs) {
-        Some(h) => h,
-        None => return true,
-    };
-
-    cache::needs_rebuild(&current_hash, &hash_file, &initramfs)
+    initramfs_artifact(base_dir).needs_rebuild()
 }
 
-/// Check if install initramfs needs to be rebuilt.
-///
-/// This is the systemd-based initramfs copied to installed systems.
-/// Uses hash of recinit source files since they determine initramfs content.
 pub fn install_initramfs_needs_rebuild(base_dir: &Path) -> bool {
-    let initramfs = base_dir.join("output").join(INITRAMFS_INSTALLED_OUTPUT);
-    let hash_file = base_dir.join("output/.install-initramfs-inputs.hash");
-
-    if !initramfs.exists() {
-        return true;
-    }
-
-    // Track recinit source files that affect install initramfs generation
-    let recinit_base = base_dir.join("../tools/recinit/src");
-    let systemd_rs = recinit_base.join("systemd.rs");
-    let install_rs = recinit_base.join("install.rs");
-    let lib_rs = recinit_base.join("lib.rs");
-    let elf_rs = recinit_base.join("elf.rs");
-    let cpio_rs = recinit_base.join("cpio.rs");
-    let modules_rs = recinit_base.join("modules.rs");
-    // Also track rootfs marker to rebuild if rootfs changes
-    let rootfs_marker = base_dir.join("downloads/rootfs/usr/bin/bash");
-
-    let inputs: Vec<&Path> = vec![
-        &systemd_rs,
-        &install_rs,
-        &lib_rs,
-        &elf_rs,
-        &cpio_rs,
-        &modules_rs,
-        &rootfs_marker,
-    ];
-    let current_hash = match cache::hash_files(&inputs) {
-        Some(h) => h,
-        None => return true,
-    };
-
-    cache::needs_rebuild(&current_hash, &hash_file, &initramfs)
+    install_initramfs_artifact(base_dir).needs_rebuild()
 }
 
-/// Check if ISO needs to be rebuilt.
 pub fn iso_needs_rebuild(base_dir: &Path) -> bool {
     let iso = base_dir.join("output").join(ISO_FILENAME);
     let rootfs = base_dir.join("output").join(ROOTFS_NAME);
     let initramfs = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
     let vmlinuz = base_dir.join("output/staging/boot/vmlinuz");
 
-    // Live overlay files affect ISO content (from live.rs include_str!)
-    let live_shadow = base_dir.join("profile/live-overlay/etc/shadow");
-    let live_autologin = base_dir.join("profile/live-overlay/etc/systemd/system/console-autologin.service");
-    let live_serial = base_dir.join("profile/live-overlay/etc/systemd/system/serial-console.service");
-    let live_docs = base_dir.join("profile/live-overlay/etc/profile.d/live-docs.sh");
-    let live_test = base_dir.join("profile/live-overlay/etc/profile.d/00-levitate-test.sh");
+    // Live overlay files affect ISO content
+    let live_overlay = base_dir.join("profile/live-overlay");
+    let live_shadow = live_overlay.join("etc/shadow");
+    let live_autologin = live_overlay.join("etc/systemd/system/console-autologin.service");
+    let live_serial = live_overlay.join("etc/systemd/system/serial-console.service");
+    let live_docs = live_overlay.join("etc/profile.d/live-docs.sh");
+    let live_test = live_overlay.join("etc/profile.d/00-levitate-test.sh");
 
     if !iso.exists() {
         return true;
     }
 
-    // ISO needs rebuild if any component is missing (will be built first)
-    // or if any component is newer than the ISO
     !rootfs.exists()
         || !initramfs.exists()
         || !vmlinuz.exists()
         || cache::is_newer(&rootfs, &iso)
         || cache::is_newer(&initramfs, &iso)
         || cache::is_newer(&vmlinuz, &iso)
-        // Live overlay changes should trigger ISO rebuild
         || cache::is_newer(&live_shadow, &iso)
         || cache::is_newer(&live_autologin, &iso)
         || cache::is_newer(&live_serial, &iso)
@@ -236,116 +235,28 @@ pub fn iso_needs_rebuild(base_dir: &Path) -> bool {
         || cache::is_newer(&live_test, &iso)
 }
 
-/// Cache the kernel input hash after a successful kernel build.
 pub fn cache_kernel_hash(base_dir: &Path) {
-    let kconfig = base_dir.join("kconfig");
-    let kernel_makefile = base_dir.join("../linux/Makefile");
-    let inputs: Vec<&Path> = if kernel_makefile.exists() {
-        vec![&kconfig, &kernel_makefile]
-    } else {
-        vec![&kconfig]
-    };
-    if let Some(hash) = cache::hash_files(&inputs) {
-        let _ = cache::write_cached_hash(&base_dir.join("output/.kernel-inputs.hash"), &hash);
-    }
+    kernel_artifact(base_dir).cache_hash();
 }
 
-/// Cache the rootfs input hash after a successful build.
 pub fn cache_rootfs_hash(base_dir: &Path) {
-    let rootfs_marker = base_dir.join("downloads/rootfs/usr/bin/bash");
-    let definitions = base_dir.join("src/component/definitions.rs");
-    let component_mod = base_dir.join("src/component/mod.rs");
-    let custom_etc = base_dir.join("src/component/custom/etc.rs");
-    let custom_pam = base_dir.join("src/component/custom/pam.rs");
-    let custom_live = base_dir.join("src/component/custom/live.rs");
-    let custom_packages = base_dir.join("src/component/custom/packages.rs");
-
-    // Profile files (must match rootfs_needs_rebuild)
-    let profile_shadow = base_dir.join("profile/etc/shadow");
-    let profile_passwd = base_dir.join("profile/etc/passwd");
-    let profile_group = base_dir.join("profile/etc/group");
-    let profile_gshadow = base_dir.join("profile/etc/gshadow");
-    let profile_sudoers = base_dir.join("profile/etc/sudoers");
-    let profile_motd = base_dir.join("profile/etc/motd");
-
-    // PAM files (must match rootfs_needs_rebuild)
-    let pam_system_auth = base_dir.join("profile/etc/pam.d/system-auth");
-    let pam_login = base_dir.join("profile/etc/pam.d/login");
-    let pam_sshd = base_dir.join("profile/etc/pam.d/sshd");
-    let pam_sudo = base_dir.join("profile/etc/pam.d/sudo");
-    let pam_su = base_dir.join("profile/etc/pam.d/su");
-    let pam_passwd = base_dir.join("profile/etc/pam.d/passwd");
-    let pam_chpasswd = base_dir.join("profile/etc/pam.d/chpasswd");
-    let limits_conf = base_dir.join("profile/etc/security/limits.conf");
-
-    // Recipe config (must match rootfs_needs_rebuild)
-    let recipe_conf = base_dir.join("profile/etc/recipe.conf");
-    let recipe_sh = base_dir.join("profile/etc/profile.d/recipe.sh");
-
-    let inputs: Vec<&Path> = vec![
-        &rootfs_marker,
-        &definitions,
-        &component_mod,
-        &custom_etc,
-        &custom_pam,
-        &custom_live,
-        &custom_packages,
-        // Profile files - auth
-        &profile_shadow,
-        &profile_passwd,
-        &profile_group,
-        &profile_gshadow,
-        &profile_sudoers,
-        &profile_motd,
-        // PAM files
-        &pam_system_auth,
-        &pam_login,
-        &pam_sshd,
-        &pam_sudo,
-        &pam_su,
-        &pam_passwd,
-        &pam_chpasswd,
-        &limits_conf,
-        // Recipe config
-        &recipe_conf,
-        &recipe_sh,
-    ];
-    if let Some(hash) = cache::hash_files(&inputs) {
-        let _ = cache::write_cached_hash(&base_dir.join("output/.rootfs-inputs.hash"), &hash);
-    }
+    rootfs_artifact(base_dir).cache_hash();
 }
 
-/// Cache the initramfs input hash after a successful build.
 pub fn cache_initramfs_hash(base_dir: &Path) {
-    let init_script = base_dir.join("profile/init_tiny.template");
-    let busybox = base_dir.join("downloads/busybox-static");
-    let inputs: Vec<&Path> = vec![&init_script, &busybox];
-    if let Some(hash) = cache::hash_files(&inputs) {
-        let _ = cache::write_cached_hash(&base_dir.join("output/.initramfs-inputs.hash"), &hash);
-    }
+    initramfs_artifact(base_dir).cache_hash();
 }
 
-/// Cache the install initramfs input hash after a successful build.
 pub fn cache_install_initramfs_hash(base_dir: &Path) {
-    let recinit_base = base_dir.join("../tools/recinit/src");
-    let systemd_rs = recinit_base.join("systemd.rs");
-    let install_rs = recinit_base.join("install.rs");
-    let lib_rs = recinit_base.join("lib.rs");
-    let elf_rs = recinit_base.join("elf.rs");
-    let cpio_rs = recinit_base.join("cpio.rs");
-    let modules_rs = recinit_base.join("modules.rs");
-    let rootfs_marker = base_dir.join("downloads/rootfs/usr/bin/bash");
+    install_initramfs_artifact(base_dir).cache_hash();
+}
 
-    let inputs: Vec<&Path> = vec![
-        &systemd_rs,
-        &install_rs,
-        &lib_rs,
-        &elf_rs,
-        &cpio_rs,
-        &modules_rs,
-        &rootfs_marker,
-    ];
-    if let Some(hash) = cache::hash_files(&inputs) {
-        let _ = cache::write_cached_hash(&base_dir.join("output/.install-initramfs-inputs.hash"), &hash);
-    }
+#[allow(dead_code)]
+pub fn qcow2_needs_rebuild(base_dir: &Path) -> bool {
+    qcow2_artifact(base_dir).needs_rebuild()
+}
+
+#[allow(dead_code)]
+pub fn cache_qcow2_hash(base_dir: &Path) {
+    qcow2_artifact(base_dir).cache_hash()
 }

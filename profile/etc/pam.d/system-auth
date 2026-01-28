@@ -3,7 +3,7 @@
 
 auth        required                     pam_env.so
 auth        required                     pam_faildelay.so delay=2000000
-auth        sufficient                   pam_unix.so
+auth        sufficient                   pam_unix.so nullok
 auth        required                     pam_deny.so
 
 account     required                     pam_unix.so

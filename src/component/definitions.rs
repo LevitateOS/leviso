@@ -109,17 +109,20 @@ pub static SYSTEMD_UNITS: Component = Component {
 };
 
 /// Serial getty configuration for virtual serial consoles.
-/// Fixes two issues that prevent login prompt from appearing:
-/// 1. TERM unset - causes agetty to send terminal queries that may hang
-/// 2. Missing -L - without CLOCAL, agetty waits for modem carrier detect (DCD)
+/// Fixes issues that prevent login prompt from appearing in QEMU:
+/// 1. Missing -L - without CLOCAL, agetty waits for modem carrier detect (DCD)
 ///    which QEMU's virtual serial port doesn't properly emulate
+/// 2. TERM=linux sends cursor position queries ([6n) that require terminal response.
+///    When using piped I/O (test harness), nothing responds, causing agetty to hang.
+///    Using TERM=vt100 avoids these queries while preserving basic functionality.
 /// KNOWLEDGE: See .teams/KNOWLEDGE_login-prompt-debugging.md for root cause.
 const SERIAL_GETTY_CONF: &str = "\
 [Service]
 # Override ExecStart for virtual serial consoles.
 # -L: local line (no carrier detect wait) - required for QEMU/virtual serial
 # --keep-baud: try multiple baud rates for compatibility
-# linux: terminal type that works well with most serial consoles
+# vt100: simpler terminal type that doesn't send cursor position queries
+#        (linux terminal sends [6n which hangs when no terminal responds)
 ExecStart=
 ExecStart=-/sbin/agetty -L --keep-baud 115200,57600,38400,9600 %I linux
 ";

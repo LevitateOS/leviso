@@ -105,6 +105,12 @@ enum BuildTarget {
     Initramfs,
     /// Build only the ISO image
     Iso,
+    /// Build VM disk image (qcow2)
+    Qcow2 {
+        /// Disk size in GB (default: 256, sparse allocation)
+        #[arg(long, default_value = "256")]
+        disk_size: u32,
+    },
 }
 
 #[derive(Subcommand)]
@@ -177,6 +183,9 @@ fn main() -> Result<()> {
                 Some(BuildTarget::Rootfs) => commands::build::BuildTarget::Rootfs,
                 Some(BuildTarget::Initramfs) => commands::build::BuildTarget::Initramfs,
                 Some(BuildTarget::Iso) => commands::build::BuildTarget::Iso,
+                Some(BuildTarget::Qcow2 { disk_size }) => {
+                    commands::build::BuildTarget::Qcow2 { disk_size }
+                }
             };
             commands::cmd_build(&base_dir, build_target, &config)?;
         }

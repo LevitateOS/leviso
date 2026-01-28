@@ -24,6 +24,8 @@ pub enum BuildTarget {
     Initramfs,
     /// ISO only
     Iso,
+    /// qcow2 VM disk image
+    Qcow2 { disk_size: u32 },
 }
 
 /// Execute the build command.
@@ -38,6 +40,7 @@ pub fn cmd_build(
         BuildTarget::Rootfs => build_rootfs_only(base_dir),
         BuildTarget::Initramfs => build_initramfs_only(base_dir),
         BuildTarget::Iso => build_iso_only(base_dir),
+        BuildTarget::Qcow2 { disk_size } => build_qcow2_only(base_dir, disk_size),
     }
 }
 
@@ -281,6 +284,38 @@ fn build_iso_only(base_dir: &Path) -> Result<()> {
 
     // Verify final ISO
     artifact::verify_iso(&output_dir.join(ISO_FILENAME))?;
+    Ok(())
+}
+
+/// Build qcow2 VM disk image only.
+fn build_qcow2_only(base_dir: &Path, disk_size: u32) -> Result<()> {
+    let output_dir = base_dir.join("output");
+    let rootfs_staging = output_dir.join("rootfs-staging");
+
+    // Rootfs-staging is required for qcow2 building (we use it directly, not EROFS)
+    if !rootfs_staging.exists() {
+        anyhow::bail!(
+            "rootfs-staging not found at {}.\nRun 'cargo run -- build rootfs' first.",
+            rootfs_staging.display()
+        );
+    }
+
+    // Rebuild install initramfs if inputs changed (required for qcow2 boot)
+    // This makes the workflow more ergonomic - changes to recinit will trigger rebuild
+    if rebuild::install_initramfs_needs_rebuild(base_dir) {
+        println!("Building install initramfs (inputs changed)...");
+        let t = Timer::start("Install Initramfs");
+        artifact::build_install_initramfs(base_dir)?;
+        rebuild::cache_install_initramfs_hash(base_dir);
+        t.finish();
+    }
+
+    // Build the qcow2 image
+    artifact::build_qcow2(base_dir, disk_size)?;
+
+    // Verify the image
+    artifact::verify_qcow2(base_dir)?;
+
     Ok(())
 }
 

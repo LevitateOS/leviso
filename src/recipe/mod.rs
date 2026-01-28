@@ -12,7 +12,14 @@
 //! 3. `RECIPE_BIN` env var (path to binary)
 //! 4. `RECIPE_SRC` env var (path to source, will build)
 
+mod linux;
+mod rocky;
+
+pub use linux::{has_linux_source, linux, LinuxPaths};
+pub use rocky::{rocky, RockyPaths};
+
 use anyhow::{bail, Context, Result};
+use distro_builder::process::ensure_exists;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -236,99 +243,6 @@ pub fn run_recipe(recipe_bin: &Path, recipe_path: &Path, build_dir: &Path) -> Re
 }
 
 // ============================================================================
-// Rocky Linux dependency via recipe
-// ============================================================================
-
-/// Paths produced by the rocky.rhai recipe after execution.
-#[derive(Debug, Clone)]
-pub struct RockyPaths {
-    /// Path to the downloaded ISO.
-    pub iso: PathBuf,
-    /// Path to the extracted rootfs.
-    pub rootfs: PathBuf,
-    /// Path to the extracted ISO contents (packages).
-    pub iso_contents: PathBuf,
-}
-
-impl RockyPaths {
-    /// Check if all paths exist.
-    pub fn exists(&self) -> bool {
-        self.iso.exists() && self.rootfs.exists() && self.iso_contents.exists()
-    }
-}
-
-/// Run the rocky.rhai recipe and return the output paths.
-///
-/// This is the entry point for leviso to use recipe for Rocky dependency.
-/// The recipe returns a ctx with paths, so we don't need to hardcode them.
-///
-/// # Arguments
-/// * `base_dir` - leviso crate root (e.g., `/path/to/leviso`)
-///
-/// # Returns
-/// The paths to the Rocky artifacts (ISO, rootfs, iso-contents).
-pub fn rocky(base_dir: &Path) -> Result<RockyPaths> {
-    let monorepo_dir = base_dir
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| base_dir.to_path_buf());
-
-    let downloads_dir = base_dir.join("downloads");
-    let recipe_path = base_dir.join("deps/rocky.rhai");
-
-    if !recipe_path.exists() {
-        bail!(
-            "Rocky recipe not found at: {}\n\
-             Expected rocky.rhai in leviso/deps/",
-            recipe_path.display()
-        );
-    }
-
-    // Find and run recipe, parse JSON output
-    let recipe_bin = find_recipe(&monorepo_dir)?;
-    let ctx = run_recipe_json(&recipe_bin.path, &recipe_path, &downloads_dir)?;
-
-    // Extract paths from ctx (recipe sets these)
-    let iso = ctx["iso_path"]
-        .as_str()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| downloads_dir.join("Rocky-10.1-x86_64-dvd1.iso"));
-
-    let rootfs = ctx["rootfs_path"]
-        .as_str()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| downloads_dir.join("rootfs"));
-
-    let iso_contents = ctx["iso_contents_path"]
-        .as_str()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| downloads_dir.join("iso-contents"));
-
-    let paths = RockyPaths {
-        iso,
-        rootfs,
-        iso_contents,
-    };
-
-    if !paths.exists() {
-        bail!(
-            "Recipe completed but expected paths are missing:\n\
-             - ISO: {} ({})\n\
-             - rootfs: {} ({})\n\
-             - iso-contents: {} ({})",
-            paths.iso.display(),
-            if paths.iso.exists() { "OK" } else { "MISSING" },
-            paths.rootfs.display(),
-            if paths.rootfs.exists() { "OK" } else { "MISSING" },
-            paths.iso_contents.display(),
-            if paths.iso_contents.exists() { "OK" } else { "MISSING" },
-        );
-    }
-
-    Ok(paths)
-}
-
-// ============================================================================
 // Installation tools via recipes (recstrap, recfstab, recchroot)
 // ============================================================================
 
@@ -362,15 +276,15 @@ pub fn install_tools(base_dir: &Path) -> Result<()> {
             continue;
         }
 
-        if !recipe_path.exists() {
-            bail!(
+        ensure_exists(&recipe_path, &format!("{} recipe", tool)).map_err(|_| {
+            anyhow::anyhow!(
                 "{} recipe not found at: {}\n\
                  Expected {}.rhai in leviso/deps/",
                 tool,
                 recipe_path.display(),
                 tool
-            );
-        }
+            )
+        })?;
 
         recipe_bin.run(&recipe_path, &downloads_dir)?;
 
@@ -407,13 +321,13 @@ pub fn packages(base_dir: &Path) -> Result<()> {
     let downloads_dir = base_dir.join("downloads");
     let recipe_path = base_dir.join("deps/packages.rhai");
 
-    if !recipe_path.exists() {
-        bail!(
+    ensure_exists(&recipe_path, "Packages recipe").map_err(|_| {
+        anyhow::anyhow!(
             "Packages recipe not found at: {}\n\
              Expected packages.rhai in leviso/deps/",
             recipe_path.display()
-        );
-    }
+        )
+    })?;
 
     // Verify rocky.rhai has been run first
     let rootfs = downloads_dir.join("rootfs");
@@ -459,13 +373,13 @@ pub fn epel(base_dir: &Path) -> Result<()> {
     let downloads_dir = base_dir.join("downloads");
     let recipe_path = base_dir.join("deps/epel.rhai");
 
-    if !recipe_path.exists() {
-        bail!(
+    ensure_exists(&recipe_path, "EPEL recipe").map_err(|_| {
+        anyhow::anyhow!(
             "EPEL recipe not found at: {}\n\
              Expected epel.rhai in leviso/deps/",
             recipe_path.display()
-        );
-    }
+        )
+    })?;
 
     // Verify rootfs exists
     let rootfs = downloads_dir.join("rootfs");
@@ -484,103 +398,6 @@ pub fn epel(base_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-// ============================================================================
-// Linux kernel via recipe
-// ============================================================================
-
-/// Paths produced by the linux.rhai recipe after execution.
-#[derive(Debug, Clone)]
-pub struct LinuxPaths {
-    /// Path to the kernel source tree.
-    pub source: PathBuf,
-    /// Path to vmlinuz in staging.
-    pub vmlinuz: PathBuf,
-    /// Kernel version string.
-    pub version: String,
-}
-
-impl LinuxPaths {
-    /// Check if kernel is built and installed.
-    pub fn is_installed(&self) -> bool {
-        self.vmlinuz.exists()
-    }
-}
-
-/// Run the linux.rhai recipe and return the output paths.
-///
-/// This handles the full kernel workflow: acquire source, build, install to staging.
-/// The recipe returns a ctx with all paths and the kernel version.
-///
-/// # Arguments
-/// * `base_dir` - leviso crate root (e.g., `/path/to/leviso`)
-pub fn linux(base_dir: &Path) -> Result<LinuxPaths> {
-    let monorepo_dir = base_dir
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| base_dir.to_path_buf());
-
-    let downloads_dir = base_dir.join("downloads");
-    let recipe_path = base_dir.join("deps/linux.rhai");
-
-    if !recipe_path.exists() {
-        bail!(
-            "Linux recipe not found at: {}\n\
-             Expected linux.rhai in leviso/deps/",
-            recipe_path.display()
-        );
-    }
-
-    // Find and run recipe, parse JSON output
-    let recipe_bin = find_recipe(&monorepo_dir)?;
-    let ctx = run_recipe_json(&recipe_bin.path, &recipe_path, &downloads_dir)?;
-
-    // Extract paths from ctx (recipe sets these)
-    let output_dir = base_dir.join("output");
-
-    let source = ctx["source_path"]
-        .as_str()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            // Fallback: check submodule first, then downloads
-            let submodule = monorepo_dir.join("linux");
-            if submodule.join("Makefile").exists() {
-                submodule
-            } else {
-                downloads_dir.join("linux")
-            }
-        });
-
-    let version = ctx["kernel_version"]
-        .as_str()
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-
-    let vmlinuz = output_dir.join("staging/boot/vmlinuz");
-
-    Ok(LinuxPaths {
-        source,
-        vmlinuz,
-        version,
-    })
-}
-
-/// Check if Linux source is available (without running the full recipe).
-pub fn has_linux_source(base_dir: &Path) -> bool {
-    let monorepo_dir = base_dir.parent().unwrap_or(base_dir);
-
-    // Check submodule
-    if monorepo_dir.join("linux/Makefile").exists() {
-        return true;
-    }
-
-    // Check downloads
-    if base_dir.join("downloads/linux/Makefile").exists() {
-        return true;
-    }
-
-    false
-}
-
 /// Clear the recipe cache directory (~/.cache/levitate/).
 pub fn clear_cache() -> Result<()> {
     let cache_dir = dirs::cache_dir()
@@ -593,4 +410,3 @@ pub fn clear_cache() -> Result<()> {
     }
     Ok(())
 }
-

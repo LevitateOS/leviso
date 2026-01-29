@@ -514,4 +514,92 @@ mod tests {
         );
         eprintln!("Component size: {} bytes", size);
     }
+
+    // =============================================================================
+    // CRITICAL: Component Phase Ordering Tests
+    // =============================================================================
+
+    use leviso_cheat_test::cheat_aware;
+
+    #[cheat_aware(
+        protects = "Component phases are correctly ordered",
+        severity = "CRITICAL",
+        ease = "MEDIUM",
+        cheats = [
+            "Remove Ord implementation from Phase",
+            "Hardcode phase order incorrectly",
+            "Skip sorting entirely"
+        ],
+        consequence = "Components execute out of order - files copied before directories exist"
+    )]
+    #[test]
+    fn test_phase_ordering_is_correct() {
+        // Phase ordering must be: Filesystem < Binaries < Systemd < Dbus < Services < Config < Packages < Firmware < Final
+        assert!(
+            Phase::Filesystem < Phase::Binaries,
+            "Filesystem must come before Binaries"
+        );
+        assert!(
+            Phase::Binaries < Phase::Systemd,
+            "Binaries must come before Systemd"
+        );
+        assert!(
+            Phase::Systemd < Phase::Dbus,
+            "Systemd must come before Dbus"
+        );
+        assert!(
+            Phase::Dbus < Phase::Services,
+            "Dbus must come before Services"
+        );
+        assert!(
+            Phase::Services < Phase::Config,
+            "Services must come before Config"
+        );
+        assert!(
+            Phase::Config < Phase::Packages,
+            "Config must come before Packages"
+        );
+        assert!(
+            Phase::Packages < Phase::Firmware,
+            "Packages must come before Firmware"
+        );
+        assert!(
+            Phase::Firmware < Phase::Final,
+            "Firmware must come before Final"
+        );
+    }
+
+    #[cheat_aware(
+        protects = "Filesystem phase creates directories before other phases need them",
+        severity = "HIGH",
+        ease = "EASY",
+        cheats = [
+            "Skip directory creation",
+            "Create directories in wrong phase",
+            "Assume directories exist"
+        ],
+        consequence = "File copies fail with 'No such file or directory' during build"
+    )]
+    #[test]
+    fn test_filesystem_phase_is_first() {
+        // Filesystem must be the absolute first phase
+        let phases = [
+            Phase::Binaries,
+            Phase::Systemd,
+            Phase::Dbus,
+            Phase::Services,
+            Phase::Config,
+            Phase::Packages,
+            Phase::Firmware,
+            Phase::Final,
+        ];
+
+        for phase in phases {
+            assert!(
+                Phase::Filesystem < phase,
+                "Filesystem must come before {:?}",
+                phase
+            );
+        }
+    }
 }

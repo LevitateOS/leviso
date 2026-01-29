@@ -180,8 +180,8 @@ pub fn setup_recipe_config(ctx: &BuildContext) -> Result<()> {
         fs::create_dir_all(ctx.staging.join(dir))?;
     }
 
-    fs::write(ctx.staging.join("etc/recipe/recipe.conf"), read_profile_file(ctx, "etc/recipe.conf")?)?;
-    fs::write(ctx.staging.join("etc/profile.d/recipe.sh"), read_profile_file(ctx, "etc/profile.d/recipe.sh")?)?;
+    fs::write(ctx.staging.join("etc/recipe/recipe.conf"), read_profile_file(ctx, "recipe.conf")?)?;
+    fs::write(ctx.staging.join("etc/profile.d/recipe.sh"), read_profile_file(ctx, "recipe.sh")?)?;
 
     println!("  Created recipe configuration");
     Ok(())

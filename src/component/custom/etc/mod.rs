@@ -13,12 +13,9 @@ use crate::build::context::BuildContext;
 /// Read a file from the colocated files directory (no relative path traversal)
 fn read_profile_file(_ctx: &BuildContext, path: &str) -> Result<String> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    // Navigate from leviso/ root to this module's files directory
+    // manifest_dir is already at leviso/ root, so join directly to files directory
     let file_path = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join("leviso/src/component/custom/etc/files"))
-        .ok_or_else(|| anyhow::anyhow!("Failed to compute file path"))?
+        .join("src/component/custom/etc/files")
         .join(path);
     fs::read_to_string(&file_path)
         .with_context(|| format!("Failed to read etc file from {}", file_path.display()))
@@ -139,15 +136,15 @@ pub fn create_ssh_host_keys(ctx: &BuildContext) -> Result<()> {
 fn create_passwd_files(ctx: &BuildContext) -> Result<()> {
     let etc = ctx.staging.join("etc");
 
-    fs::write(etc.join("passwd"), read_profile_file(ctx, "etc/passwd")?)?;
-    fs::write(etc.join("shadow"), read_profile_file(ctx, "etc/shadow")?)?;
+    fs::write(etc.join("passwd"), read_profile_file(ctx, "passwd")?)?;
+    fs::write(etc.join("shadow"), read_profile_file(ctx, "shadow")?)?;
 
     let mut perms = fs::metadata(etc.join("shadow"))?.permissions();
     perms.set_mode(0o600);
     fs::set_permissions(etc.join("shadow"), perms)?;
 
-    fs::write(etc.join("group"), read_profile_file(ctx, "etc/group")?)?;
-    fs::write(etc.join("gshadow"), read_profile_file(ctx, "etc/gshadow")?)?;
+    fs::write(etc.join("group"), read_profile_file(ctx, "group")?)?;
+    fs::write(etc.join("gshadow"), read_profile_file(ctx, "gshadow")?)?;
 
     let mut perms = fs::metadata(etc.join("gshadow"))?.permissions();
     perms.set_mode(0o600);
@@ -193,7 +190,7 @@ BUG_REPORT_URL="{bug_url}"
 fn create_filesystem_config(ctx: &BuildContext) -> Result<()> {
     let etc = ctx.staging.join("etc");
 
-    fs::write(etc.join("fstab"), read_profile_file(ctx, "etc/fstab")?)?;
+    fs::write(etc.join("fstab"), read_profile_file(ctx, "fstab")?)?;
 
     let mtab = etc.join("mtab");
     if !mtab.exists() && !mtab.is_symlink() {
@@ -206,16 +203,16 @@ fn create_filesystem_config(ctx: &BuildContext) -> Result<()> {
 fn create_auth_config(ctx: &BuildContext) -> Result<()> {
     let etc = ctx.staging.join("etc");
 
-    fs::write(etc.join("shells"), read_profile_file(ctx, "etc/shells")?)?;
-    fs::write(etc.join("login.defs"), read_profile_file(ctx, "etc/login.defs")?)?;
-    fs::write(etc.join("sudoers"), read_profile_file(ctx, "etc/sudoers")?)?;
+    fs::write(etc.join("shells"), read_profile_file(ctx, "shells")?)?;
+    fs::write(etc.join("login.defs"), read_profile_file(ctx, "login.defs")?)?;
+    fs::write(etc.join("sudoers"), read_profile_file(ctx, "sudoers")?)?;
 
     let mut perms = fs::metadata(etc.join("sudoers"))?.permissions();
     perms.set_mode(0o440);
     fs::set_permissions(etc.join("sudoers"), perms)?;
 
     fs::create_dir_all(etc.join("sudoers.d"))?;
-    fs::write(etc.join("sudo.conf"), read_profile_file(ctx, "etc/sudo.conf")?)?;
+    fs::write(etc.join("sudo.conf"), read_profile_file(ctx, "sudo.conf")?)?;
 
     Ok(())
 }
@@ -228,9 +225,9 @@ fn create_locale_config(ctx: &BuildContext) -> Result<()> {
         std::os::unix::fs::symlink("/usr/share/zoneinfo/UTC", &localtime)?;
     }
 
-    fs::write(etc.join("adjtime"), read_profile_file(ctx, "etc/adjtime")?)?;
-    fs::write(etc.join("locale.conf"), read_profile_file(ctx, "etc/locale.conf")?)?;
-    fs::write(etc.join("vconsole.conf"), read_profile_file(ctx, "etc/vconsole.conf")?)?;
+    fs::write(etc.join("adjtime"), read_profile_file(ctx, "adjtime")?)?;
+    fs::write(etc.join("locale.conf"), read_profile_file(ctx, "locale.conf")?)?;
+    fs::write(etc.join("vconsole.conf"), read_profile_file(ctx, "vconsole.conf")?)?;
 
     Ok(())
 }
@@ -238,7 +235,7 @@ fn create_locale_config(ctx: &BuildContext) -> Result<()> {
 fn create_network_config(ctx: &BuildContext) -> Result<()> {
     let etc = ctx.staging.join("etc");
 
-    fs::write(etc.join("hosts"), read_profile_file(ctx, "etc/hosts")?)?;
+    fs::write(etc.join("hosts"), read_profile_file(ctx, "hosts")?)?;
 
     let resolv = etc.join("resolv.conf");
     if !resolv.exists() && !resolv.is_symlink() {
@@ -251,19 +248,19 @@ fn create_network_config(ctx: &BuildContext) -> Result<()> {
 fn create_shell_config(ctx: &BuildContext) -> Result<()> {
     let etc = ctx.staging.join("etc");
 
-    fs::write(etc.join("profile"), read_profile_file(ctx, "etc/profile")?)?;
+    fs::write(etc.join("profile"), read_profile_file(ctx, "profile")?)?;
 
     fs::create_dir_all(etc.join("profile.d"))?;
-    fs::write(etc.join("profile.d/xdg.sh"), read_profile_file(ctx, "etc/profile.d/xdg.sh")?)?;
-    fs::write(etc.join("bashrc"), read_profile_file(ctx, "etc/bashrc")?)?;
+    fs::write(etc.join("profile.d/xdg.sh"), read_profile_file(ctx, "profile.d/xdg.sh")?)?;
+    fs::write(etc.join("bashrc"), read_profile_file(ctx, "bashrc")?)?;
 
     let root_home = ctx.staging.join("root");
     fs::write(root_home.join(".bashrc"), read_profile_file(ctx, "root/.bashrc")?)?;
     fs::write(root_home.join(".bash_profile"), read_profile_file(ctx, "root/.bash_profile")?)?;
 
     fs::create_dir_all(etc.join("skel"))?;
-    fs::write(etc.join("skel/.bashrc"), read_profile_file(ctx, "etc/skel/.bashrc")?)?;
-    fs::write(etc.join("skel/.bash_profile"), read_profile_file(ctx, "etc/skel/.bash_profile")?)?;
+    fs::write(etc.join("skel/.bashrc"), read_profile_file(ctx, "skel/.bashrc")?)?;
+    fs::write(etc.join("skel/.bash_profile"), read_profile_file(ctx, "skel/.bash_profile")?)?;
 
     for xdg_dir in [".config", ".local/share", ".local/state", ".cache"] {
         let dir = etc.join("skel").join(xdg_dir);
@@ -275,7 +272,7 @@ fn create_shell_config(ctx: &BuildContext) -> Result<()> {
 }
 
 fn create_nsswitch(ctx: &BuildContext) -> Result<()> {
-    fs::write(ctx.staging.join("etc/nsswitch.conf"), read_profile_file(ctx, "etc/nsswitch.conf")?)?;
+    fs::write(ctx.staging.join("etc/nsswitch.conf"), read_profile_file(ctx, "nsswitch.conf")?)?;
     Ok(())
 }
 

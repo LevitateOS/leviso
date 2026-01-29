@@ -15,12 +15,9 @@ use distro_builder::process::shell_in;
 /// Read a file from the colocated files directory (no relative path traversal)
 fn read_profile_file(_ctx: &BuildContext, path: &str) -> Result<String> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    // Navigate from leviso/ root to this module's files directory
+    // manifest_dir is already at leviso/ root, so join directly to files directory
     let file_path = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join("leviso/src/component/custom/packages/files"))
-        .ok_or_else(|| anyhow::anyhow!("Failed to compute file path"))?
+        .join("src/component/custom/packages/files")
         .join(path);
     fs::read_to_string(&file_path)
         .with_context(|| format!("Failed to read packages file from {}", file_path.display()))

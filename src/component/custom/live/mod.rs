@@ -13,12 +13,9 @@ use crate::build::context::BuildContext;
 /// Read a file from the colocated overlay directory (no relative path traversal)
 fn read_profile_file_from_base(_base_dir: &Path, path: &str) -> Result<String> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    // Navigate from leviso/ root to this module's overlay directory
+    // manifest_dir is already at leviso/ root, so join directly to overlay directory
     let file_path = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join("leviso/src/component/custom/live/overlay"))
-        .ok_or_else(|| anyhow::anyhow!("Failed to compute file path"))?
+        .join("src/component/custom/live/overlay")
         .join(path);
     fs::read_to_string(&file_path)
         .with_context(|| format!("Failed to read live overlay file from {}", file_path.display()))
@@ -27,11 +24,9 @@ fn read_profile_file_from_base(_base_dir: &Path, path: &str) -> Result<String> {
 /// Read a file from the colocated overlay directory
 fn read_profile_file(_ctx: &BuildContext, path: &str) -> Result<String> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // manifest_dir is already at leviso/ root, so join directly to overlay directory
     let file_path = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join("leviso/src/component/custom/live/overlay"))
-        .ok_or_else(|| anyhow::anyhow!("Failed to compute file path"))?
+        .join("src/component/custom/live/overlay")
         .join(path);
     fs::read_to_string(&file_path)
         .with_context(|| format!("Failed to read live overlay file from {}", file_path.display()))
@@ -40,11 +35,9 @@ fn read_profile_file(_ctx: &BuildContext, path: &str) -> Result<String> {
 /// Read test instrumentation file - used by both live ISO and qcow2
 pub fn read_test_instrumentation() -> Result<String> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // manifest_dir is already at leviso/ root, so join directly to overlay directory
     let file_path = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join("leviso/src/component/custom/live/overlay/etc/profile.d/00-levitate-test.sh"))
-        .ok_or_else(|| anyhow::anyhow!("Failed to compute test instrumentation path"))?;
+        .join("src/component/custom/live/overlay/etc/profile.d/00-levitate-test.sh");
     fs::read_to_string(&file_path)
         .with_context(|| format!("Failed to read test instrumentation file from {}", file_path.display()))
 }

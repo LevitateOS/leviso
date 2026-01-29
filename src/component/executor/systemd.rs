@@ -29,9 +29,7 @@ pub fn handle_user_units(ctx: &BuildContext, names: &[&str]) -> Result<()> {
             fs::copy(&src, &dst)?;
         } else if src.is_symlink() {
             let target = fs::read_link(&src)?;
-            if !dst.exists() {
-                std::os::unix::fs::symlink(&target, &dst)?;
-            }
+            create_symlink_if_missing(&target, &dst)?;
         }
     }
 
@@ -60,9 +58,7 @@ pub fn handle_dbus_symlinks(ctx: &BuildContext, symlinks: &[&str]) -> Result<()>
         let dst = unit_dst.join(symlink);
         if src.is_symlink() {
             let target = fs::read_link(&src)?;
-            if !dst.exists() {
-                std::os::unix::fs::symlink(&target, &dst)?;
-            }
+            create_symlink_if_missing(&target, &dst)?;
         }
     }
 

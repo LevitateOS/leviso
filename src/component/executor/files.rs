@@ -3,10 +3,13 @@
 use anyhow::bail;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
 
 use crate::build::context::BuildContext;
 use crate::build::libdeps::{copy_dir_tree, copy_file};
+use crate::common::ensure_parent_exists;
 use anyhow::Result;
+use leviso_elf::create_symlink_if_missing;
 
 /// Handle Op::CopyFile: Copy a file from rootfs
 pub fn handle_copyfile(ctx: &BuildContext, path: &str) -> Result<()> {
@@ -47,12 +50,8 @@ pub fn handle_writefilemode(ctx: &BuildContext, path: &str, content: &str, mode:
 /// Handle Op::Symlink: Create a symlink
 pub fn handle_symlink(ctx: &BuildContext, link: &str, target: &str) -> Result<()> {
     let link_path = ctx.staging.join(link);
-    if let Some(parent) = link_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    if !link_path.exists() && !link_path.is_symlink() {
-        std::os::unix::fs::symlink(target, &link_path)?;
-    }
+    ensure_parent_exists(&link_path)?;
+    create_symlink_if_missing(Path::new(target), &link_path)?;
     Ok(())
 }
 

@@ -88,7 +88,7 @@ pub fn create_iso(base_dir: &Path) -> Result<()> {
 
     // Stage 2: Create live overlay (autologin, serial console, empty root password)
     // This is ONLY applied during live boot, NOT extracted to installed systems
-    create_live_overlay_at(&paths.output_dir)?;
+    create_live_overlay_at(&paths.output_dir, base_dir)?;
 
     // Stage 3: Build installed UKIs (for users to copy during installation)
     // These need to be created before the ISO since they go into boot/uki/

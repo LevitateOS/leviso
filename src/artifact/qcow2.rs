@@ -677,17 +677,16 @@ ExecStart=-/sbin/agetty --autologin root --keep-baud 115200,57600,38400,9600 - $
     Ok(())
 }
 
-/// Shell instrumentation for test harness.
-/// Same as live ISO - emits ___SHELL_READY___ and markers for command tracking.
-const TEST_INSTRUMENTATION: &str = include_str!("../../profile/live-overlay/etc/profile.d/00-levitate-test.sh");
-
 /// Install test instrumentation for rootfs-tests compatibility.
 /// This script emits ___SHELL_READY___ on serial console, which the test
 /// harness uses to know when the shell is ready for commands.
 fn install_test_instrumentation(root_dir: &Path) -> Result<()> {
+    use crate::component::custom::read_test_instrumentation;
+
     let profile_d = root_dir.join("etc/profile.d");
     fs::create_dir_all(&profile_d)?;
-    fs::write(profile_d.join("00-levitate-test.sh"), TEST_INSTRUMENTATION)?;
+    let instrumentation = read_test_instrumentation()?;
+    fs::write(profile_d.join("00-levitate-test.sh"), instrumentation)?;
     Ok(())
 }
 
@@ -734,7 +733,7 @@ pub fn verify_qcow2(base_dir: &Path) -> Result<()> {
 
     // Note: Full static verification requires mounting (sudo).
     // For now, we just check the file exists and has reasonable size.
-    // Users can run `fsdbg verify output/levitateos.qcow2 --type qcow2` manually
+    // Users can run `fsdbg verify output/levitateos-x86_64.qcow2 --type qcow2` manually
     // if they want detailed verification.
     println!("  [OK] Basic verification passed");
     println!("\n  For detailed verification, run:");

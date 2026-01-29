@@ -6,12 +6,13 @@
 //! NOTE: This is split from the original 1,283-line custom.rs for maintainability.
 //! Each module is ~100-250 lines focused on a single domain.
 
-mod etc;
+// Submodules colocated with their configuration files
+mod etc;              // src/component/custom/etc/ - contains etc/mod.rs and etc/files/
 mod filesystem;
 mod firmware;
-mod live;
+mod live;             // src/component/custom/live/ - contains live/mod.rs and live/overlay/
 mod modules;
-mod packages;
+mod packages;         // src/component/custom/packages/ - contains packages/mod.rs and packages/files/
 mod pam;
 
 use anyhow::Result;
@@ -21,7 +22,7 @@ use crate::build::context::BuildContext;
 use crate::build::licenses::LicenseTracker;
 
 // Re-export public API
-pub use live::create_live_overlay_at;
+pub use live::{create_live_overlay_at, read_test_instrumentation};
 
 /// Execute a custom operation.
 ///

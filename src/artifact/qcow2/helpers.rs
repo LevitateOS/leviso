@@ -2,6 +2,7 @@
 
 use anyhow::{bail, Context, Result};
 use std::process::Command;
+use std::path::Path;
 use distro_builder::process::Cmd;
 
 /// Generated UUIDs for the disk image.
@@ -88,6 +89,29 @@ pub fn generate_vfat_serial() -> Result<String> {
         bail!("Failed to generate vfat serial");
     }
     Ok(format!("{}-{}", &hex[0..4].to_uppercase(), &hex[4..8].to_uppercase()))
+}
+
+/// Calculate total size of a directory (including all subdirectories).
+/// Returns size in bytes.
+pub fn calculate_dir_size(path: &Path) -> Result<u64> {
+    let mut total = 0;
+
+    if !path.exists() {
+        return Ok(0);
+    }
+
+    for entry in std::fs::read_dir(path)? {
+        let entry = entry?;
+        let metadata = entry.metadata()?;
+
+        if metadata.is_dir() {
+            total += calculate_dir_size(&entry.path())?;
+        } else {
+            total += metadata.len();
+        }
+    }
+
+    Ok(total)
 }
 
 // TEAM_151: Extracted UUID and host tool verification functions into dedicated helpers module

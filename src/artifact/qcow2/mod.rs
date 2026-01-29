@@ -3,14 +3,21 @@
 //! Creates bootable qcow2 disk images for local VM use.
 //! The image is built without requiring root privileges.
 //!
-//! Build process:
-//! 1. Generate UUIDs for partitions upfront
-//! 2. Prepare rootfs staging directory with qcow2-specific config
-//! 3. Create EFI partition image with mkfs.vfat + mtools
-//! 4. Create root partition image with mkfs.ext4 -d (populates from directory)
-//! 5. Create disk image with GPT partition table (sfdisk works on files)
-//! 6. Splice partition images into disk at correct offsets
-//! 7. Convert raw to qcow2 with compression
+//! Build process (dependencies must be built in order):
+//! 0. Prerequisites: kernel, initramfs, and rootfs must be built first
+//!    Run: cargo run -- build (full build) OR individually:
+//!      cargo run -- build kernel
+//!      cargo run -- build initramfs
+//!      cargo run -- build rootfs
+//! 1. Verify all dependencies exist (kernel, initramfs-installed, rootfs content)
+//! 2. Generate UUIDs for partitions upfront
+//! 3. Prepare rootfs staging directory with qcow2-specific config
+//! 4. Create EFI partition image with mkfs.vfat + mtools
+//! 5. Create root partition image with mkfs.ext4 -d (populates from directory)
+//! 6. Create disk image with GPT partition table (sfdisk works on files)
+//! 7. Splice partition images into disk at correct offsets
+//! 8. Convert raw to qcow2 with compression
+//! 9. Verify qcow2 image is bootable
 //!
 //! Key insight: We use rootfs-staging/ directly (the source for EROFS),
 //! so we don't need to extract EROFS which would require mounting.
@@ -59,6 +66,13 @@ pub fn build_qcow2(base_dir: &Path, disk_size_gb: u32) -> Result<()> {
         "Run 'cargo run -- build rootfs' first to create rootfs-staging."
     })?;
 
+    // Step 2b: Verify ALL dependencies exist upfront (fail fast)
+    println!("\nVerifying dependencies...");
+    verify_build_dependencies(base_dir, &staging_dir).with_context(|| {
+        "qcow2 build requires kernel, install initramfs, and complete rootfs.\n\
+         Run 'cargo run -- build' to build all artifacts."
+    })?;
+
     // Step 3: Generate UUIDs upfront
     println!("Generating partition UUIDs...");
     let uuids = DiskUuids::generate()?;
@@ -82,25 +96,48 @@ pub fn build_qcow2(base_dir: &Path, disk_size_gb: u32) -> Result<()> {
     println!("\nCreating EFI partition image...");
     let efi_image = work_dir.join("efi.img");
     partitions::create_efi_partition(base_dir, &efi_image, &uuids, &qcow2_staging)?;
+    if let Ok(meta) = fs::metadata(&efi_image) {
+        println!("  EFI partition size: {} MB", meta.len() / 1024 / 1024);
+    }
 
     // Step 7: Create root partition image
     println!("\nCreating root partition image (this may take a while)...");
     let root_image = work_dir.join("root.img");
     let root_size_mb = (disk_size_gb as u64 * 1024) - EFI_SIZE_MB - (1 * 2);
     partitions::create_root_partition(&qcow2_staging, &root_image, root_size_mb, &uuids)?;
+    if let Ok(meta) = fs::metadata(&root_image) {
+        println!("  Root partition size: {} MB (sparse file)", meta.len() / 1024 / 1024);
+    }
 
     // Step 8: Assemble the disk image
     println!("\nAssembling disk image...");
     let raw_path = work_dir.join("disk.raw");
     disk::assemble_disk(&raw_path, &efi_image, &root_image, disk_size_gb, &uuids)?;
+    if let Ok(meta) = fs::metadata(&raw_path) {
+        println!("  Raw disk size: {} MB", meta.len() / 1024 / 1024);
+    }
 
     // Step 9: Convert to qcow2
     println!("\nConverting to qcow2 (with compression)...");
     conversion::convert_to_qcow2(&raw_path, &qcow2_path)?;
 
-    // Step 10: Cleanup work directory
-    println!("Cleaning up...");
-    fs::remove_dir_all(&work_dir)?;
+    // Step 9b: Verify qcow2 immediately (Phase 3)
+    println!("\nVerifying qcow2 image...");
+    match verify_qcow2_internal(&qcow2_path) {
+        Ok(_) => {
+            // Step 10: Cleanup work directory on success (Phase 4)
+            println!("Cleaning up...");
+            fs::remove_dir_all(&work_dir)?;
+        }
+        Err(e) => {
+            // Keep work directory for debugging
+            println!("\n[!] Build verification failed. Work directory preserved for debugging:");
+            println!("    {}", work_dir.display());
+            println!("  Inspect partition images:");
+            println!("    ls -lh {}", work_dir.display());
+            return Err(e);
+        }
+    }
 
     println!("\n=== qcow2 Image Built ===");
     println!("  Output: {}", qcow2_path.display());
@@ -145,6 +182,91 @@ pub fn verify_qcow2(base_dir: &Path) -> Result<()> {
     println!("\n  For detailed verification, run:");
     println!("    sudo fsdbg verify {} --type qcow2", qcow2_path.display());
 
+    Ok(())
+}
+
+/// Verify all build dependencies exist and are valid.
+fn verify_build_dependencies(base_dir: &Path, rootfs: &Path) -> Result<()> {
+    let output_dir = base_dir.join("output");
+
+    // Check kernel
+    let kernel_path = output_dir.join("staging/boot/vmlinuz");
+    ensure_exists(&kernel_path, "Kernel").with_context(|| {
+        "Kernel not found. Run 'cargo run -- build kernel' first."
+    })?;
+
+    // Check install initramfs (REQUIRED for disk boot)
+    let initramfs_path = output_dir.join("initramfs-installed.img");
+    ensure_exists(&initramfs_path, "Install initramfs").with_context(|| {
+        "Install initramfs not found. Run 'cargo run -- build initramfs' first.\n\
+         (The qcow2 requires initramfs-installed.img, not the live initramfs)"
+    })?;
+
+    // Validate rootfs has minimum required content
+    validate_rootfs_content(rootfs)?;
+
+    println!("  [OK] All dependencies verified");
+    Ok(())
+}
+
+/// Validate that rootfs has critical directories and minimum size.
+fn validate_rootfs_content(rootfs: &Path) -> Result<()> {
+    let critical_paths = [
+        "usr/bin",
+        "usr/lib",
+        "usr/lib64",
+        "etc/shadow",
+        "etc/passwd",
+        "etc/fstab",
+        "boot",
+    ];
+
+    for path in &critical_paths {
+        let full_path = rootfs.join(path);
+        if !full_path.exists() {
+            bail!(
+                "rootfs-staging is incomplete: {} not found.\n\
+                 Run 'cargo run -- build rootfs' to build a complete rootfs.",
+                path
+            );
+        }
+    }
+
+    // Check minimum size (rootfs should be at least 500 MB)
+    let size_mb = helpers::calculate_dir_size(rootfs)
+        .context("Failed to calculate rootfs size")? / (1024 * 1024);
+
+    if size_mb < 500 {
+        bail!(
+            "rootfs-staging seems too small ({} MB).\n\
+             A complete rootfs should be at least 500 MB.\n\
+             Run 'cargo run -- build rootfs' to rebuild.",
+            size_mb
+        );
+    }
+
+    Ok(())
+}
+
+/// Verify qcow2 image is not suspiciously small (Phase 3).
+fn verify_qcow2_internal(qcow2_path: &Path) -> Result<()> {
+    let metadata = fs::metadata(qcow2_path)?;
+    let size_mb = metadata.len() / 1024 / 1024;
+
+    if size_mb < 100 {
+        bail!(
+            "qcow2 image is suspiciously small ({} MB).\n\
+             This usually means the build failed to populate the partitions.\n\
+             Expected size: 500-2000 MB (compressed).\n\n\
+             Check that all dependencies were built first:\n\
+             - cargo run -- build kernel\n\
+             - cargo run -- build initramfs\n\
+             - cargo run -- build rootfs",
+            size_mb
+        );
+    }
+
+    println!("  [OK] Image size: {} MB (compressed)", size_mb);
     Ok(())
 }
 

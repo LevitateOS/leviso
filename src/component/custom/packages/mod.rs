@@ -5,23 +5,12 @@
 
 use anyhow::{bail, Context, Result};
 use std::fs;
-use std::path::PathBuf;
 
 use leviso_elf::{copy_dir_recursive, make_executable};
 
 use crate::build::context::BuildContext;
+use crate::common::read_manifest_file;
 use distro_builder::process::shell_in;
-
-/// Read a file from the colocated files directory (no relative path traversal)
-fn read_profile_file(_ctx: &BuildContext, path: &str) -> Result<String> {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    // manifest_dir is already at leviso/ root, so join directly to files directory
-    let file_path = manifest_dir
-        .join("src/component/custom/packages/files")
-        .join(path);
-    fs::read_to_string(&file_path)
-        .with_context(|| format!("Failed to read packages file from {}", file_path.display()))
-}
 
 /// Extract and copy systemd-boot EFI files from RPM.
 pub fn copy_systemd_boot_efi(ctx: &BuildContext) -> Result<()> {
@@ -177,8 +166,8 @@ pub fn setup_recipe_config(ctx: &BuildContext) -> Result<()> {
         fs::create_dir_all(ctx.staging.join(dir))?;
     }
 
-    fs::write(ctx.staging.join("etc/recipe/recipe.conf"), read_profile_file(ctx, "recipe.conf")?)?;
-    fs::write(ctx.staging.join("etc/profile.d/recipe.sh"), read_profile_file(ctx, "recipe.sh")?)?;
+    fs::write(ctx.staging.join("etc/recipe/recipe.conf"), read_manifest_file("packages/files", "recipe.conf")?)?;
+    fs::write(ctx.staging.join("etc/profile.d/recipe.sh"), read_manifest_file("packages/files", "recipe.sh")?)?;
 
     println!("  Created recipe configuration");
     Ok(())

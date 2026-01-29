@@ -1,45 +1,19 @@
 //! Live ISO overlay operations.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use distro_spec::levitate::LIVE_ISSUE_MESSAGE;
 use distro_spec::shared::LEVITATE_CARGO_TOOLS;
 
 use crate::build::context::BuildContext;
-
-/// Read a file from the colocated overlay directory (no relative path traversal)
-fn read_profile_file_from_base(_base_dir: &Path, path: &str) -> Result<String> {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    // manifest_dir is already at leviso/ root, so join directly to overlay directory
-    let file_path = manifest_dir
-        .join("src/component/custom/live/overlay")
-        .join(path);
-    fs::read_to_string(&file_path)
-        .with_context(|| format!("Failed to read live overlay file from {}", file_path.display()))
-}
-
-/// Read a file from the colocated overlay directory
-fn read_profile_file(_ctx: &BuildContext, path: &str) -> Result<String> {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    // manifest_dir is already at leviso/ root, so join directly to overlay directory
-    let file_path = manifest_dir
-        .join("src/component/custom/live/overlay")
-        .join(path);
-    fs::read_to_string(&file_path)
-        .with_context(|| format!("Failed to read live overlay file from {}", file_path.display()))
-}
+use crate::common::read_manifest_file;
 
 /// Read test instrumentation file - used by both live ISO and qcow2
 pub fn read_test_instrumentation() -> Result<String> {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    // manifest_dir is already at leviso/ root, so join directly to overlay directory
-    let file_path = manifest_dir
-        .join("src/component/custom/live/overlay/etc/profile.d/00-levitate-test.sh");
-    fs::read_to_string(&file_path)
-        .with_context(|| format!("Failed to read test instrumentation file from {}", file_path.display()))
+    read_manifest_file("live/overlay", "etc/profile.d/00-levitate-test.sh")
 }
 
 /// Create live overlay directory with autologin, serial console, empty root password.
@@ -65,7 +39,7 @@ pub fn create_live_overlay_at(output_dir: &Path, base_dir: &Path) -> Result<()> 
     // Console autologin service (Conflicts=getty@tty1.service ensures no conflict)
     fs::write(
         systemd_dir.join("console-autologin.service"),
-        read_profile_file_from_base(base_dir, "etc/systemd/system/console-autologin.service")?,
+        read_manifest_file("live/overlay", "etc/systemd/system/console-autologin.service")?,
     )?;
 
     std::os::unix::fs::symlink(
@@ -76,7 +50,7 @@ pub fn create_live_overlay_at(output_dir: &Path, base_dir: &Path) -> Result<()> 
     // Serial console service
     fs::write(
         systemd_dir.join("serial-console.service"),
-        read_profile_file_from_base(base_dir, "etc/systemd/system/serial-console.service")?,
+        read_manifest_file("live/overlay", "etc/systemd/system/serial-console.service")?,
     )?;
 
     std::os::unix::fs::symlink(
@@ -85,7 +59,7 @@ pub fn create_live_overlay_at(output_dir: &Path, base_dir: &Path) -> Result<()> 
     )?;
 
     // Shadow file with empty root password
-    fs::write(overlay_dir.join("etc/shadow"), read_profile_file_from_base(base_dir, "etc/shadow")?)?;
+    fs::write(overlay_dir.join("etc/shadow"), read_manifest_file("live/overlay", "etc/shadow")?)?;
 
     fs::set_permissions(
         overlay_dir.join("etc/shadow"),
@@ -96,15 +70,15 @@ pub fn create_live_overlay_at(output_dir: &Path, base_dir: &Path) -> Result<()> 
     let profile_d = overlay_dir.join("etc/profile.d");
     fs::create_dir_all(&profile_d)?;
     // Test mode instrumentation (00- prefix = runs first)
-    fs::write(profile_d.join("00-levitate-test.sh"), read_profile_file_from_base(base_dir, "etc/profile.d/00-levitate-test.sh")?)?;
+    fs::write(profile_d.join("00-levitate-test.sh"), read_manifest_file("live/overlay", "etc/profile.d/00-levitate-test.sh")?)?;
     // Auto-launch tmux with docs-tui for interactive users
-    fs::write(profile_d.join("live-docs.sh"), read_profile_file_from_base(base_dir, "etc/profile.d/live-docs.sh")?)?;
+    fs::write(profile_d.join("live-docs.sh"), read_manifest_file("live/overlay", "etc/profile.d/live-docs.sh")?)?;
 
     // Autologin wrapper script
     let usr_local_bin = overlay_dir.join("usr/local/bin");
     fs::create_dir_all(&usr_local_bin)?;
     let autologin_path = usr_local_bin.join("autologin-shell");
-    fs::write(&autologin_path, read_profile_file_from_base(base_dir, "usr/local/bin/autologin-shell")?)?;
+    fs::write(&autologin_path, read_manifest_file("live/overlay", "usr/local/bin/autologin-shell")?)?;
     fs::set_permissions(&autologin_path, fs::Permissions::from_mode(0o755))?;
 
     println!("  Created live overlay");
@@ -118,7 +92,7 @@ pub fn create_live_overlay(ctx: &BuildContext) -> Result<()> {
 
 /// Create welcome message (MOTD) for live environment.
 pub fn create_welcome_message(ctx: &BuildContext) -> Result<()> {
-    fs::write(ctx.staging.join("etc/motd"), read_profile_file(ctx, "etc/motd")?)?;
+    fs::write(ctx.staging.join("etc/motd"), read_manifest_file("live/overlay", "etc/motd")?)?;
     fs::write(ctx.staging.join("etc/issue"), LIVE_ISSUE_MESSAGE)?;
     Ok(())
 }

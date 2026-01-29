@@ -6,6 +6,7 @@
 
 pub mod artifact;
 pub mod build;
+pub mod common;
 pub mod component;
 pub mod config;
 pub mod recipe;

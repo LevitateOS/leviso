@@ -1,0 +1,13 @@
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+export EDITOR="vi"
+export PAGER="less"
+
+for script in /etc/profile.d/*.sh; do
+    [ -r "$script" ] && . "$script"
+done
+unset script
+
+if [ -n "$PS1" ]; then
+    PS1='[\u@\h \W]\$ '
+    [ -f /etc/motd ] && cat /etc/motd
+fi

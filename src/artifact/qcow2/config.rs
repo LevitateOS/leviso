@@ -219,15 +219,16 @@ fn regenerate_ssh_keys(root_dir: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn test_fstab_format() {
-        let temp_dir = std::env::temp_dir().join("qcow2-test-fstab");
-        let _ = fs::remove_dir_all(&temp_dir);
+        let temp = TempDir::new().unwrap();
+        let temp_dir = temp.path();
         fs::create_dir_all(temp_dir.join("etc")).unwrap();
 
         generate_fstab(
-            &temp_dir,
+            temp_dir,
             "1234-5678",
             "abcd-efgh-ijkl-mnop",
         ).unwrap();
@@ -235,53 +236,49 @@ mod tests {
         let content = fs::read_to_string(temp_dir.join("etc/fstab")).unwrap();
         assert!(content.contains("vfat") && content.contains("0      0"));
         assert!(content.contains("ext4") && content.contains("0      1"));
-
-        let _ = fs::remove_dir_all(&temp_dir);
+        // Cleanup is automatic when temp_dir drops
     }
 
     #[test]
     fn test_set_empty_root_password() {
-        let temp_dir = std::env::temp_dir().join("qcow2-test-shadow");
-        let _ = fs::remove_dir_all(&temp_dir);
+        let temp = TempDir::new().unwrap();
+        let temp_dir = temp.path();
         fs::create_dir_all(temp_dir.join("etc")).unwrap();
 
         let shadow_content = "root:!:19000:0:99999:7:::\nbin:*:19000:0:99999:7:::\n";
         fs::write(temp_dir.join("etc/shadow"), shadow_content).unwrap();
 
-        set_empty_root_password(&temp_dir).unwrap();
+        set_empty_root_password(temp_dir).unwrap();
 
         let new_content = fs::read_to_string(temp_dir.join("etc/shadow")).unwrap();
         assert!(new_content.starts_with("root::19000"), "Got: {}", new_content);
         assert!(new_content.contains("bin:*:19000"));
-
-        let _ = fs::remove_dir_all(&temp_dir);
+        // Cleanup is automatic when temp_dir drops
     }
 
     #[test]
     fn test_configure_machine_id() {
-        let temp_dir = std::env::temp_dir().join("qcow2-test-machine-id");
-        let _ = fs::remove_dir_all(&temp_dir);
+        let temp = TempDir::new().unwrap();
+        let temp_dir = temp.path();
         fs::create_dir_all(temp_dir.join("etc")).unwrap();
 
-        configure_machine_id(&temp_dir).unwrap();
+        configure_machine_id(temp_dir).unwrap();
 
         let content = fs::read_to_string(temp_dir.join("etc/machine-id")).unwrap();
         assert!(content.is_empty());
-
-        let _ = fs::remove_dir_all(&temp_dir);
+        // Cleanup is automatic when temp_dir drops
     }
 
     #[test]
     fn test_set_hostname() {
-        let temp_dir = std::env::temp_dir().join("qcow2-test-hostname");
-        let _ = fs::remove_dir_all(&temp_dir);
+        let temp = TempDir::new().unwrap();
+        let temp_dir = temp.path();
         fs::create_dir_all(temp_dir.join("etc")).unwrap();
 
-        set_hostname(&temp_dir).unwrap();
+        set_hostname(temp_dir).unwrap();
 
         let content = fs::read_to_string(temp_dir.join("etc/hostname")).unwrap();
         assert_eq!(content.trim(), "levitateos");
-
-        let _ = fs::remove_dir_all(&temp_dir);
+        // Cleanup is automatic when temp_dir drops
     }
 }

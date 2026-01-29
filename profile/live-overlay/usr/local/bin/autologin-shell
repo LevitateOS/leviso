@@ -1,0 +1,9 @@
+#!/bin/bash
+# Autologin wrapper that launches live environment
+
+# Source profile to trigger live-docs.sh which creates and attaches to tmux session
+# If live-docs.sh runs successfully, it will exec into tmux and this script won't continue
+. /etc/profile
+
+# Fallback to regular bash if live-docs.sh didn't exec (e.g., not on tty1, levitate-docs missing, etc.)
+exec /bin/bash

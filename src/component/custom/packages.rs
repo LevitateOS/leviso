@@ -87,13 +87,17 @@ pub fn copy_keymaps(ctx: &BuildContext) -> Result<()> {
 }
 
 /// Copy the recipe package manager binary.
+///
+/// AUTOMATICALLY REBUILDS recipe before copying to ensure latest version.
 pub fn copy_recipe(ctx: &BuildContext) -> Result<()> {
-    println!("Copying recipe package manager...");
+    use std::process::Command;
+
+    println!("Building and copying recipe package manager...");
 
     let recipe_path = if let Ok(env_path) = std::env::var("RECIPE_BINARY") {
         let path = std::path::PathBuf::from(&env_path);
         if path.exists() {
-            println!("  Using recipe from RECIPE_BINARY env var");
+            println!("  Using recipe from RECIPE_BINARY env var (skipping rebuild)");
             path
         } else {
             bail!(
@@ -104,22 +108,38 @@ pub fn copy_recipe(ctx: &BuildContext) -> Result<()> {
         }
     } else {
         let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let recipe_path = manifest_dir.parent().unwrap().join("tools/recipe/target/release/recipe");
+        let monorepo_dir = manifest_dir.parent().unwrap();
+        let recipe_path = monorepo_dir.join("target/release/recipe");
+
+        // ALWAYS rebuild recipe to ensure latest version
+        println!("  Rebuilding recipe...");
+        let status = Command::new("cargo")
+            .args(["build", "--release", "-p", "levitate-recipe"])
+            .current_dir(monorepo_dir)
+            .status()
+            .context("Failed to run cargo build for recipe")?;
+
+        if !status.success() {
+            bail!(
+                "Failed to build recipe. Check cargo output above.\n\
+                 \n\
+                 recipe is REQUIRED for the live ISO."
+            );
+        }
 
         if recipe_path.exists() {
             recipe_path
         } else {
-            bail!(
-                "recipe binary not found. LevitateOS REQUIRES the package manager.\n\
-                 \n\
-                 Build it:\n\
-                   cd tools/recipe && cargo build --release\n\
-                 \n\
-                 Or set env var:\n\
-                   export RECIPE_BINARY=/path/to/recipe/target/release/recipe\n\
-                 \n\
-                 DO NOT remove this check. An ISO without recipe is BROKEN."
-            );
+            // Fallback to crate-local target
+            let local_path = monorepo_dir.join("tools/recipe/target/release/recipe");
+            if local_path.exists() {
+                local_path
+            } else {
+                bail!(
+                    "recipe binary not found after rebuild. This is a bug.\n\
+                     Check that tools/recipe/Cargo.toml exists and compiles."
+                );
+            }
         }
     };
 
@@ -128,7 +148,7 @@ pub fn copy_recipe(ctx: &BuildContext) -> Result<()> {
         .with_context(|| format!("Failed to copy recipe from {:?}", recipe_path))?;
     make_executable(&dest)?;
 
-    println!("  Copied recipe to /usr/bin/recipe");
+    println!("  Installed recipe to /usr/bin/recipe");
     Ok(())
 }
 

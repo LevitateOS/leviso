@@ -15,17 +15,18 @@ command -v levitate-docs >/dev/null 2>&1 || return
 command -v tmux >/dev/null 2>&1 || return
 
 # Launch tmux with shell on left, docs on right
+# Using -l 88 to give docs pane exactly 88 columns (enough for 80 col minimum + some margin)
 exec tmux new-session -d -s live \; \
     set-option -g prefix None \; \
     set-option -g mouse on \; \
     set-option -g status-style 'bg=black,fg=white' \; \
     set-option -g status-left '' \; \
-    set-option -g status-right ' Shift+Tab: switch | Ctrl+←/→: resize | F1: help ' \; \
+    set-option -g status-right ' Shift+Tab: switch | Ctrl+Left/Right: resize | F1: help ' \; \
     set-option -g status-right-length 60 \; \
     bind-key -n BTab select-pane -t :.+ \; \
     bind-key -n C-Left resize-pane -L 5 \; \
     bind-key -n C-Right resize-pane -R 5 \; \
-    bind-key -n F1 display-message 'Shift+Tab: switch panes | Ctrl+←/→: resize | In docs: ↑↓ navigate, j/k scroll, q quit docs' \; \
-    split-window -h 'echo "Loading documentation..." && levitate-docs' \; \
+    bind-key -n F1 display-message 'Shift+Tab: switch panes | Ctrl+Left/Right: resize | In docs: Up/Down navigate, j/k scroll, q quit' \; \
+    split-window -h -l 88 levitate-docs \; \
     select-pane -t 0 \; \
     attach-session -t live

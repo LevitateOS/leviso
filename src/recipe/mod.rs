@@ -20,6 +20,7 @@ pub use rocky::{rocky, RockyPaths};
 
 use anyhow::{bail, Context, Result};
 use distro_builder::process::ensure_exists;
+use distro_spec::shared::LEVITATE_CARGO_TOOLS;
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -266,7 +267,7 @@ pub fn install_tools(base_dir: &Path) -> Result<()> {
     let recipe_bin = find_recipe(&monorepo_dir)?;
 
     // Run each tool recipe
-    for tool in ["recstrap", "recfstab", "recchroot"] {
+    for tool in LEVITATE_CARGO_TOOLS {
         let recipe_path = base_dir.join(format!("deps/{}.rhai", tool));
         let installed_path = staging_bin.join(tool);
 

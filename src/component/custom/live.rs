@@ -6,6 +6,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 use distro_spec::levitate::LIVE_ISSUE_MESSAGE;
+use distro_spec::shared::LEVITATE_CARGO_TOOLS;
 
 use crate::build::context::BuildContext;
 
@@ -24,6 +25,8 @@ const LIVE_DOCS_SH: &str = include_str!("../../../profile/live-overlay/etc/profi
 // Test mode instrumentation (00- prefix ensures it runs before live-docs.sh)
 const LIVE_TEST_MODE: &str =
     include_str!("../../../profile/live-overlay/etc/profile.d/00-levitate-test.sh");
+// Autologin wrapper script that attaches to tmux session
+const AUTOLOGIN_SHELL: &str = include_str!("../../../profile/live-overlay/usr/local/bin/autologin-shell");
 
 /// Create live overlay directory with autologin, serial console, empty root password.
 ///
@@ -83,6 +86,13 @@ pub fn create_live_overlay_at(output_dir: &Path) -> Result<()> {
     // Auto-launch tmux with docs-tui for interactive users
     fs::write(profile_d.join("live-docs.sh"), LIVE_DOCS_SH)?;
 
+    // Autologin wrapper script
+    let usr_local_bin = overlay_dir.join("usr/local/bin");
+    fs::create_dir_all(&usr_local_bin)?;
+    let autologin_path = usr_local_bin.join("autologin-shell");
+    fs::write(&autologin_path, AUTOLOGIN_SHELL)?;
+    fs::set_permissions(&autologin_path, fs::Permissions::from_mode(0o755))?;
+
     println!("  Created live overlay");
     Ok(())
 }
@@ -101,12 +111,12 @@ pub fn create_welcome_message(ctx: &BuildContext) -> Result<()> {
 
 /// Install installation tools (recstrap, recfstab, recchroot) to staging.
 ///
-/// Copies the tools directly from the workspace target directory to ctx.staging.
-/// This ensures tools are installed to the correct staging directory being built,
-/// not a hardcoded path.
+/// AUTOMATICALLY REBUILDS tools before copying to ensure latest versions.
+/// This prevents stale binaries from being included in the ISO.
 pub fn install_tools(ctx: &BuildContext) -> Result<()> {
     use anyhow::{bail, Context};
     use leviso_elf::make_executable;
+    use std::process::Command;
 
     let monorepo_dir = ctx.base_dir
         .parent()
@@ -116,7 +126,31 @@ pub fn install_tools(ctx: &BuildContext) -> Result<()> {
     let bin_dir = ctx.staging.join("usr/bin");
     fs::create_dir_all(&bin_dir)?;
 
-    for tool in ["recstrap", "recfstab", "recchroot"] {
+    // Build args: cargo build --release -p recstrap -p recfstab -p recchroot
+    let mut build_args: Vec<&str> = vec!["build", "--release"];
+    for tool in LEVITATE_CARGO_TOOLS {
+        build_args.push("-p");
+        build_args.push(tool);
+    }
+
+    // ALWAYS rebuild tools to ensure latest version
+    println!("  Rebuilding installation tools ({})...", LEVITATE_CARGO_TOOLS.join(", "));
+    let status = Command::new("cargo")
+        .args(&build_args)
+        .current_dir(&monorepo_dir)
+        .status()
+        .context("Failed to run cargo build for installation tools")?;
+
+    if !status.success() {
+        bail!(
+            "Failed to build installation tools. Check cargo output above.\n\
+             \n\
+             These tools are REQUIRED for the live ISO."
+        );
+    }
+    println!("  Rebuilt installation tools successfully");
+
+    for tool in LEVITATE_CARGO_TOOLS {
         let dest = bin_dir.join(tool);
 
         // Check workspace target (most common for workspace members)
@@ -140,10 +174,8 @@ pub fn install_tools(ctx: &BuildContext) -> Result<()> {
         }
 
         bail!(
-            "{} binary not found. Build it first:\n\
-             cargo build --release -p {}\n\
-             \n\
-             Or: RECIPE_BINARY=... leviso build",
+            "{} binary not found after rebuild. This is a bug.\n\
+             Check that tools/{}/Cargo.toml exists and compiles.",
             tool, tool
         );
     }

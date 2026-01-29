@@ -90,11 +90,16 @@ pub fn execute(ctx: &BuildContext, op: CustomOp, tracker: &LicenseTracker) -> Re
 
 /// Install docs-tui (levitate-docs) to staging.
 ///
-/// Copies directly to ctx.staging instead of hardcoded path.
+/// AUTOMATICALLY REBUILDS the docs-TUI before copying to ensure latest version.
+/// Copies the binary AND its library dependencies to staging.
+/// The levitate-docs binary is compiled with Bun and links against glibc,
+/// so we must ensure libpthread.so.0, libdl.so.2, libm.so.6 etc. are present.
 fn install_docs_tui(ctx: &BuildContext) -> Result<()> {
     use anyhow::{bail, Context};
-    use leviso_elf::make_executable;
+    use leviso_elf::{get_all_dependencies, make_executable};
     use std::fs;
+    use std::process::Command;
+    use crate::build::libdeps::copy_library;
 
     let monorepo_dir = ctx.base_dir
         .parent()
@@ -106,24 +111,55 @@ fn install_docs_tui(ctx: &BuildContext) -> Result<()> {
 
     let dest = bin_dir.join("levitate-docs");
 
-    // Check for built binary in docs/tui
-    let docs_tui_binary = monorepo_dir.join("docs/tui/levitate-docs");
-    if docs_tui_binary.exists() {
-        fs::copy(&docs_tui_binary, &dest)
-            .with_context(|| "Failed to copy levitate-docs to staging")?;
-        make_executable(&dest)?;
-        let size_mb = fs::metadata(&dest)?.len() as f64 / 1_000_000.0;
-        println!("  Installed levitate-docs ({:.1} MB)", size_mb);
-        return Ok(());
+    let docs_tui_dir = monorepo_dir.join("docs/tui");
+    let docs_tui_binary = docs_tui_dir.join("levitate-docs");
+
+    // ALWAYS rebuild docs-TUI to ensure latest version
+    println!("  Rebuilding levitate-docs...");
+    let status = Command::new("bun")
+        .args(["build", "--compile", "--minify", "--outfile", "levitate-docs", "src/index.ts"])
+        .current_dir(&docs_tui_dir)
+        .status()
+        .context("Failed to run bun build for levitate-docs")?;
+
+    if !status.success() {
+        bail!(
+            "Failed to build levitate-docs. Check bun output above.\n\
+             \n\
+             Make sure bun is installed: curl -fsSL https://bun.sh/install | bash"
+        );
     }
 
-    bail!(
-        "levitate-docs binary not found at {}.\n\
-         \n\
-         Build it:\n\
-           cd docs/tui && bun build --compile --minify --outfile levitate-docs src/index.tsx\n\
-         \n\
-         The docs TUI shows installation instructions in the live ISO.",
-        docs_tui_binary.display()
-    );
+    if !docs_tui_binary.exists() {
+        bail!(
+            "levitate-docs binary not found after rebuild at {}.\n\
+             This is a bug - bun build succeeded but binary not created.",
+            docs_tui_binary.display()
+        );
+    }
+
+    // Copy the binary
+    fs::copy(&docs_tui_binary, &dest)
+        .with_context(|| "Failed to copy levitate-docs to staging")?;
+    make_executable(&dest)?;
+    let size_mb = fs::metadata(&dest)?.len() as f64 / 1_000_000.0;
+    println!("  Installed levitate-docs ({:.1} MB)", size_mb);
+
+    // CRITICAL: Copy library dependencies from Rocky rootfs
+    // The levitate-docs binary was compiled with Bun and needs glibc compat libs:
+    // - libpthread.so.0 (glibc 2.34+ compat stub)
+    // - libdl.so.2 (glibc 2.34+ compat stub)
+    // - libm.so.6 (math library)
+    // Without these, levitate-docs crashes with "cannot open shared object file"
+    let extra_lib_paths: &[&str] = &[];
+    let libs = get_all_dependencies(&ctx.source, &docs_tui_binary, extra_lib_paths)
+        .with_context(|| "Failed to get levitate-docs library dependencies")?;
+
+    println!("  Copying {} library dependencies for levitate-docs...", libs.len());
+    for lib_name in &libs {
+        copy_library(ctx, lib_name, None)
+            .with_context(|| format!("levitate-docs requires missing library '{}'", lib_name))?;
+    }
+
+    Ok(())
 }

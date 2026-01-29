@@ -20,13 +20,14 @@ exec tmux new-session -d -s live \; \
     set-option -g mouse on \; \
     set-option -g status-style 'bg=black,fg=white' \; \
     set-option -g status-left '' \; \
-    set-option -g status-right ' F2: switch | Ctrl+Left/Right: resize | F1: help ' \; \
+    set-option -g status-right ' Alt+Tab: switch | Ctrl+Left/Right: resize | F1: help ' \; \
     set-option -g status-right-length 60 \; \
+    bind-key -n M-Tab select-pane -t :.+ \; \
     bind-key -n BTab select-pane -t :.+ \; \
     bind-key -n F2 select-pane -t :.+ \; \
     bind-key -n C-Left resize-pane -L 5 \; \
     bind-key -n C-Right resize-pane -R 5 \; \
-    bind-key -n F1 display-message 'F2: switch panes | Ctrl+Left/Right: resize | In docs: Up/Down navigate, j/k scroll, q quit' \; \
+    bind-key -n F1 display-message 'Alt+Tab: switch panes | Ctrl+Left/Right: resize | In docs: Up/Down navigate, j/k scroll, q quit' \; \
     split-window -h levitate-docs \; \
     select-pane -t 0 \; \
     attach-session -t live

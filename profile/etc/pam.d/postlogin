@@ -1,3 +1,0 @@
-# LevitateOS postlogin - post-login PAM configuration
-session     optional                   pam_umask.so silent
-session     optional                   pam_lastlog.so silent showfailed

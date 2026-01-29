@@ -3,14 +3,14 @@
 use anyhow::Result;
 use std::path::Path;
 
-use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, ROOTFS_NAME};
+use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, ROOTFS_NAME, ISO_FILENAME};
 
 use crate::artifact;
 use crate::qemu;
 
 /// Ensure ISO exists, building if necessary.
 fn ensure_iso_built(base_dir: &Path) -> Result<()> {
-    let iso_path = base_dir.join("output/levitateos.iso");
+    let iso_path = base_dir.join("output").join(ISO_FILENAME);
     if iso_path.exists() {
         return Ok(());
     }

@@ -1,8 +1,0 @@
-if [ -n "$PS1" ]; then
-    HISTSIZE=1000
-    HISTFILESIZE=2000
-    HISTCONTROL=ignoredups:erasedups
-    alias ls='ls --color=auto'
-    alias ll='ls -la'
-    alias l='ls -l'
-fi

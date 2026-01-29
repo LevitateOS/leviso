@@ -83,15 +83,15 @@ pub fn run_iso(base_dir: &Path, disk_size: Option<String>) -> Result<()> {
     )?;
     println!("  Boot: UEFI ({})", ovmf_path.display());
 
-    // Build and run QEMU
+    // Build and run QEMU with VNC display (supports 1920x1080 resolution)
     let status = QemuBuilder::new()
         .memory(&format!("{}G", QEMU_MEMORY_GB))
         .cdrom(&iso_path)
         .disk(&disk_path)
         .uefi(&ovmf_path)
         .user_network()
-        .display("gtk,gl=on")
-        .vga("virtio")
+        .vnc_display(0)
+        .vga("qxl")
         .serial_file(output_dir.join(QEMU_SERIAL_LOG))
         .build_interactive()
         .status()

@@ -255,7 +255,7 @@ struct IsoPaths {
 let vmlinuz = base_dir.join("output/staging/boot/vmlinuz");
 let rootfs_path = base_dir.join("output/filesystem.erofs");
 let initramfs_path = base_dir.join("output/initramfs-tiny.cpio.gz");
-let iso_path = base_dir.join("output/levitateos.iso");
+let iso_path = base_dir.join("output/levitateos-x86_64.iso");
 ```
 
 ### Proposed Solution

@@ -30,7 +30,7 @@ Rocky Linux 10 ISO → extract packages → EROFS rootfs → initramfs → boota
 
 | File | Size | Description |
 |------|------|-------------|
-| `output/levitateos.iso` | ~800MB | Bootable ISO (UEFI + BIOS) |
+| `output/levitateos-x86_64.iso` | ~800MB | Bootable ISO (UEFI + BIOS) |
 | `output/filesystem.erofs` | ~700MB | EROFS compressed root filesystem |
 | `output/initramfs-tiny.cpio.gz` | ~1MB | Busybox init + kernel modules |
 
@@ -101,7 +101,7 @@ output/                          # Build artifacts (gitignored)
 ├── initramfs-tiny.cpio.gz
 ├── initramfs-tiny-root/         # Initramfs staging directory
 ├── rootfs-staging/              # Rootfs staging directory
-└── levitateos.iso
+└── levitateos-x86_64.iso
 
 profile/                         # Live system customization
 ├── init_tiny                    # Busybox init script

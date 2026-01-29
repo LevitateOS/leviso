@@ -1,0 +1,344 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/vince/Projects/LevitateOS/tools/reciso/Cargo.toml
+workspace: /home/vince/Projects/LevitateOS/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/vince/Projects/LevitateOS/tools/recuki/Cargo.toml
+workspace: /home/vince/Projects/LevitateOS/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/vince/Projects/LevitateOS/tools/recqemu/Cargo.toml
+workspace: /home/vince/Projects/LevitateOS/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/vince/Projects/LevitateOS/tools/recstrap/Cargo.toml
+workspace: /home/vince/Projects/LevitateOS/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/vince/Projects/LevitateOS/tools/recfstab/Cargo.toml
+workspace: /home/vince/Projects/LevitateOS/Cargo.toml
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/vince/Projects/LevitateOS/tools/recchroot/Cargo.toml
+workspace: /home/vince/Projects/LevitateOS/Cargo.toml
+   Compiling distro-spec v0.1.0 (/home/vince/Projects/LevitateOS/distro-spec)
+   Compiling recqemu v0.1.0 (/home/vince/Projects/LevitateOS/tools/recqemu)
+   Compiling distro-builder v0.1.0 (/home/vince/Projects/LevitateOS/distro-builder)
+   Compiling fsdbg v0.1.0 (/home/vince/Projects/LevitateOS/testing/fsdbg)
+   Compiling recinit v0.1.0 (/home/vince/Projects/LevitateOS/tools/recinit)
+warning: unused variable: `bin_dir`
+   --> tools/recinit/src/install.rs:154:9
+    |
+154 |     let bin_dir = initramfs_root.join("bin");
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_bin_dir`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling reciso v0.1.0 (/home/vince/Projects/LevitateOS/tools/reciso)
+   Compiling leviso v0.1.0 (/home/vince/Projects/LevitateOS/leviso)
+warning: `recinit` (lib) generated 1 warning (run `cargo fix --lib -p recinit` to apply 1 suggestion)
+warning: unused variable: `efi_size_bytes`
+   --> leviso/src/artifact/qcow2.rs:501:9
+    |
+501 |     let efi_size_bytes = EFI_SIZE_MB * 1024 * 1024;
+    |         ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_efi_size_bytes`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `leviso` (lib) generated 1 warning (run `cargo fix --lib -p leviso` to apply 1 suggestion)
+warning: unused import: `licenses::LicenseTracker`
+  --> leviso/src/build/mod.rs:24:9
+   |
+24 | pub use licenses::LicenseTracker;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `LinuxPaths`
+  --> leviso/src/recipe/mod.rs:18:42
+   |
+18 | pub use linux::{has_linux_source, linux, LinuxPaths};
+   |                                          ^^^^^^^^^^
+
+warning: unused import: `RockyPaths`
+  --> leviso/src/recipe/mod.rs:19:24
+   |
+19 | pub use rocky::{rocky, RockyPaths};
+   |                        ^^^^^^^^^^
+
+warning: method `package_count` is never used
+  --> leviso/src/build/licenses.rs:55:12
+   |
+20 | impl LicenseTracker {
+   | ------------------- method in this implementation
+...
+55 |     pub fn package_count(&self) -> usize {
+   |            ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `leviso` (bin "leviso") generated 5 warnings (1 duplicate) (run `cargo fix --bin "leviso" -p leviso` to apply 3 suggestions)
+    Finished `release` profile [optimized] target(s) in 7.11s
+     Running `/home/vince/Projects/LevitateOS/target/release/leviso build`
+=== Full LevitateOS Build ===
+
+
+Extracting supplementary packages...
+  Building recipe (monorepo)...
+    Source: /home/vince/Projects/LevitateOS/tools/recipe
+    Profile: debug
+    Built: /home/vince/Projects/LevitateOS/target/debug/recipe
+  Running recipe: /home/vince/Projects/LevitateOS/leviso/deps/packages.rhai
+    Build dir: /home/vince/Projects/LevitateOS/leviso/downloads
+[2m==>[0m [2mpackages already installed, skipping[0m
+
+Downloading EPEL packages...
+  Building recipe (monorepo)...
+    Source: /home/vince/Projects/LevitateOS/tools/recipe
+    Profile: debug
+    Built: /home/vince/Projects/LevitateOS/target/debug/recipe
+  Running recipe: /home/vince/Projects/LevitateOS/leviso/deps/epel.rhai
+    Build dir: /home/vince/Projects/LevitateOS/leviso/downloads
+[2m==>[0m [2mepel already installed, skipping[0m
+
+[SKIP] Kernel already built and installed
+
+[SKIP] Rootfs already built (inputs unchanged)
+
+[SKIP] Initramfs already built (inputs unchanged)
+
+[SKIP] Install initramfs already built (inputs unchanged)
+
+[SKIP] ISO already built (components unchanged)
+
+=== Artifact Verification ===
+  Verifying Live Initramfs... OK (59/59 checks)
+  Verifying Install Initramfs... OK (150/150 checks)
+  Verifying ISO... OK (21 items checked)
+
+=== Hardware Compatibility Verification ===
+
+Profile: Intel NUC (7th-13th gen)
+Description: Compact Intel systems - NUC7 through NUC13
+--------------------------------------------------
+
+Kernel Configuration: 38 passed
+
+Firmware: 4 passed
+
+Result: PASS
+==================================================
+
+Profile: AMD Mini PC (Beelink, Minisforum, etc.)
+Description: Compact AMD Ryzen systems - Ryzen 5000-8000 APUs
+--------------------------------------------------
+
+Kernel Configuration:
+  ✗ CONFIG_SND_SOC_AMD_ACP3x       Not found  AMD ACP3x (Renoir/Cezanne)
+  ✗ CONFIG_SND_SOC_AMD_ACP5x       Not found  AMD ACP5x
+  ✗ CONFIG_SND_SOC_AMD_ACP6x       Not found  AMD ACP6x (Rembrandt)
+  ✗ CONFIG_SND_SOC_AMD_PS          Not found  AMD Pink Sardine (Phoenix)
+  ✗ CONFIG_MMC_REALTEK_PCI         Not found  Realtek SD reader
+  ✗ CONFIG_AMD_MEM_ENCRYPT         Not found  AMD SME/SEV memory encryption
+
+Firmware: 10 passed
+
+Issues: 6 kernel failures
+
+Result: PASS WITH WARNINGS
+==================================================
+
+Profile: ThinkPad (T/X/P series 2018+)
+Description: Enterprise laptops - Intel and AMD variants
+--------------------------------------------------
+
+Kernel Configuration:
+  ✗ CONFIG_MOUSE_PS2_ELANTECH      Not found  Elantech touchpad
+  ✗ CONFIG_THINKPAD_ACPI           Not found  ThinkPad ACPI extras (Fn keys, LEDs)
+  ✗ CONFIG_USB_NET_QMI_WWAN        Not found  Qualcomm WWAN (LTE modem)
+  ✗ CONFIG_USB_WDM                 Not found  WWAN modem support
+
+Firmware:
+  ! ath11k/*                       Found only 9 files, expected 10 Qualcomm WiFi 6 firmware
+
+Issues: 4 kernel failures, 1 firmware warnings
+
+Result: PASS WITH WARNINGS
+==================================================
+
+Profile: Dell XPS (13/15/17)
+Description: Premium Dell ultrabooks - excellent Linux support
+--------------------------------------------------
+
+Kernel Configuration:
+  ✗ CONFIG_SND_SOC_INTEL_AVS       Not found  Intel AVS audio
+  ✗ CONFIG_DELL_LAPTOP             Not found  Dell laptop support
+  ✗ CONFIG_DELL_WMI                Not found  Dell WMI
+  ✗ CONFIG_DELL_SMBIOS             Not found  Dell SMBIOS
+  ✗ CONFIG_DELL_RBTN               Not found  Dell radio button
+  ✗ CONFIG_INTEL_VSC               Not found  Intel Visual Sensing
+  ✗ CONFIG_MMC_REALTEK_PCI         Not found  Realtek SD reader
+
+Firmware: 5 passed
+
+Issues: 7 kernel failures
+
+Result: PASS WITH WARNINGS
+==================================================
+
+Profile: Framework Laptop (13" & 16")
+Description: Modular laptops - Intel and AMD variants
+--------------------------------------------------
+
+Kernel Configuration:
+  ✗ CONFIG_TYPEC_TPS6598X          Not found  TI TPS6598x USB PD controller
+  ✗ CONFIG_SND_SOC_AMD_PS          Not found  AMD Pink Sardine audio (Ryzen 7040)
+  ✗ CONFIG_INTEL_VSC               Not found  Intel Visual Sensing Controller (webcam privacy)
+  ✗ CONFIG_CROS_EC                 Not found  Chrome OS EC (Framework uses similar)
+  ✗ CONFIG_CROS_EC_LPC             Not found  EC LPC interface
+
+Firmware: 9 passed
+
+Issues: 5 kernel failures
+
+Result: PASS WITH WARNINGS
+==================================================
+
+Profile: Microsoft Surface (Pro/Laptop/Go)
+Description: Surface devices - requires linux-surface patches for full support
+--------------------------------------------------
+
+Kernel Configuration:
+  ✗ CONFIG_SURFACE_AGGREGATOR      Not found  Surface Aggregator Module
+  ✗ CONFIG_SURFACE_AGGREGATOR_HUB  Not found  SAM hub
+  ✗ CONFIG_SURFACE_AGGREGATOR_REGISTRY Not found  SAM registry
+
+Firmware:
+  ! ath10k/*                       Found only 9 files, expected 10 Qualcomm WiFi firmware
+
+Issues: 3 kernel failures, 1 firmware warnings
+
+Result: PASS WITH WARNINGS
+==================================================
+
+Profile: Gaming Laptop (ROG, Razer, Legion)
+Description: High-performance gaming laptops - RTX Mobile, Ryzen HX
+--------------------------------------------------
+
+Kernel Configuration: 59 passed
+
+Firmware: 10 passed
+
+Result: PASS
+==================================================
+
+Profile: Linux-First Laptop (System76, TUXEDO)
+Description: Laptops designed for Linux - excellent out-of-box support
+--------------------------------------------------
+
+Kernel Configuration:
+  ✗ CONFIG_MOUSE_PS2_ELANTECH      Not found  Elantech touchpad
+  ✗ CONFIG_SYSTEM76_ACPI           Not found  System76 ACPI (Fn keys, backlight, airplane LED)
+  ✗ CONFIG_LEDS_CLASS_MULTICOLOR   Not found  Multicolor LED (RGB)
+  ✗ CONFIG_GOOGLE_COREBOOT_TABLE   Not found  Coreboot tables
+  ✗ CONFIG_GOOGLE_MEMCONSOLE_COREBOOT Not found  Coreboot console
+
+Firmware:
+  ! ath11k/*                       Found only 9 files, expected 10 Qualcomm WiFi firmware
+
+Issues: 5 kernel failures, 1 firmware warnings
+
+Result: PASS WITH WARNINGS
+==================================================
+
+Profile: Desktop (Custom/Pre-built)
+Description: Desktops and workstations - Intel/AMD CPUs, all GPU vendors
+--------------------------------------------------
+
+Kernel Configuration:
+  ✗ CONFIG_DRM_XE                  Not found  Intel Xe graphics (Arc discrete)
+  ✗ CONFIG_MMC_REALTEK_PCI         Not found  Realtek PCI-E SD reader
+
+Firmware:
+  ! ath10k/*                       Found only 9 files, expected 20 Qualcomm WiFi 5 firmware
+  ! ath11k/*                       Found only 9 files, expected 10 Qualcomm WiFi 6 firmware
+
+Issues: 2 kernel failures, 2 firmware warnings
+
+Result: PASS WITH WARNINGS
+==================================================
+
+Profile: Gaming Desktop
+Description: High-performance gaming PCs - RTX 40/RX 7000, fast storage
+--------------------------------------------------
+
+Kernel Configuration:
+  ✗ CONFIG_DRM_XE                  Not found  Intel Xe (Arc discrete)
+  ✗ CONFIG_HID_LOGITECH            Not found  Logitech gaming peripherals
+  ✗ CONFIG_HID_LOGITECH_DJ         Not found  Logitech Unifying receiver
+  ✗ CONFIG_HID_LOGITECH_HIDPP      Not found  Logitech HID++ (G-series)
+  ✗ CONFIG_HID_RAZER               Not found  Razer peripherals
+  ✗ CONFIG_HID_CORSAIR             Not found  Corsair peripherals
+  ✗ CONFIG_HID_STEELSERIES         Not found  SteelSeries peripherals
+  ✗ CONFIG_LEDS_CLASS_MULTICOLOR   Not found  Multi-color LED
+
+Firmware: 10 passed
+
+Issues: 8 kernel failures
+
+Result: PASS WITH WARNINGS
+==================================================
+
+Profile: Workstation (Precision, ZBook, Threadripper)
+Description: Professional workstations - Xeon, Threadripper, Quadro/Pro GPUs
+--------------------------------------------------
+
+Kernel Configuration:
+  ✗ CONFIG_MEGARAID_SAS            Not found  LSI MegaRAID SAS
+  ✗ CONFIG_SCSI_HPSA               Not found  HP Smart Array
+  ✗ CONFIG_EDAC                    Not found  Error Detection And Correction
+
+Firmware: 6 passed
+
+Issues: 3 kernel failures
+
+Result: PASS WITH WARNINGS
+==================================================
+
+Profile: Homelab/Server
+Description: Servers and homelab - PowerEdge, ProLiant, EPYC, Xeon
+--------------------------------------------------
+
+Kernel Configuration:
+  ✗ CONFIG_DRM_AST                 Not found  Aspeed AST (BMC VGA)
+  ✗ CONFIG_DRM_MGAG200             Not found  Matrox G200 (BMC)
+  ✗ CONFIG_MEGARAID_SAS            Not found  Broadcom MegaRAID SAS
+  ✗ CONFIG_MEGARAID_MM             Not found  MegaRAID management
+  ✗ CONFIG_SCSI_HPSA               Not found  HP Smart Array
+  ✗ CONFIG_SCSI_MPT3SAS            Not found  Broadcom SAS 3.0
+  ✗ CONFIG_EDAC                    Not found  ECC error detection
+  ✗ CONFIG_EDAC_DECODE_MCE         Not found  MCE decoding
+
+Firmware: 4 passed
+
+Issues: 8 kernel failures
+
+Result: FAIL
+==================================================
+
+Profile: Steam Deck (LCD & OLED)
+Description: Valve handheld gaming PC - AMD Van Gogh/Sephiroth APU
+--------------------------------------------------
+
+Kernel Configuration:
+  ✗ CONFIG_SND_SOC_AMD_VANGOGH_MACH Not found  AMD Van Gogh audio
+
+Firmware: 4 passed
+
+Issues: 1 kernel failures
+
+Result: FAIL
+==================================================
+
+[FAIL] Hardware compatibility verification failed for 2 profile(s).
+
+=== Build Complete (0.6s) ===
+  ISO: output/levitateos.iso
+  Rootfs: output/filesystem.erofs
+
+Next: leviso run

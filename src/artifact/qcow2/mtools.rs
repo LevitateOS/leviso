@@ -1,39 +1,31 @@
 //! mtools file operations for FAT32 image manipulation.
 
-use anyhow::{bail, Context, Result};
+use anyhow::Result;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
+use distro_builder::process::Cmd;
 
 /// Create a directory in a FAT image using mmd.
 pub fn mtools_mkdir(image: &Path, dir: &str) -> Result<()> {
-    let status = Command::new("mmd")
+    // Note: mmd returns error if directory exists, which is fine
+    // We use run_ignore_status to not fail on "directory exists" errors
+    let _ = Cmd::new("mmd")
         .args(["-i"])
-        .arg(image)
+        .arg_path(image)
         .arg(format!("::{}", dir))
-        .status()
-        .context("Failed to run mmd")?;
-
-    // mmd returns error if directory exists, which is fine
-    if !status.success() {
-        // Ignore "directory exists" errors
-    }
+        .run();
     Ok(())
 }
 
 /// Copy a file into a FAT image using mcopy.
 pub fn mtools_copy(image: &Path, src: &Path, dest: &str) -> Result<()> {
-    let status = Command::new("mcopy")
+    Cmd::new("mcopy")
         .args(["-i"])
-        .arg(image)
-        .arg(src)
+        .arg_path(image)
+        .arg_path(src)
         .arg(format!("::{}", dest))
-        .status()
-        .with_context(|| format!("Failed to copy {} to {}", src.display(), dest))?;
-
-    if !status.success() {
-        bail!("mcopy failed: {} -> {}", src.display(), dest);
-    }
+        .error_msg(&format!("mcopy failed: {} -> {}", src.display(), dest))
+        .run()?;
     Ok(())
 }
 

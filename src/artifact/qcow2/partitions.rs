@@ -1,9 +1,9 @@
 //! EFI and root partition creation for qcow2 disk images.
 
-use anyhow::{bail, Context, Result};
+use anyhow::Result;
 use std::fs;
 use std::path::{Path, PathBuf};
-use distro_builder::process::{ensure_exists, find_first_existing};
+use distro_builder::process::{Cmd, ensure_exists, find_first_existing};
 use distro_spec::levitate::boot::{boot_entry_with_partuuid, default_loader_config};
 use super::helpers::DiskUuids;
 use super::mtools;
@@ -28,15 +28,11 @@ pub fn create_efi_partition(
     // Format as FAT32 with specific volume ID
     // Volume ID format: XXXXXXXX (8 hex digits, no dash)
     let vol_id = uuids.efi_fs_uuid.replace('-', "");
-    let status = std::process::Command::new("mkfs.vfat")
+    Cmd::new("mkfs.vfat")
         .args(["-F", "32", "-n", "EFI", "-i", &vol_id])
-        .arg(image_path)
-        .status()
-        .context("Failed to run mkfs.vfat")?;
-
-    if !status.success() {
-        bail!("mkfs.vfat failed");
-    }
+        .arg_path(image_path)
+        .error_msg("mkfs.vfat failed")
+        .run()?;
 
     // Create directory structure using mtools
     // mtools uses -i to specify the image file
@@ -117,18 +113,14 @@ pub fn create_root_partition(
     // -d populates from directory without mounting
     // -U sets the UUID
     // -L sets the label
-    let status = std::process::Command::new("mkfs.ext4")
+    Cmd::new("mkfs.ext4")
         .args(["-q", "-L", "root"])
         .args(["-U", &uuids.root_fs_uuid])
         .args(["-d"])
-        .arg(rootfs)
-        .arg(image_path)
-        .status()
-        .context("Failed to run mkfs.ext4")?;
-
-    if !status.success() {
-        bail!("mkfs.ext4 -d failed. Check that e2fsprogs supports -d flag.");
-    }
+        .arg_path(rootfs)
+        .arg_path(image_path)
+        .error_msg("mkfs.ext4 -d failed. Check that e2fsprogs supports -d flag.")
+        .run()?;
 
     Ok(())
 }

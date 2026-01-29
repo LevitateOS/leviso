@@ -1,10 +1,9 @@
 //! Configuration operations for qcow2 VM setup.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
-use distro_builder::process::ensure_exists;
+use distro_builder::process::{Cmd, ensure_exists};
 use distro_spec::levitate::DEFAULT_HOSTNAME;
 use distro_spec::shared::partitions::{EFI_FILESYSTEM, ROOT_FILESYSTEM};
 use crate::component::custom::read_test_instrumentation;
@@ -26,16 +25,12 @@ pub fn prepare_qcow2_rootfs(
 ) -> Result<()> {
     // Copy rootfs-staging to work directory
     println!("  Copying rootfs-staging...");
-    let status = Command::new("cp")
+    Cmd::new("cp")
         .args(["-a"])
-        .arg(source)
-        .arg(target)
-        .status()
-        .context("Failed to copy rootfs")?;
-
-    if !status.success() {
-        anyhow::bail!("Failed to copy rootfs-staging");
-    }
+        .arg_path(source)
+        .arg_path(target)
+        .error_msg("Failed to copy rootfs-staging")
+        .run()?;
 
     // Apply qcow2-specific configuration
     println!("  Generating /etc/fstab...");

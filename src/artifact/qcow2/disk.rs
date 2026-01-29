@@ -5,6 +5,7 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use distro_builder::process::Cmd;
 use super::helpers::DiskUuids;
 use super::partitions::EFI_SIZE_MB;
 
@@ -75,35 +76,23 @@ pub fn assemble_disk(
 
     // Copy EFI partition image into disk
     println!("  Writing EFI partition at offset {}...", efi_offset_bytes);
-    let status = Command::new("dd")
-        .args(["if=".to_string() + &efi_image.to_string_lossy()])
-        .args(["of=".to_string() + &disk_path.to_string_lossy()])
+    Cmd::new("dd")
+        .arg(format!("if={}", efi_image.display()))
+        .arg(format!("of={}", disk_path.display()))
         .args(["bs=1M", "conv=notrunc"])
         .arg(format!("seek={}", efi_offset_bytes / (1024 * 1024)))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .context("Failed to run dd for EFI partition")?;
-
-    if !status.success() {
-        bail!("dd failed for EFI partition");
-    }
+        .error_msg("dd failed for EFI partition")
+        .run()?;
 
     // Copy root partition image into disk
     println!("  Writing root partition at offset {}...", root_offset_bytes);
-    let status = Command::new("dd")
-        .args(["if=".to_string() + &root_image.to_string_lossy()])
-        .args(["of=".to_string() + &disk_path.to_string_lossy()])
+    Cmd::new("dd")
+        .arg(format!("if={}", root_image.display()))
+        .arg(format!("of={}", disk_path.display()))
         .args(["bs=1M", "conv=notrunc"])
         .arg(format!("seek={}", root_offset_bytes / (1024 * 1024)))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .context("Failed to run dd for root partition")?;
-
-    if !status.success() {
-        bail!("dd failed for root partition");
-    }
+        .error_msg("dd failed for root partition")
+        .run()?;
 
     Ok(())
 }

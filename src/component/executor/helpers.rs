@@ -124,3 +124,31 @@ pub fn assert_symlink(path: &std::path::Path, expected_target: &str) {
         expected_target
     );
 }
+
+/// Macro to reduce boilerplate in executor tests.
+///
+/// Sets up a complete test environment in a single call:
+/// - Creates TestEnv with temporary directories
+/// - Creates mock rootfs structure
+/// - Builds BuildContext
+/// - Creates LicenseTracker
+///
+/// # Example
+/// ```ignore
+/// #[test]
+/// fn test_something() {
+///     let (env, ctx, tracker) = setup_test_env!();
+///     // Ready to use env, ctx, tracker
+/// }
+/// ```
+#[macro_export]
+macro_rules! setup_test_env {
+    () => {{
+        use crate::build::licenses::LicenseTracker;
+        let env = $crate::component::executor::helpers::TestEnv::new();
+        $crate::component::executor::helpers::create_mock_rootfs(&env.rootfs);
+        let ctx = env.build_context();
+        let tracker = LicenseTracker::new();
+        (env, ctx, tracker)
+    }};
+}

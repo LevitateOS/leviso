@@ -1,0 +1,24 @@
+[Unit]
+Description=Console Autologin
+After=systemd-user-sessions.service getty-pre.target
+Before=getty.target
+Conflicts=getty@tty1.service
+
+[Service]
+Environment=HOME=/root
+Environment=TERM=xterm-256color
+WorkingDirectory=/root
+ExecStart=/usr/local/bin/autologin-shell
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+Type=idle
+Restart=always
+RestartSec=0
+
+[Install]
+WantedBy=getty.target

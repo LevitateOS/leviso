@@ -35,13 +35,10 @@ pub fn find_and_copy_dir(
     destination: &Path,
     error_msg: &str,
 ) -> Result<()> {
-    let src = if primary.is_dir() {
-        primary
-    } else if fallback.is_dir() {
-        fallback
-    } else {
-        bail!("{}", error_msg)
-    };
+    // Check that at least one source exists
+    if !primary.is_dir() && !fallback.is_dir() {
+        bail!("{}", error_msg);
+    }
 
     fs::create_dir_all(destination)?;
     Ok(())

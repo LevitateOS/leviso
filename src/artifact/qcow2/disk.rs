@@ -13,6 +13,8 @@ use super::partitions::EFI_SIZE_MB;
 const SECTOR_SIZE: u64 = 512;
 
 /// GPT and partition alignment (1MB alignment is standard)
+/// Used in tests to document the alignment strategy
+#[allow(dead_code)]
 const ALIGNMENT_MB: u64 = 1;
 
 /// First partition starts at this offset (1MB for GPT + alignment)

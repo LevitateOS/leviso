@@ -8,7 +8,7 @@ use crate::build::libdeps::{
     copy_bash, copy_binary_with_libs, copy_sbin_binary_with_libs, make_executable,
 };
 use crate::build::licenses::LicenseTracker;
-use crate::component::{Dest, Op};
+use crate::component::Dest;
 
 /// Handle Op::Bin: Copy a required binary with libraries
 pub fn handle_bin(ctx: &BuildContext, name: &str, dest: &Dest, tracker: &LicenseTracker) -> Result<()> {

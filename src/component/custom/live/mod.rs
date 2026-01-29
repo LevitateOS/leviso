@@ -20,7 +20,7 @@ pub fn read_test_instrumentation() -> Result<String> {
 ///
 /// This is called by iso.rs during ISO creation. The overlay is applied ONLY
 /// during live boot, not extracted to installed systems.
-pub fn create_live_overlay_at(output_dir: &Path, base_dir: &Path) -> Result<()> {
+pub fn create_live_overlay_at(output_dir: &Path, _base_dir: &Path) -> Result<()> {
     println!("Creating live overlay directory...");
 
     let overlay_dir = output_dir.join("live-overlay");

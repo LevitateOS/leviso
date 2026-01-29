@@ -10,6 +10,7 @@ mod build;
 mod cache;
 mod clean;
 mod commands;
+mod common;
 mod component;
 mod config;
 mod extract;

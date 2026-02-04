@@ -85,9 +85,17 @@ pub fn rocky(base_dir: &Path) -> Result<RockyPaths> {
             paths.iso.display(),
             if paths.iso.exists() { "OK" } else { "MISSING" },
             paths.rootfs.display(),
-            if paths.rootfs.exists() { "OK" } else { "MISSING" },
+            if paths.rootfs.exists() {
+                "OK"
+            } else {
+                "MISSING"
+            },
             paths.iso_contents.display(),
-            if paths.iso_contents.exists() { "OK" } else { "MISSING" },
+            if paths.iso_contents.exists() {
+                "OK"
+            } else {
+                "MISSING"
+            },
         );
     }
 

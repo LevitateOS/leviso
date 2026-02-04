@@ -28,24 +28,24 @@ pub fn validate_rocky_iso_size(base_dir: &Path) -> Result<f64, String> {
         } else {
             // Look for any Rocky ISO
             match std::fs::read_dir(&downloads_dir) {
-                Ok(entries) => {
-                    entries
-                        .filter_map(|e| e.ok())
-                        .map(|e| e.path())
-                        .find(|p| {
-                            p.file_name()
-                                .map(|n| n.to_string_lossy().starts_with("Rocky-") && n.to_string_lossy().ends_with(".iso"))
-                                .unwrap_or(false)
-                        })
-                        .ok_or_else(|| "No Rocky ISO found in downloads/".to_string())?
-                }
+                Ok(entries) => entries
+                    .filter_map(|e| e.ok())
+                    .map(|e| e.path())
+                    .find(|p| {
+                        p.file_name()
+                            .map(|n| {
+                                n.to_string_lossy().starts_with("Rocky-")
+                                    && n.to_string_lossy().ends_with(".iso")
+                            })
+                            .unwrap_or(false)
+                    })
+                    .ok_or_else(|| "No Rocky ISO found in downloads/".to_string())?,
                 Err(_) => return Err("Cannot read downloads directory".to_string()),
             }
         }
     };
 
-    let metadata = std::fs::metadata(&iso_path)
-        .map_err(|e| format!("Cannot stat ISO: {}", e))?;
+    let metadata = std::fs::metadata(&iso_path).map_err(|e| format!("Cannot stat ISO: {}", e))?;
 
     let size_bytes = metadata.len();
     let size_gb = size_bytes as f64 / (1024.0 * 1024.0 * 1024.0);
@@ -68,8 +68,7 @@ pub fn validate_rocky_iso_size(base_dir: &Path) -> Result<f64, String> {
 /// ANTI-CHEAT: An empty file or random text passes .exists() but produces
 /// a broken kernel. We verify it contains actual CONFIG_ options.
 pub fn validate_kconfig(path: &Path) -> Result<usize, String> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| format!("Cannot read: {}", e))?;
+    let content = std::fs::read_to_string(path).map_err(|e| format!("Cannot read: {}", e))?;
 
     // Count CONFIG_ lines (both =y and =m and =n and strings)
     let config_count = content
@@ -92,9 +91,9 @@ pub fn validate_kconfig(path: &Path) -> Result<usize, String> {
 
     // Check for critical options that MUST be present for LevitateOS
     let critical_options = [
-        "CONFIG_SQUASHFS",      // Required to mount Rocky Linux's install.img during extraction
-        "CONFIG_OVERLAY_FS",    // Required for live overlay
-        "CONFIG_BLK_DEV_LOOP",  // Required to mount EROFS/squashfs via loop device
+        "CONFIG_SQUASHFS", // Required to mount Rocky Linux's install.img during extraction
+        "CONFIG_OVERLAY_FS", // Required for live overlay
+        "CONFIG_BLK_DEV_LOOP", // Required to mount EROFS/squashfs via loop device
     ];
 
     for opt in critical_options {
@@ -114,8 +113,7 @@ pub fn validate_kconfig(path: &Path) -> Result<usize, String> {
 /// ANTI-CHEAT: An empty file passes .exists() but the system won't boot.
 /// We verify it has a shebang and substantial content.
 pub fn validate_init_script(path: &Path) -> Result<usize, String> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| format!("Cannot read: {}", e))?;
+    let content = std::fs::read_to_string(path).map_err(|e| format!("Cannot read: {}", e))?;
 
     let lines: Vec<&str> = content.lines().collect();
 
@@ -161,8 +159,8 @@ pub fn validate_init_script(path: &Path) -> Result<usize, String> {
 
     // Check for critical commands that MUST be in an init script
     let critical_patterns = [
-        "mount",        // Must mount filesystems
-        "switch_root",  // Must pivot to real root (or exec init)
+        "mount",       // Must mount filesystems
+        "switch_root", // Must pivot to real root (or exec init)
     ];
 
     for pattern in critical_patterns {
@@ -185,8 +183,7 @@ pub fn validate_executable(path: &Path, _name: &str) -> Result<String, String> {
     use std::os::unix::fs::PermissionsExt;
 
     // Check executable bit
-    let metadata = std::fs::metadata(path)
-        .map_err(|e| format!("Cannot stat: {}", e))?;
+    let metadata = std::fs::metadata(path).map_err(|e| format!("Cannot stat: {}", e))?;
 
     let mode = metadata.permissions().mode();
     if mode & 0o111 == 0 {
@@ -221,12 +218,10 @@ pub fn validate_executable(path: &Path, _name: &str) -> Result<String, String> {
                 Ok(h) if h.success() || !h.stdout.is_empty() => {
                     Ok("executable (no version)".to_string())
                 }
-                _ => {
-                    Err(format!(
-                        "Runs but --version failed: {}",
-                        r.stderr.lines().next().unwrap_or("unknown error")
-                    ))
-                }
+                _ => Err(format!(
+                    "Runs but --version failed: {}",
+                    r.stderr.lines().next().unwrap_or("unknown error")
+                )),
             }
         }
         Err(e) => Err(format!("Cannot execute: {}", e)),

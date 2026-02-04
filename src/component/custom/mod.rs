@@ -7,12 +7,12 @@
 //! Each module is ~100-250 lines focused on a single domain.
 
 // Submodules colocated with their configuration files
-mod etc;              // src/component/custom/etc/ - contains etc/mod.rs and etc/files/
+mod etc; // src/component/custom/etc/ - contains etc/mod.rs and etc/files/
 mod filesystem;
 mod firmware;
-mod live;             // src/component/custom/live/ - contains live/mod.rs and live/overlay/
+mod live; // src/component/custom/live/ - contains live/mod.rs and live/overlay/
 mod modules;
-mod packages;         // src/component/custom/packages/ - contains packages/mod.rs and packages/files/
+mod packages; // src/component/custom/packages/ - contains packages/mod.rs and packages/files/
 mod pam;
 
 use anyhow::Result;
@@ -96,13 +96,14 @@ pub fn execute(ctx: &BuildContext, op: CustomOp, tracker: &LicenseTracker) -> Re
 /// The levitate-docs binary is compiled with Bun and links against glibc,
 /// so we must ensure libpthread.so.0, libdl.so.2, libm.so.6 etc. are present.
 fn install_docs_tui(ctx: &BuildContext) -> Result<()> {
+    use crate::build::libdeps::copy_library;
     use anyhow::{bail, Context};
     use leviso_elf::{get_all_dependencies, make_executable};
     use std::fs;
     use std::process::Command;
-    use crate::build::libdeps::copy_library;
 
-    let monorepo_dir = ctx.base_dir
+    let monorepo_dir = ctx
+        .base_dir
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| ctx.base_dir.to_path_buf());
@@ -118,7 +119,14 @@ fn install_docs_tui(ctx: &BuildContext) -> Result<()> {
     // ALWAYS rebuild docs-TUI to ensure latest version
     println!("  Rebuilding levitate-docs...");
     let status = Command::new("bun")
-        .args(["build", "--compile", "--minify", "--outfile", "levitate-docs", "src/index.ts"])
+        .args([
+            "build",
+            "--compile",
+            "--minify",
+            "--outfile",
+            "levitate-docs",
+            "src/index.ts",
+        ])
         .current_dir(&docs_tui_dir)
         .status()
         .context("Failed to run bun build for levitate-docs")?;
@@ -140,8 +148,7 @@ fn install_docs_tui(ctx: &BuildContext) -> Result<()> {
     }
 
     // Copy the binary
-    fs::copy(&docs_tui_binary, &dest)
-        .with_context(|| "Failed to copy levitate-docs to staging")?;
+    fs::copy(&docs_tui_binary, &dest).with_context(|| "Failed to copy levitate-docs to staging")?;
     make_executable(&dest)?;
     let size_mb = fs::metadata(&dest)?.len() as f64 / 1_000_000.0;
     println!("  Installed levitate-docs ({:.1} MB)", size_mb);
@@ -156,7 +163,10 @@ fn install_docs_tui(ctx: &BuildContext) -> Result<()> {
     let libs = get_all_dependencies(&ctx.source, &docs_tui_binary, extra_lib_paths)
         .with_context(|| "Failed to get levitate-docs library dependencies")?;
 
-    println!("  Copying {} library dependencies for levitate-docs...", libs.len());
+    println!(
+        "  Copying {} library dependencies for levitate-docs...",
+        libs.len()
+    );
     for lib_name in &libs {
         copy_library(ctx, lib_name, None)
             .with_context(|| format!("levitate-docs requires missing library '{}'", lib_name))?;

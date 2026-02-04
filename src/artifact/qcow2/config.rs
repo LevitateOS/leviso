@@ -1,12 +1,12 @@
 //! Configuration operations for qcow2 VM setup.
 
+use crate::component::custom::read_test_instrumentation;
 use anyhow::Result;
-use std::fs;
-use std::path::Path;
-use distro_builder::process::{Cmd, ensure_exists};
+use distro_builder::process::{ensure_exists, Cmd};
 use distro_spec::levitate::DEFAULT_HOSTNAME;
 use distro_spec::shared::partitions::{EFI_FILESYSTEM, ROOT_FILESYSTEM};
-use crate::component::custom::read_test_instrumentation;
+use std::fs;
+use std::path::Path;
 
 /// Prepare a modified rootfs for qcow2 with qcow2-specific configuration.
 ///
@@ -79,10 +79,7 @@ fn generate_fstab(root_dir: &Path, efi_uuid: &str, root_uuid: &str) -> Result<()
          # <device>                                <mount>  <type>  <options>  <dump> <pass>\n\
          UUID={:<36}  /        {}    defaults   0      1\n\
          UUID={:<36}  /boot    {}     defaults   0      0\n",
-        root_uuid,
-        ROOT_FILESYSTEM,
-        efi_uuid,
-        EFI_FILESYSTEM,
+        root_uuid, ROOT_FILESYSTEM, efi_uuid, EFI_FILESYSTEM,
     );
 
     fs::write(&fstab_path, fstab_content)?;
@@ -134,7 +131,10 @@ fn enable_services(root_dir: &Path) -> Result<()> {
     fs::create_dir_all(&wants_dir)?;
 
     let services = [
-        ("NetworkManager.service", "/usr/lib/systemd/system/NetworkManager.service"),
+        (
+            "NetworkManager.service",
+            "/usr/lib/systemd/system/NetworkManager.service",
+        ),
         ("sshd.service", "/usr/lib/systemd/system/sshd.service"),
         ("chronyd.service", "/usr/lib/systemd/system/chronyd.service"),
     ];
@@ -176,7 +176,10 @@ fn enable_services(root_dir: &Path) -> Result<()> {
 ExecStart=\n\
 ExecStart=-/sbin/agetty --autologin root --keep-baud 115200,57600,38400,9600 - $TERM\n";
     fs::write(&dropin_file, dropin_content)?;
-    println!("    Created autologin drop-in at: {}", dropin_file.display());
+    println!(
+        "    Created autologin drop-in at: {}",
+        dropin_file.display()
+    );
     println!("    Drop-in content:\n{}", dropin_content);
 
     Ok(())
@@ -201,8 +204,9 @@ fn regenerate_ssh_keys(root_dir: &Path) -> Result<()> {
             let entry = entry?;
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
-            if name_str.starts_with("ssh_host_") &&
-               (name_str.ends_with("_key") || name_str.ends_with("_key.pub")) {
+            if name_str.starts_with("ssh_host_")
+                && (name_str.ends_with("_key") || name_str.ends_with("_key.pub"))
+            {
                 fs::remove_file(entry.path())?;
             }
         }
@@ -222,11 +226,7 @@ mod tests {
         let temp_dir = temp.path();
         fs::create_dir_all(temp_dir.join("etc")).unwrap();
 
-        generate_fstab(
-            temp_dir,
-            "1234-5678",
-            "abcd-efgh-ijkl-mnop",
-        ).unwrap();
+        generate_fstab(temp_dir, "1234-5678", "abcd-efgh-ijkl-mnop").unwrap();
 
         let content = fs::read_to_string(temp_dir.join("etc/fstab")).unwrap();
         assert!(content.contains("vfat") && content.contains("0      0"));
@@ -246,7 +246,11 @@ mod tests {
         set_empty_root_password(temp_dir).unwrap();
 
         let new_content = fs::read_to_string(temp_dir.join("etc/shadow")).unwrap();
-        assert!(new_content.starts_with("root::19000"), "Got: {}", new_content);
+        assert!(
+            new_content.starts_with("root::19000"),
+            "Got: {}",
+            new_content
+        );
         assert!(new_content.contains("bin:*:19000"));
         // Cleanup is automatic when temp_dir drops
     }

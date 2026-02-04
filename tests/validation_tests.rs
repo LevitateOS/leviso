@@ -9,8 +9,11 @@
 
 mod helpers;
 
+use helpers::{
+    assert_file_contains, assert_file_exists, assert_symlink, initramfs_is_built,
+    real_initramfs_root,
+};
 use leviso_cheat_test::{cheat_aware, cheat_canary};
-use helpers::{assert_file_contains, assert_file_exists, assert_symlink, initramfs_is_built, real_initramfs_root};
 use std::fs;
 use std::path::Path;
 
@@ -501,8 +504,20 @@ fn test_validation_fhs_structure() {
     let root = require_initramfs();
 
     let required_dirs = [
-        "bin", "sbin", "lib64", "etc", "proc", "sys", "dev", "tmp", "root", "run",
-        "var", "mnt", "usr/bin", "usr/lib/systemd",
+        "bin",
+        "sbin",
+        "lib64",
+        "etc",
+        "proc",
+        "sys",
+        "dev",
+        "tmp",
+        "root",
+        "run",
+        "var",
+        "mnt",
+        "usr/bin",
+        "usr/lib/systemd",
     ];
 
     for dir in required_dirs {
@@ -750,10 +765,18 @@ fn canary_validation_verbose_binary_check() {
     assert!(agetty.exists(), "agetty missing at {}", agetty.display());
 
     let systemctl = root.join("bin/systemctl");
-    assert!(systemctl.exists(), "systemctl missing at {}", systemctl.display());
+    assert!(
+        systemctl.exists(),
+        "systemctl missing at {}",
+        systemctl.display()
+    );
 
     let journalctl = root.join("bin/journalctl");
-    assert!(journalctl.exists(), "journalctl missing at {}", journalctl.display());
+    assert!(
+        journalctl.exists(),
+        "journalctl missing at {}",
+        journalctl.display()
+    );
 
     // Systemd itself
     let systemd = root.join("usr/lib/systemd/systemd");
@@ -761,5 +784,9 @@ fn canary_validation_verbose_binary_check() {
 
     // /sbin/init symlink
     let init = root.join("sbin/init");
-    assert!(init.exists() || init.is_symlink(), "init missing at {}", init.display());
+    assert!(
+        init.exists() || init.is_symlink(),
+        "init missing at {}",
+        init.display()
+    );
 }

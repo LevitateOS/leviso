@@ -13,7 +13,9 @@ pub mod qcow2;
 pub mod rootfs;
 pub mod uki;
 
-pub use initramfs::{build_tiny_initramfs, build_install_initramfs, verify_live_initramfs, verify_install_initramfs};
+pub use initramfs::{
+    build_install_initramfs, build_tiny_initramfs, verify_install_initramfs, verify_live_initramfs,
+};
 pub use iso::{create_iso, verify_iso};
 pub use qcow2::{build_qcow2, verify_qcow2};
 pub use rootfs::build_rootfs;

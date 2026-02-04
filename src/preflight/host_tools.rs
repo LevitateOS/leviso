@@ -12,11 +12,23 @@ pub fn check_host_tools() -> Vec<CheckResult> {
 
     // Required tools with package hints
     let required_tools = [
-        ("mkfs.erofs", "erofs-utils", "Required to create EROFS filesystem (1.8+ for zstd)"),
+        (
+            "mkfs.erofs",
+            "erofs-utils",
+            "Required to create EROFS filesystem (1.8+ for zstd)",
+        ),
         ("xorriso", "xorriso", "Required to create ISO image"),
         ("mkfs.fat", "dosfstools", "Required for EFI partition"),
-        ("readelf", "binutils", "Required for library dependency detection"),
-        ("ukify", "systemd-ukify", "Required for UKI (Unified Kernel Image) creation"),
+        (
+            "readelf",
+            "binutils",
+            "Required for library dependency detection",
+        ),
+        (
+            "ukify",
+            "systemd-ukify",
+            "Required for UKI (Unified Kernel Image) creation",
+        ),
     ];
 
     for (tool, package, purpose) in required_tools {
@@ -26,8 +38,16 @@ pub fn check_host_tools() -> Vec<CheckResult> {
 
     // Optional tools (for testing/development)
     let optional_tools = [
-        ("qemu-system-x86_64", "qemu-system-x86", "Required for `leviso run`"),
-        ("qemu-img", "qemu-utils", "Required for virtual disk creation"),
+        (
+            "qemu-system-x86_64",
+            "qemu-system-x86",
+            "Required for `leviso run`",
+        ),
+        (
+            "qemu-img",
+            "qemu-utils",
+            "Required for virtual disk creation",
+        ),
     ];
 
     for (tool, package, purpose) in optional_tools {
@@ -76,10 +96,7 @@ fn check_tool_exists(tool: &str, package: &str, purpose: &str, required: bool) -
     match process::which(tool) {
         Some(path) => CheckResult::pass_with(tool, &path),
         None => {
-            let msg = format!(
-                "Not found. Install '{}' package. {}",
-                package, purpose
-            );
+            let msg = format!("Not found. Install '{}' package. {}", package, purpose);
             if required {
                 CheckResult::fail(tool, &msg)
             } else {

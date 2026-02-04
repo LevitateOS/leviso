@@ -11,7 +11,12 @@ use crate::build::licenses::LicenseTracker;
 use crate::component::Dest;
 
 /// Handle Op::Bin: Copy a required binary with libraries
-pub fn handle_bin(ctx: &BuildContext, name: &str, dest: &Dest, tracker: &LicenseTracker) -> Result<()> {
+pub fn handle_bin(
+    ctx: &BuildContext,
+    name: &str,
+    dest: &Dest,
+    tracker: &LicenseTracker,
+) -> Result<()> {
     let found = match dest {
         Dest::Bin => copy_binary_with_libs(ctx, name, "usr/bin", Some(tracker))?,
         Dest::Sbin => copy_sbin_binary_with_libs(ctx, name, Some(tracker))?,
@@ -52,7 +57,11 @@ pub fn handle_bash(ctx: &BuildContext, tracker: &LicenseTracker) -> Result<()> {
 }
 
 /// Handle Op::SystemdBinaries: Copy systemd binaries and related files
-pub fn handle_systemd_binaries(ctx: &BuildContext, binaries: &[&str], tracker: &LicenseTracker) -> Result<()> {
+pub fn handle_systemd_binaries(
+    ctx: &BuildContext,
+    binaries: &[&str],
+    tracker: &LicenseTracker,
+) -> Result<()> {
     // Register systemd for license tracking
     tracker.register_binary("systemd");
 
@@ -220,7 +229,10 @@ mod tests {
 
         let result = super::super::execute(&ctx, &missing_bins_component, &tracker);
 
-        assert!(result.is_err(), "Op::Bins should fail when binaries missing");
+        assert!(
+            result.is_err(),
+            "Op::Bins should fail when binaries missing"
+        );
 
         let err_msg = result.unwrap_err().to_string();
 

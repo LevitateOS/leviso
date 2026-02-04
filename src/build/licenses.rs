@@ -192,5 +192,4 @@ mod tests {
         // bash + glibc + linux-firmware = 3 packages
         assert_eq!(tracker.package_count(), 3);
     }
-
 }

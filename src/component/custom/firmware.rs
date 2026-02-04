@@ -122,7 +122,10 @@ pub fn copy_all_firmware(ctx: &BuildContext) -> Result<()> {
     }
     let amd_count = fs::read_dir(&amd_ucode)?.filter(|e| e.is_ok()).count();
     if amd_count == 0 {
-        bail!("AMD microcode directory is empty at {}", amd_ucode.display());
+        bail!(
+            "AMD microcode directory is empty at {}",
+            amd_ucode.display()
+        );
     }
     println!("  AMD microcode: {} files", amd_count);
 

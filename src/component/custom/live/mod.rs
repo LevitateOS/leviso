@@ -39,7 +39,10 @@ pub fn create_live_overlay_at(output_dir: &Path, _base_dir: &Path) -> Result<()>
     // Console autologin service (Conflicts=getty@tty1.service ensures no conflict)
     fs::write(
         systemd_dir.join("console-autologin.service"),
-        read_manifest_file("live/overlay", "etc/systemd/system/console-autologin.service")?,
+        read_manifest_file(
+            "live/overlay",
+            "etc/systemd/system/console-autologin.service",
+        )?,
     )?;
 
     std::os::unix::fs::symlink(
@@ -59,7 +62,10 @@ pub fn create_live_overlay_at(output_dir: &Path, _base_dir: &Path) -> Result<()>
     )?;
 
     // Shadow file with empty root password
-    fs::write(overlay_dir.join("etc/shadow"), read_manifest_file("live/overlay", "etc/shadow")?)?;
+    fs::write(
+        overlay_dir.join("etc/shadow"),
+        read_manifest_file("live/overlay", "etc/shadow")?,
+    )?;
 
     fs::set_permissions(
         overlay_dir.join("etc/shadow"),
@@ -70,15 +76,24 @@ pub fn create_live_overlay_at(output_dir: &Path, _base_dir: &Path) -> Result<()>
     let profile_d = overlay_dir.join("etc/profile.d");
     fs::create_dir_all(&profile_d)?;
     // Test mode instrumentation (00- prefix = runs first)
-    fs::write(profile_d.join("00-levitate-test.sh"), read_manifest_file("live/overlay", "etc/profile.d/00-levitate-test.sh")?)?;
+    fs::write(
+        profile_d.join("00-levitate-test.sh"),
+        read_manifest_file("live/overlay", "etc/profile.d/00-levitate-test.sh")?,
+    )?;
     // Auto-launch tmux with docs-tui for interactive users
-    fs::write(profile_d.join("live-docs.sh"), read_manifest_file("live/overlay", "etc/profile.d/live-docs.sh")?)?;
+    fs::write(
+        profile_d.join("live-docs.sh"),
+        read_manifest_file("live/overlay", "etc/profile.d/live-docs.sh")?,
+    )?;
 
     // Autologin wrapper script
     let usr_local_bin = overlay_dir.join("usr/local/bin");
     fs::create_dir_all(&usr_local_bin)?;
     let autologin_path = usr_local_bin.join("autologin-shell");
-    fs::write(&autologin_path, read_manifest_file("live/overlay", "usr/local/bin/autologin-shell")?)?;
+    fs::write(
+        &autologin_path,
+        read_manifest_file("live/overlay", "usr/local/bin/autologin-shell")?,
+    )?;
     fs::set_permissions(&autologin_path, fs::Permissions::from_mode(0o755))?;
 
     println!("  Created live overlay");
@@ -92,7 +107,10 @@ pub fn create_live_overlay(ctx: &BuildContext) -> Result<()> {
 
 /// Create welcome message (MOTD) for live environment.
 pub fn create_welcome_message(ctx: &BuildContext) -> Result<()> {
-    fs::write(ctx.staging.join("etc/motd"), read_manifest_file("live/overlay", "etc/motd")?)?;
+    fs::write(
+        ctx.staging.join("etc/motd"),
+        read_manifest_file("live/overlay", "etc/motd")?,
+    )?;
     fs::write(ctx.staging.join("etc/issue"), LIVE_ISSUE_MESSAGE)?;
     Ok(())
 }
@@ -106,7 +124,8 @@ pub fn install_tools(ctx: &BuildContext) -> Result<()> {
     use leviso_elf::make_executable;
     use std::process::Command;
 
-    let monorepo_dir = ctx.base_dir
+    let monorepo_dir = ctx
+        .base_dir
         .parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| ctx.base_dir.to_path_buf());
@@ -122,7 +141,10 @@ pub fn install_tools(ctx: &BuildContext) -> Result<()> {
     }
 
     // ALWAYS rebuild tools to ensure latest version
-    println!("  Rebuilding installation tools ({})...", LEVITATE_CARGO_TOOLS.join(", "));
+    println!(
+        "  Rebuilding installation tools ({})...",
+        LEVITATE_CARGO_TOOLS.join(", ")
+    );
     let status = Command::new("cargo")
         .args(&build_args)
         .current_dir(&monorepo_dir)
@@ -164,7 +186,8 @@ pub fn install_tools(ctx: &BuildContext) -> Result<()> {
         bail!(
             "{} binary not found after rebuild. This is a bug.\n\
              Check that tools/{}/Cargo.toml exists and compiles.",
-            tool, tool
+            tool,
+            tool
         );
     }
 

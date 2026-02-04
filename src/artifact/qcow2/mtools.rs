@@ -1,9 +1,9 @@
 //! mtools file operations for FAT32 image manipulation.
 
 use anyhow::Result;
+use distro_builder::process::Cmd;
 use std::fs;
 use std::path::Path;
-use distro_builder::process::Cmd;
 
 /// Create a directory in a FAT image using mmd.
 pub fn mtools_mkdir(image: &Path, dir: &str) -> Result<()> {

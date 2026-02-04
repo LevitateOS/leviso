@@ -17,10 +17,7 @@ pub fn extract_rocky_iso(base_dir: &Path, iso_path: &Path) -> Result<()> {
     let rootfs_dir = extract_dir.join("rootfs");
 
     if !iso_path.exists() {
-        bail!(
-            "Rocky DVD ISO not found at {}.",
-            iso_path.display()
-        );
+        bail!("Rocky DVD ISO not found at {}.", iso_path.display());
     }
 
     // Step 1: Extract ISO contents with 7z

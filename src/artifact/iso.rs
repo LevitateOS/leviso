@@ -13,24 +13,30 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::component::custom::create_live_overlay_at;
 use distro_spec::levitate::{
-    // Identity
-    ISO_LABEL, ISO_FILENAME,
-    // Rootfs (EROFS)
-    ROOTFS_NAME,
+    INITRAMFS_INSTALLED_ISO_PATH,
+    INITRAMFS_INSTALLED_OUTPUT,
     // Boot files
-    INITRAMFS_LIVE_OUTPUT, INITRAMFS_INSTALLED_OUTPUT, INITRAMFS_INSTALLED_ISO_PATH,
-    // UKI entries
-    UKI_ENTRIES, UKI_INSTALLED_ENTRIES,
-    // Installed UKIs
-    UKI_INSTALLED_ISO_DIR,
-    // OS identity
-    OS_NAME, OS_ID, OS_VERSION,
+    INITRAMFS_LIVE_OUTPUT,
     // Checksum
     ISO_CHECKSUM_SUFFIX,
+    ISO_FILENAME,
+    // Identity
+    ISO_LABEL,
+    OS_ID,
+    // OS identity
+    OS_NAME,
+    OS_VERSION,
+    // Rootfs (EROFS)
+    ROOTFS_NAME,
+    // UKI entries
+    UKI_ENTRIES,
+    UKI_INSTALLED_ENTRIES,
+    // Installed UKIs
+    UKI_INSTALLED_ISO_DIR,
 };
 use reciso::{IsoConfig, UkiSource};
-use crate::component::custom::create_live_overlay_at;
 
 /// Get ISO volume label from environment or use default.
 /// Used for boot device detection (root=LABEL=X).
@@ -128,14 +134,18 @@ pub fn create_iso(base_dir: &Path) -> Result<()> {
     ));
 
     // Add installed UKIs as extra files
-    fs::create_dir_all(paths.output_dir.join("iso-staging").join(UKI_INSTALLED_ISO_DIR))?;
+    fs::create_dir_all(
+        paths
+            .output_dir
+            .join("iso-staging")
+            .join(UKI_INSTALLED_ISO_DIR),
+    )?;
     for entry in UKI_INSTALLED_ENTRIES {
         let src = installed_uki_dir.join(entry.filename);
         if src.exists() {
-            config.extra_files.push((
-                src,
-                format!("{}/{}", UKI_INSTALLED_ISO_DIR, entry.filename),
-            ));
+            config
+                .extra_files
+                .push((src, format!("{}/{}", UKI_INSTALLED_ISO_DIR, entry.filename)));
         }
     }
 
@@ -156,7 +166,9 @@ pub fn create_iso(base_dir: &Path) -> Result<()> {
 
     // Also move the checksum
     let temp_checksum = temp_iso.with_extension(ISO_CHECKSUM_SUFFIX.trim_start_matches('.'));
-    let final_checksum = paths.iso_output.with_extension(ISO_CHECKSUM_SUFFIX.trim_start_matches('.'));
+    let final_checksum = paths
+        .iso_output
+        .with_extension(ISO_CHECKSUM_SUFFIX.trim_start_matches('.'));
     if temp_checksum.exists() {
         fs::rename(&temp_checksum, &final_checksum)?;
     }

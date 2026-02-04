@@ -29,13 +29,17 @@ pub fn read_uid_from_rootfs(rootfs: &Path, username: &str) -> Result<Option<(u32
             let uid: u32 = parts[2].parse().with_context(|| {
                 format!(
                     "Corrupted passwd file: invalid UID '{}' for user '{}' at {}",
-                    parts[2], username, passwd_path.display()
+                    parts[2],
+                    username,
+                    passwd_path.display()
                 )
             })?;
             let gid: u32 = parts[3].parse().with_context(|| {
                 format!(
                     "Corrupted passwd file: invalid GID '{}' for user '{}' at {}",
-                    parts[3], username, passwd_path.display()
+                    parts[3],
+                    username,
+                    passwd_path.display()
                 )
             })?;
             return Ok(Some((uid, gid)));
@@ -67,7 +71,9 @@ pub fn read_gid_from_rootfs(rootfs: &Path, groupname: &str) -> Result<Option<u32
             let gid: u32 = parts[2].parse().with_context(|| {
                 format!(
                     "Corrupted group file: invalid GID '{}' for group '{}' at {}",
-                    parts[2], groupname, group_path.display()
+                    parts[2],
+                    groupname,
+                    group_path.display()
                 )
             })?;
             return Ok(Some(gid));
@@ -100,9 +106,12 @@ pub fn ensure_user(
 
     if !passwd.contains(&format!("{}:", username)) {
         // Try to get UID/GID from source rootfs, fall back to defaults if user doesn't exist
-        let (uid, gid) = read_uid_from_rootfs(source, username)?
-            .unwrap_or((default_uid, default_gid));
-        let entry = format!("{}:x:{}:{}:{}:{}:{}\n", username, uid, gid, username, home, shell);
+        let (uid, gid) =
+            read_uid_from_rootfs(source, username)?.unwrap_or((default_uid, default_gid));
+        let entry = format!(
+            "{}:x:{}:{}:{}:{}:{}\n",
+            username, uid, gid, username, home, shell
+        );
         passwd.push_str(&entry);
         fs::write(&passwd_path, passwd)
             .with_context(|| format!("Failed to write passwd for user {}", username))?;
@@ -131,8 +140,7 @@ pub fn ensure_group(
 
     if !group.contains(&format!("{}:", groupname)) {
         // Try to get GID from source rootfs, fall back to default if group doesn't exist
-        let gid = read_gid_from_rootfs(source, groupname)?
-            .unwrap_or(default_gid);
+        let gid = read_gid_from_rootfs(source, groupname)?.unwrap_or(default_gid);
         let entry = format!("{}:x:{}:\n", groupname, gid);
         group.push_str(&entry);
         fs::write(&group_path, group)
@@ -212,8 +220,16 @@ mod tests {
         // Start with empty passwd
         fs::write(initramfs.join("etc/passwd"), "").unwrap();
 
-        ensure_user(rootfs, &initramfs, "testuser", 1000, 1000, "/home/test", "/bin/bash")
-            .expect("ensure_user should succeed");
+        ensure_user(
+            rootfs,
+            &initramfs,
+            "testuser",
+            1000,
+            1000,
+            "/home/test",
+            "/bin/bash",
+        )
+        .expect("ensure_user should succeed");
 
         let content = fs::read_to_string(initramfs.join("etc/passwd")).unwrap();
         assert!(content.contains("testuser:x:1000:1000"));
@@ -235,12 +251,23 @@ mod tests {
         .unwrap();
 
         // Call ensure_user again
-        ensure_user(rootfs, &initramfs, "testuser", 1000, 1000, "/home", "/bin/bash")
-            .expect("ensure_user should succeed");
+        ensure_user(
+            rootfs,
+            &initramfs,
+            "testuser",
+            1000,
+            1000,
+            "/home",
+            "/bin/bash",
+        )
+        .expect("ensure_user should succeed");
 
         // Should not duplicate
         let content = fs::read_to_string(initramfs.join("etc/passwd")).unwrap();
-        let count = content.lines().filter(|line| line.starts_with("testuser:")).count();
+        let count = content
+            .lines()
+            .filter(|line| line.starts_with("testuser:"))
+            .count();
         assert_eq!(count, 1, "User should not be duplicated");
     }
 

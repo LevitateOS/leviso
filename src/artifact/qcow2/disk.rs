@@ -1,13 +1,13 @@
 //! Disk assembly for qcow2 VM images.
 
+use super::helpers::DiskUuids;
+use super::partitions::EFI_SIZE_MB;
 use anyhow::{bail, Context, Result};
+use distro_builder::process::Cmd;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
-use distro_builder::process::Cmd;
-use super::helpers::DiskUuids;
-use super::partitions::EFI_SIZE_MB;
 
 /// Sector size in bytes
 const SECTOR_SIZE: u64 = 512;
@@ -87,7 +87,10 @@ pub fn assemble_disk(
         .run()?;
 
     // Copy root partition image into disk
-    println!("  Writing root partition at offset {}...", root_offset_bytes);
+    println!(
+        "  Writing root partition at offset {}...",
+        root_offset_bytes
+    );
     Cmd::new("dd")
         .arg(format!("if={}", root_image.display()))
         .arg(format!("of={}", disk_path.display()))

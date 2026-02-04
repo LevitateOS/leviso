@@ -44,10 +44,16 @@ pub fn copy_modules(ctx: &BuildContext) -> Result<()> {
             .map(|mut d| d.next().is_some())
             .unwrap_or(false)
     {
-        println!("  Using CUSTOM kernel modules from {}", custom_modules_base.display());
+        println!(
+            "  Using CUSTOM kernel modules from {}",
+            custom_modules_base.display()
+        );
         (custom_modules_base, true)
     } else {
-        println!("  Using ROCKY kernel modules from {}", rocky_modules_base.display());
+        println!(
+            "  Using ROCKY kernel modules from {}",
+            rocky_modules_base.display()
+        );
         (rocky_modules_base, false)
     };
 

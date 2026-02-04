@@ -12,12 +12,14 @@ use distro_builder::process::shell_in;
 use leviso_elf::copy_library_to;
 
 // Re-export commonly used functions
-pub use leviso_elf::{
-    find_binary, find_sbin_binary, get_all_dependencies, make_executable,
-};
+pub use leviso_elf::{find_binary, find_sbin_binary, get_all_dependencies, make_executable};
 
 /// Extra library paths (includes sudo private libs, man-db libs, and pulseaudio libs).
-const EXTRA_LIB_PATHS: &[&str] = &["usr/libexec/sudo", "usr/lib64/man-db", "usr/lib64/pulseaudio"];
+const EXTRA_LIB_PATHS: &[&str] = &[
+    "usr/libexec/sudo",
+    "usr/lib64/man-db",
+    "usr/lib64/pulseaudio",
+];
 
 /// Private library directories that should preserve their subdirectory structure.
 /// For LevitateOS (systemd-based), this is ["systemd"].
@@ -30,7 +32,11 @@ const RPM_BINARY_SOURCES: &[(&str, &str, &str)] = &[
 ];
 
 /// Copy a library from source rootfs to staging.
-pub fn copy_library(ctx: &BuildContext, lib_name: &str, tracker: Option<&LicenseTracker>) -> Result<()> {
+pub fn copy_library(
+    ctx: &BuildContext,
+    lib_name: &str,
+    tracker: Option<&LicenseTracker>,
+) -> Result<()> {
     if let Some(t) = tracker {
         t.register_library(lib_name);
     }
@@ -137,10 +143,7 @@ pub fn copy_sbin_binary_with_libs(
 
 /// Copy bash and its dependencies. FAILS if bash not found.
 pub fn copy_bash(ctx: &BuildContext, tracker: Option<&LicenseTracker>) -> Result<()> {
-    let bash_candidates = [
-        ctx.source.join("usr/bin/bash"),
-        ctx.source.join("bin/bash"),
-    ];
+    let bash_candidates = [ctx.source.join("usr/bin/bash"), ctx.source.join("bin/bash")];
     let bash_path = bash_candidates
         .iter()
         .find(|p| p.exists())
@@ -169,7 +172,9 @@ pub fn copy_bash(ctx: &BuildContext, tracker: Option<&LicenseTracker>) -> Result
 
 /// Extract a binary from an RPM when it's not in the rootfs.
 fn extract_binary_from_rpm(ctx: &BuildContext, binary: &str) -> Option<PathBuf> {
-    let rpm_info = RPM_BINARY_SOURCES.iter().find(|(name, _, _)| *name == binary)?;
+    let rpm_info = RPM_BINARY_SOURCES
+        .iter()
+        .find(|(name, _, _)| *name == binary)?;
     let (_name, rpm_pattern, path_in_rpm) = *rpm_info;
 
     let packages_dir = ctx.base_dir.join("downloads/iso-contents/BaseOS/Packages");

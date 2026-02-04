@@ -4,7 +4,9 @@ use anyhow::Result;
 use std::path::Path;
 use std::time::Instant;
 
-use distro_spec::levitate::{INITRAMFS_INSTALLED_OUTPUT, INITRAMFS_LIVE_OUTPUT, ISO_FILENAME, ROOTFS_NAME};
+use distro_spec::levitate::{
+    INITRAMFS_INSTALLED_OUTPUT, INITRAMFS_LIVE_OUTPUT, ISO_FILENAME, ROOTFS_NAME,
+};
 
 use crate::artifact;
 use crate::config::Config;
@@ -29,11 +31,7 @@ pub enum BuildTarget {
 }
 
 /// Execute the build command.
-pub fn cmd_build(
-    base_dir: &Path,
-    target: BuildTarget,
-    config: &Config,
-) -> Result<()> {
+pub fn cmd_build(base_dir: &Path, target: BuildTarget, config: &Config) -> Result<()> {
     match target {
         BuildTarget::Full => build_full(base_dir, config),
         BuildTarget::Kernel { clean } => build_kernel_only(base_dir, config, clean),
@@ -182,7 +180,10 @@ fn verify_hardware_compat(base_dir: &Path) -> Result<()> {
     }
 
     if failures > 0 {
-        println!("\n[FAIL] Hardware compatibility verification failed for {} profile(s).", failures);
+        println!(
+            "\n[FAIL] Hardware compatibility verification failed for {} profile(s).",
+            failures
+        );
         // We don't bail yet, just warn, unless it's critical for the DISTRO itself.
         // For now, let's just print the results.
     } else {
@@ -193,11 +194,7 @@ fn verify_hardware_compat(base_dir: &Path) -> Result<()> {
 }
 
 /// Build kernel only.
-fn build_kernel_only(
-    base_dir: &Path,
-    _config: &Config,
-    clean: bool,
-) -> Result<()> {
+fn build_kernel_only(base_dir: &Path, _config: &Config, clean: bool) -> Result<()> {
     let needs_compile = clean || rebuild::kernel_needs_compile(base_dir);
     let needs_install = rebuild::kernel_needs_install(base_dir);
 
@@ -318,4 +315,3 @@ fn build_qcow2_only(base_dir: &Path, disk_size: u32) -> Result<()> {
 
     Ok(())
 }
-

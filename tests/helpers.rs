@@ -87,11 +87,7 @@ pub fn create_mock_rootfs(rootfs: &Path) {
     )
     .expect("Failed to create passwd");
 
-    fs::write(
-        rootfs.join("etc/group"),
-        "root:x:0:\ndbus:x:81:\n",
-    )
-    .expect("Failed to create group");
+    fs::write(rootfs.join("etc/group"), "root:x:0:\ndbus:x:81:\n").expect("Failed to create group");
 }
 
 /// Create a mock executable binary file.
@@ -106,7 +102,9 @@ pub fn create_mock_binary(path: &Path) {
     fs::write(path, "#!/bin/bash\necho mock\n").expect("Failed to create mock binary");
 
     // Make executable
-    let mut perms = fs::metadata(path).expect("Failed to get metadata").permissions();
+    let mut perms = fs::metadata(path)
+        .expect("Failed to get metadata")
+        .permissions();
     perms.set_mode(0o755);
     fs::set_permissions(path, perms).expect("Failed to set permissions");
 }
@@ -132,7 +130,8 @@ pub fn assert_symlink(path: &Path, expected_target: &str) {
 
 /// Assert that a file contains expected content.
 pub fn assert_file_contains(path: &Path, expected: &str) {
-    let content = fs::read_to_string(path).expect(&format!("Failed to read file: {}", path.display()));
+    let content =
+        fs::read_to_string(path).expect(&format!("Failed to read file: {}", path.display()));
     assert!(
         content.contains(expected),
         "File {} does not contain expected content.\nExpected to find: {}\nActual content: {}",
@@ -144,11 +143,7 @@ pub fn assert_file_contains(path: &Path, expected: &str) {
 
 /// Assert that a file exists.
 pub fn assert_file_exists(path: &Path) {
-    assert!(
-        path.exists(),
-        "Expected file to exist: {}",
-        path.display()
-    );
+    assert!(path.exists(), "Expected file to exist: {}", path.display());
 }
 
 /// Assert that a directory exists.

@@ -45,14 +45,12 @@ use anyhow::{bail, Context, Result};
 use std::fs;
 use std::path::Path;
 
-use distro_spec::levitate::ROOTFS_NAME;
-use distro_spec::shared::{
-    FHS_DIRS, BIN_UTILS, AUTH_BIN, SSH_BIN, NM_BIN,
-    ESSENTIAL_UNITS, NM_UNITS, WPA_UNITS,
-    ETC_FILES,
-};
 use crate::build::BuildContext;
 use distro_builder::build_erofs_default;
+use distro_spec::levitate::ROOTFS_NAME;
+use distro_spec::shared::{
+    AUTH_BIN, BIN_UTILS, ESSENTIAL_UNITS, ETC_FILES, FHS_DIRS, NM_BIN, NM_UNITS, SSH_BIN, WPA_UNITS,
+};
 
 /// Build the complete rootfs (EROFS) system image.
 ///
@@ -127,10 +125,7 @@ pub fn build_rootfs(base_dir: &Path) -> Result<()> {
 fn check_host_tools() -> Result<()> {
     use distro_builder::process;
 
-    let tools = [
-        ("mkfs.erofs", "erofs-utils"),
-        ("readelf", "binutils"),
-    ];
+    let tools = [("mkfs.erofs", "erofs-utils"), ("readelf", "binutils")];
 
     for (tool, package) in tools {
         if !process::exists(tool) {
@@ -175,7 +170,8 @@ fn verify_staging(staging: &Path) -> Result<()> {
     let mut passed = 0;
 
     // Combine all bin lists (same logic as fsdbg)
-    let all_bins: Vec<&str> = BIN_UTILS.iter()
+    let all_bins: Vec<&str> = BIN_UTILS
+        .iter()
         .chain(AUTH_BIN.iter())
         .chain(SSH_BIN.iter())
         .chain(NM_BIN.iter())
@@ -199,7 +195,8 @@ fn verify_staging(staging: &Path) -> Result<()> {
     }
 
     // Combine all unit lists
-    let all_units: Vec<&str> = ESSENTIAL_UNITS.iter()
+    let all_units: Vec<&str> = ESSENTIAL_UNITS
+        .iter()
         .chain(NM_UNITS.iter())
         .chain(WPA_UNITS.iter())
         .copied()
@@ -245,10 +242,7 @@ fn verify_staging(staging: &Path) -> Result<()> {
         println!("  ✓ Verification PASSED ({}/{} checks)", passed, total);
         Ok(())
     } else {
-        println!(
-            "  ✗ Verification FAILED ({}/{} checks)",
-            passed, total
-        );
+        println!("  ✗ Verification FAILED ({}/{} checks)", passed, total);
         for item in &missing {
             println!("    ✗ {} - Missing", item);
         }

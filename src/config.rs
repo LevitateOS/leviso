@@ -26,7 +26,7 @@ pub mod module_defaults {
         // ISO 9660 filesystem (to mount installation media)
         "kernel/fs/isofs/isofs.ko.xz",
         // Network - virtio (VM networking)
-        "kernel/net/core/failover.ko.xz",       // Required by net_failover
+        "kernel/net/core/failover.ko.xz", // Required by net_failover
         "kernel/drivers/net/net_failover.ko.xz", // Required by virtio_net
         "kernel/drivers/net/virtio_net.ko.xz",
         // Network - common ethernet drivers
@@ -129,7 +129,9 @@ mod tests {
         // Must have ext4 for root filesystem
         assert!(modules.iter().any(|m| m.contains("ext4")));
         // Must have FAT for EFI partition
-        assert!(modules.iter().any(|m| m.contains("fat") || m.contains("vfat")));
+        assert!(modules
+            .iter()
+            .any(|m| m.contains("fat") || m.contains("vfat")));
     }
 
     #[test]

@@ -95,10 +95,18 @@ pub fn is_newer(source: &Path, target: &Path) -> bool {
         return false;
     }
 
-    let Ok(src_meta) = source.metadata() else { return true };
-    let Ok(tgt_meta) = target.metadata() else { return true };
-    let Ok(src_time) = src_meta.modified() else { return true };
-    let Ok(tgt_time) = tgt_meta.modified() else { return true };
+    let Ok(src_meta) = source.metadata() else {
+        return true;
+    };
+    let Ok(tgt_meta) = target.metadata() else {
+        return true;
+    };
+    let Ok(src_time) = src_meta.modified() else {
+        return true;
+    };
+    let Ok(tgt_time) = tgt_meta.modified() else {
+        return true;
+    };
 
     src_time > tgt_time
 }

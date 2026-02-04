@@ -12,8 +12,8 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 use distro_spec::levitate::{
-    EFI_DEBUG, SELINUX_DISABLE, SERIAL_CONSOLE, VGA_CONSOLE, UKI_INSTALLED_ENTRIES,
-    OS_NAME, OS_ID, OS_VERSION,
+    EFI_DEBUG, OS_ID, OS_NAME, OS_VERSION, SELINUX_DISABLE, SERIAL_CONSOLE, UKI_INSTALLED_ENTRIES,
+    VGA_CONSOLE,
 };
 
 #[cfg(test)]
@@ -30,12 +30,7 @@ use recuki::UkiConfig;
 /// * `initramfs` - Path to the initramfs image
 /// * `cmdline` - Kernel command line string
 /// * `output` - Path for the output .efi file
-pub fn build_uki(
-    kernel: &Path,
-    initramfs: &Path,
-    cmdline: &str,
-    output: &Path,
-) -> Result<()> {
+pub fn build_uki(kernel: &Path, initramfs: &Path, cmdline: &str, output: &Path) -> Result<()> {
     println!("  Building UKI: {}", output.display());
 
     let config = UkiConfig::new(kernel, initramfs, cmdline, output)
@@ -121,8 +116,14 @@ mod tests {
     fn test_uki_entries_defined() {
         // Verify all expected entries exist
         assert!(UKI_ENTRIES.len() >= 3);
-        assert!(UKI_ENTRIES.iter().any(|e| e.filename == "levitateos-live.efi"));
-        assert!(UKI_ENTRIES.iter().any(|e| e.filename == "levitateos-emergency.efi"));
-        assert!(UKI_ENTRIES.iter().any(|e| e.filename == "levitateos-debug.efi"));
+        assert!(UKI_ENTRIES
+            .iter()
+            .any(|e| e.filename == "levitateos-live.efi"));
+        assert!(UKI_ENTRIES
+            .iter()
+            .any(|e| e.filename == "levitateos-emergency.efi"));
+        assert!(UKI_ENTRIES
+            .iter()
+            .any(|e| e.filename == "levitateos-debug.efi"));
     }
 }

@@ -37,7 +37,12 @@ pub fn handle_writefile(ctx: &BuildContext, path: &str, content: &str) -> Result
 }
 
 /// Handle Op::WriteFileMode: Write a file with specific permissions
-pub fn handle_writefilemode(ctx: &BuildContext, path: &str, content: &str, mode: u32) -> Result<()> {
+pub fn handle_writefilemode(
+    ctx: &BuildContext,
+    path: &str,
+    content: &str,
+    mode: u32,
+) -> Result<()> {
     let full_path = ctx.staging.join(path);
     if let Some(parent) = full_path.parent() {
         fs::create_dir_all(parent)?;
@@ -58,8 +63,8 @@ pub fn handle_symlink(ctx: &BuildContext, link: &str, target: &str) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::component::{Component, Op, Phase};
     use crate::build::licenses::LicenseTracker;
+    use crate::component::{Component, Op, Phase};
     use leviso_cheat_test::cheat_aware;
     use std::os::unix::fs::PermissionsExt;
 
@@ -88,7 +93,10 @@ mod tests {
         let write_component = Component {
             name: "TestWriteFile",
             phase: Phase::Config,
-            ops: &[Op::WriteFile("etc/test-config.conf", "test-content-12345\nline two\n")],
+            ops: &[Op::WriteFile(
+                "etc/test-config.conf",
+                "test-content-12345\nline two\n",
+            )],
         };
 
         let result = super::super::execute(&ctx, &write_component, &tracker);
@@ -160,22 +168,26 @@ mod tests {
         let write_component = Component {
             name: "TestWriteFileMode",
             phase: Phase::Config,
-            ops: &[Op::WriteFileMode("etc/shadow-test", "root:!:19000::::::", 0o600)],
+            ops: &[Op::WriteFileMode(
+                "etc/shadow-test",
+                "root:!:19000::::::",
+                0o600,
+            )],
         };
 
         let result = super::super::execute(&ctx, &write_component, &tracker);
-        assert!(result.is_ok(), "Op::WriteFileMode should succeed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Op::WriteFileMode should succeed: {:?}",
+            result
+        );
 
         let file_path = env.initramfs.join("etc/shadow-test");
         assert!(file_path.exists(), "File should be created");
 
         let metadata = fs::metadata(&file_path).expect("Should get metadata");
         let mode = metadata.permissions().mode() & 0o777;
-        assert_eq!(
-            mode, 0o600,
-            "File should have mode 0600, got {:o}",
-            mode
-        );
+        assert_eq!(mode, 0o600, "File should have mode 0600, got {:o}", mode);
     }
 
     #[cheat_aware(
@@ -293,7 +305,10 @@ mod tests {
         // Verify entire tree was copied
         let dst_tree = env.initramfs.join("usr/share/test-config");
         assert!(dst_tree.is_dir(), "Root directory should exist");
-        assert!(dst_tree.join("subdir").is_dir(), "Subdirectory should exist");
+        assert!(
+            dst_tree.join("subdir").is_dir(),
+            "Subdirectory should exist"
+        );
         assert_file_exists(&dst_tree.join("main.conf"));
         assert_file_exists(&dst_tree.join("subdir/nested.conf"));
         assert_file_contains(&dst_tree.join("main.conf"), "main config");
@@ -373,7 +388,11 @@ mod tests {
         };
 
         let result = super::super::execute(&ctx, &multi_op_component, &tracker);
-        assert!(result.is_ok(), "All operations should succeed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "All operations should succeed: {:?}",
+            result
+        );
 
         // Verify all operations executed
         assert!(

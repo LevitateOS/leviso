@@ -6,9 +6,9 @@ use std::path::Path;
 use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, ISO_FILENAME, ROOTFS_NAME};
 
 use crate::config::Config;
+use crate::rebuild;
 use crate::recipe;
 use distro_builder::process::Cmd;
-use crate::rebuild;
 
 /// Show target for the show command.
 pub enum ShowTarget {
@@ -21,11 +21,7 @@ pub enum ShowTarget {
 }
 
 /// Execute the show command.
-pub fn cmd_show(
-    base_dir: &Path,
-    target: ShowTarget,
-    config: &Config,
-) -> Result<()> {
+pub fn cmd_show(base_dir: &Path, target: ShowTarget, config: &Config) -> Result<()> {
     match target {
         ShowTarget::Config => {
             config.print();
@@ -119,7 +115,8 @@ fn show_build_status(base_dir: &Path) -> Result<()> {
 
     // Summary
     println!();
-    let any_work = kernel_compile || kernel_install || rootfs_rebuild || initramfs_rebuild || iso_rebuild;
+    let any_work =
+        kernel_compile || kernel_install || rootfs_rebuild || initramfs_rebuild || iso_rebuild;
     if any_work {
         println!("Run 'leviso build' to rebuild stale/missing artifacts.");
     } else {

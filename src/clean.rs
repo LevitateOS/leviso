@@ -5,8 +5,8 @@ use std::fs;
 use std::path::Path;
 
 use distro_spec::levitate::{
-    EFIBOOT_FILENAME, INITRAMFS_BUILD_DIR, INITRAMFS_FILENAME, INITRAMFS_LIVE_OUTPUT, ISO_CHECKSUM_SUFFIX,
-    ISO_FILENAME, ROOTFS_NAME,
+    EFIBOOT_FILENAME, INITRAMFS_BUILD_DIR, INITRAMFS_FILENAME, INITRAMFS_LIVE_OUTPUT,
+    ISO_CHECKSUM_SUFFIX, ISO_FILENAME, ROOTFS_NAME,
 };
 
 /// Clean all build outputs (preserves downloads).
@@ -66,7 +66,9 @@ pub fn clean_kernel(base_dir: &Path) -> Result<()> {
 /// Clean ISO and initramfs only.
 pub fn clean_iso(base_dir: &Path) -> Result<()> {
     let iso = base_dir.join("output").join(ISO_FILENAME);
-    let checksum = base_dir.join("output").join(format!("{}{}", ISO_FILENAME, ISO_CHECKSUM_SUFFIX));
+    let checksum = base_dir
+        .join("output")
+        .join(format!("{}{}", ISO_FILENAME, ISO_CHECKSUM_SUFFIX));
     let initramfs = base_dir.join("output").join(INITRAMFS_FILENAME);
     let initramfs_live = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
     let initramfs_dir = base_dir.join("output/initramfs");

@@ -83,7 +83,10 @@ pub fn check_dependencies(base_dir: &Path) -> Result<Vec<CheckResult>> {
             } else {
                 results.push(CheckResult::fail(
                     tool,
-                    &format!("Not installed and recipe missing: {}", recipe_path.display()),
+                    &format!(
+                        "Not installed and recipe missing: {}",
+                        recipe_path.display()
+                    ),
                 ));
             }
         }
@@ -101,34 +104,46 @@ pub fn check_dependencies(base_dir: &Path) -> Result<Vec<CheckResult>> {
     let workspace_release = monorepo_dir.join("target/release/recipe");
 
     // 3. Check RECIPE_BIN env var
-    let recipe_env = std::env::var("RECIPE_BIN").ok().map(std::path::PathBuf::from);
+    let recipe_env = std::env::var("RECIPE_BIN")
+        .ok()
+        .map(std::path::PathBuf::from);
 
     // 4. Check if source exists (can be built)
     let recipe_source = monorepo_dir.join("tools/recipe/Cargo.toml");
 
     // Find first available binary
     let recipe_binary = recipe_in_path
-        .or_else(|| if workspace_debug.exists() { Some(workspace_debug.clone()) } else { None })
-        .or_else(|| if workspace_release.exists() { Some(workspace_release.clone()) } else { None })
+        .or_else(|| {
+            if workspace_debug.exists() {
+                Some(workspace_debug.clone())
+            } else {
+                None
+            }
+        })
+        .or_else(|| {
+            if workspace_release.exists() {
+                Some(workspace_release.clone())
+            } else {
+                None
+            }
+        })
         .or_else(|| recipe_env.filter(|p| p.exists()));
 
     match recipe_binary {
-        Some(path) => {
-            match validate_executable(&path, "recipe") {
-                Ok(version) => {
-                    results.push(CheckResult::pass_with(
-                        "recipe",
-                        &format!("{} ({})", path.display(), version),
-                    ));
-                }
-                Err(e) => {
-                    results.push(CheckResult::fail(
-                        "recipe",
-                        &format!("{}: {}", path.display(), e),
-                    ));
-                }
+        Some(path) => match validate_executable(&path, "recipe") {
+            Ok(version) => {
+                results.push(CheckResult::pass_with(
+                    "recipe",
+                    &format!("{} ({})", path.display(), version),
+                ));
             }
-        }
+            Err(e) => {
+                results.push(CheckResult::fail(
+                    "recipe",
+                    &format!("{}: {}", path.display(), e),
+                ));
+            }
+        },
         None if recipe_source.exists() => {
             // Source exists but not built - this is OK, it will be built on demand
             results.push(CheckResult::warn(

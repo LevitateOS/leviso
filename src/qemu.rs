@@ -11,19 +11,17 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use distro_spec::levitate::{
-    ISO_FILENAME,
-    QEMU_MEMORY_GB, QEMU_DISK_GB,
-    QEMU_DISK_FILENAME, QEMU_SERIAL_LOG,
+    ISO_FILENAME, QEMU_DISK_FILENAME, QEMU_DISK_GB, QEMU_MEMORY_GB, QEMU_SERIAL_LOG,
 };
-use recqemu::{QemuBuilder, find_ovmf, create_disk};
+use recqemu::{create_disk, find_ovmf, QemuBuilder};
 
 /// Success patterns - if we see any of these, boot succeeded.
 const SUCCESS_PATTERNS: &[&str] = &[
-    "login:",                         // Getty prompt - definitive success
-    "Welcome to LevitateOS",          // Welcome message
-    "Startup finished",               // systemd boot complete
-    "systemd[1]: Reached target",     // systemd reached a target
-    "systemd[1]: Started Getty",      // Getty started
+    "login:",                     // Getty prompt - definitive success
+    "Welcome to LevitateOS",      // Welcome message
+    "Startup finished",           // systemd boot complete
+    "systemd[1]: Reached target", // systemd reached a target
+    "systemd[1]: Started Getty",  // Getty started
 ];
 
 /// Failure patterns - if we see any of these, boot failed.
@@ -181,7 +179,12 @@ pub fn test_iso(base_dir: &Path, timeout_secs: u64) -> Result<()> {
         // Check overall timeout
         if start.elapsed() > timeout {
             let _ = child.kill();
-            let last_lines = output_buffer.iter().rev().take(20).cloned().collect::<Vec<_>>();
+            let last_lines = output_buffer
+                .iter()
+                .rev()
+                .take(20)
+                .cloned()
+                .collect::<Vec<_>>();
             bail!(
                 "TIMEOUT: Boot did not complete in {}s\n\nLast output:\n{}",
                 timeout_secs,
@@ -201,7 +204,11 @@ pub fn test_iso(base_dir: &Path, timeout_secs: u64) -> Result<()> {
             } else {
                 "No output - QEMU/serial broken"
             };
-            bail!("STALL: {} (no output for {}s)", stage, stall_timeout.as_secs());
+            bail!(
+                "STALL: {} (no output for {}s)",
+                stage,
+                stall_timeout.as_secs()
+            );
         }
 
         match rx.recv_timeout(Duration::from_millis(100)) {
@@ -227,7 +234,12 @@ pub fn test_iso(base_dir: &Path, timeout_secs: u64) -> Result<()> {
                 for pattern in FAILURE_PATTERNS {
                     if line.contains(pattern) {
                         let _ = child.kill();
-                        let last_lines = output_buffer.iter().rev().take(30).cloned().collect::<Vec<_>>();
+                        let last_lines = output_buffer
+                            .iter()
+                            .rev()
+                            .take(30)
+                            .cloned()
+                            .collect::<Vec<_>>();
                         bail!(
                             "BOOT FAILED: {}\n\nContext:\n{}",
                             pattern,
@@ -257,7 +269,12 @@ pub fn test_iso(base_dir: &Path, timeout_secs: u64) -> Result<()> {
             }
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
             Err(mpsc::RecvTimeoutError::Disconnected) => {
-                let last_lines = output_buffer.iter().rev().take(20).cloned().collect::<Vec<_>>();
+                let last_lines = output_buffer
+                    .iter()
+                    .rev()
+                    .take(20)
+                    .cloned()
+                    .collect::<Vec<_>>();
                 bail!(
                     "QEMU exited unexpectedly\n\nLast output:\n{}",
                     last_lines.into_iter().rev().collect::<Vec<_>>().join("\n")

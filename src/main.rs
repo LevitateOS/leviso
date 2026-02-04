@@ -29,7 +29,9 @@ use config::Config;
 #[derive(Parser)]
 #[command(name = "leviso")]
 #[command(about = "LevitateOS ISO builder")]
-#[command(after_help = "QUICK START:\n  leviso preflight  Check all dependencies\n  leviso build      Build everything\n  leviso run        Boot in QEMU\n  leviso clean      Remove build artifacts")]
+#[command(
+    after_help = "QUICK START:\n  leviso preflight  Check all dependencies\n  leviso build      Build everything\n  leviso run        Boot in QEMU\n  leviso clean      Remove build artifacts"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -224,7 +226,9 @@ fn main() -> Result<()> {
         Commands::Download { what } => {
             let download_target = match what {
                 None => commands::download::DownloadTarget::All,
-                Some(DownloadTarget::Linux { full: _ }) => commands::download::DownloadTarget::Linux,
+                Some(DownloadTarget::Linux { full: _ }) => {
+                    commands::download::DownloadTarget::Linux
+                }
                 Some(DownloadTarget::Rocky) => commands::download::DownloadTarget::Rocky,
                 Some(DownloadTarget::Tools) => commands::download::DownloadTarget::Tools,
             };

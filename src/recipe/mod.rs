@@ -106,10 +106,7 @@ pub fn find_recipe(monorepo_dir: &Path) -> Result<RecipeBinary> {
                 bin_path
             );
         }
-        bail!(
-            "RECIPE_BIN points to non-existent path: {}",
-            bin_path
-        );
+        bail!("RECIPE_BIN points to non-existent path: {}", bin_path);
     }
 
     // 4. Check RECIPE_SRC env var
@@ -143,7 +140,11 @@ pub fn find_recipe(monorepo_dir: &Path) -> Result<RecipeBinary> {
 }
 
 /// Build recipe from source.
-fn build_from_source(crate_path: &Path, monorepo_dir: &Path, source: RecipeSource) -> Result<RecipeBinary> {
+fn build_from_source(
+    crate_path: &Path,
+    monorepo_dir: &Path,
+    source: RecipeSource,
+) -> Result<RecipeBinary> {
     let release_build = env::var("RECIPE_BUILD_RELEASE")
         .map(|v| v == "1" || v.to_lowercase() == "true")
         .unwrap_or(false);
@@ -211,7 +212,11 @@ fn build_from_source(crate_path: &Path, monorepo_dir: &Path, source: RecipeSourc
 /// Recipe outputs:
 /// - stderr: Progress/logs (inherited, shown to user)
 /// - stdout: JSON ctx (parsed and returned)
-pub fn run_recipe_json(recipe_bin: &Path, recipe_path: &Path, build_dir: &Path) -> Result<serde_json::Value> {
+pub fn run_recipe_json(
+    recipe_bin: &Path,
+    recipe_path: &Path,
+    build_dir: &Path,
+) -> Result<serde_json::Value> {
     eprintln!("  Running recipe: {}", recipe_path.display());
     eprintln!("    Build dir: {}", build_dir.display());
 
@@ -220,7 +225,7 @@ pub fn run_recipe_json(recipe_bin: &Path, recipe_path: &Path, build_dir: &Path) 
         .arg(recipe_path)
         .arg("--build-dir")
         .arg(build_dir)
-        .stderr(Stdio::inherit())  // Show progress to user
+        .stderr(Stdio::inherit()) // Show progress to user
         .output()
         .with_context(|| format!("Failed to execute recipe: {}", recipe_bin.display()))?;
 

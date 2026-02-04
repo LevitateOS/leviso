@@ -14,12 +14,29 @@ use crate::build::context::BuildContext;
 // Import PAM and security configuration contents from distro-spec (SINGLE SOURCE OF TRUTH)
 // This ensures leviso builds exactly what distro-spec expects
 use distro_spec::shared::auth::{
-    PAM_SYSTEM_AUTH, PAM_LOGIN, PAM_POSTLOGIN, PAM_SSHD,
-    PAM_RUNUSER, PAM_RUNUSER_L, PAM_CROND, PAM_REMOTE,
-    PAM_SU, PAM_SU_L, PAM_SUDO, PAM_SYSTEMD_USER,
-    PAM_PASSWD, PAM_CHPASSWD, PAM_CHFN, PAM_CHSH, PAM_OTHER,
+    ACCESS_CONF,
     // Security configuration files
-    LIMITS_CONF, ACCESS_CONF, NAMESPACE_CONF, PAM_ENV_CONF, PWQUALITY_CONF,
+    LIMITS_CONF,
+    NAMESPACE_CONF,
+    PAM_CHFN,
+    PAM_CHPASSWD,
+    PAM_CHSH,
+    PAM_CROND,
+    PAM_ENV_CONF,
+    PAM_LOGIN,
+    PAM_OTHER,
+    PAM_PASSWD,
+    PAM_POSTLOGIN,
+    PAM_REMOTE,
+    PAM_RUNUSER,
+    PAM_RUNUSER_L,
+    PAM_SSHD,
+    PAM_SU,
+    PAM_SUDO,
+    PAM_SU_L,
+    PAM_SYSTEMD_USER,
+    PAM_SYSTEM_AUTH,
+    PWQUALITY_CONF,
 };
 
 /// Create PAM configuration files.

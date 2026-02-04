@@ -77,20 +77,12 @@ pub fn create_mock_rootfs(rootfs: &std::path::Path) {
     )
     .expect("Failed to create passwd");
 
-    fs::write(
-        rootfs.join("etc/group"),
-        "root:x:0:\ndbus:x:81:\n",
-    )
-    .expect("Failed to create group");
+    fs::write(rootfs.join("etc/group"), "root:x:0:\ndbus:x:81:\n").expect("Failed to create group");
 }
 
 /// Assert that a file exists.
 pub fn assert_file_exists(path: &std::path::Path) {
-    assert!(
-        path.exists(),
-        "Expected file to exist: {}",
-        path.display()
-    );
+    assert!(path.exists(), "Expected file to exist: {}", path.display());
 }
 
 /// Assert that a file contains expected content.

@@ -86,8 +86,8 @@ pub fn handle_udev_helpers(ctx: &BuildContext, helpers: &[&str]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::component::{Component, Op, Phase, Target};
     use crate::build::licenses::LicenseTracker;
+    use crate::component::{Component, Op, Phase, Target};
     use leviso_cheat_test::cheat_aware;
     use std::fs;
 

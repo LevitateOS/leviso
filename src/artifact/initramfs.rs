@@ -35,8 +35,9 @@ use fsdbg::checklist::ChecklistType;
 use fsdbg::cpio::CpioReader;
 
 use distro_spec::levitate::{
-    BOOT_DEVICE_PROBE_ORDER, BUSYBOX_URL, BUSYBOX_URL_ENV, CPIO_GZIP_LEVEL, INITRAMFS_INSTALLED_OUTPUT,
-    INITRAMFS_LIVE_OUTPUT, ISO_LABEL, LIVE_OVERLAY_ISO_PATH, ROOTFS_ISO_PATH,
+    BOOT_DEVICE_PROBE_ORDER, BUSYBOX_URL, BUSYBOX_URL_ENV, CPIO_GZIP_LEVEL,
+    INITRAMFS_INSTALLED_OUTPUT, INITRAMFS_LIVE_OUTPUT, ISO_LABEL, LIVE_OVERLAY_ISO_PATH,
+    ROOTFS_ISO_PATH,
 };
 use recinit::{download_busybox, InstallConfig, ModulePreset, TinyConfig};
 
@@ -80,7 +81,10 @@ pub fn build_tiny_initramfs(base_dir: &Path) -> Result<()> {
         iso_label: ISO_LABEL.to_string(),
         rootfs_path: ROOTFS_ISO_PATH.to_string(),
         live_overlay_path: Some(LIVE_OVERLAY_ISO_PATH.to_string()),
-        boot_devices: BOOT_DEVICE_PROBE_ORDER.iter().map(|s| s.to_string()).collect(),
+        boot_devices: BOOT_DEVICE_PROBE_ORDER
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
         module_preset: ModulePreset::Live,
         gzip_level: CPIO_GZIP_LEVEL,
         check_builtin: true,
@@ -171,10 +175,16 @@ fn find_kernel_modules_dir(base_dir: &Path) -> Result<std::path::PathBuf> {
                  Refusing to build initramfs with half-built kernel."
             );
         }
-        println!("  Using CUSTOM kernel modules from {}", custom_modules_path.display());
+        println!(
+            "  Using CUSTOM kernel modules from {}",
+            custom_modules_path.display()
+        );
         Ok(custom_modules_path)
     } else if rocky_modules_path.exists() {
-        println!("  Using ROCKY kernel modules from {}", rocky_modules_path.display());
+        println!(
+            "  Using ROCKY kernel modules from {}",
+            rocky_modules_path.display()
+        );
         Ok(rocky_modules_path)
     } else {
         bail!(
@@ -220,8 +230,12 @@ pub fn verify_install_initramfs(path: &Path) -> Result<()> {
 fn do_verify_initramfs(path: &Path, checklist_type: ChecklistType) -> Result<()> {
     print!("  Verifying {}... ", checklist_type.name());
 
-    let reader = CpioReader::open(path)
-        .with_context(|| format!("Failed to open initramfs for verification: {}", path.display()))?;
+    let reader = CpioReader::open(path).with_context(|| {
+        format!(
+            "Failed to open initramfs for verification: {}",
+            path.display()
+        )
+    })?;
 
     let report = match checklist_type {
         ChecklistType::InstallInitramfs => fsdbg::checklist::install_initramfs::verify(&reader),

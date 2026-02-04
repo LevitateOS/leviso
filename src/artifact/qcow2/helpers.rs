@@ -1,9 +1,9 @@
 //! UUID generation and host tool verification helpers.
 
 use anyhow::{bail, Context, Result};
-use std::process::Command;
-use std::path::Path;
 use distro_builder::process::Cmd;
+use std::path::Path;
+use std::process::Command;
 
 /// Generated UUIDs for the disk image.
 pub struct DiskUuids {
@@ -69,7 +69,9 @@ pub fn generate_uuid() -> Result<String> {
         bail!("uuidgen failed");
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_lowercase())
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .to_lowercase())
 }
 
 /// Generate a random FAT32 volume serial (8 hex chars, e.g., "ABCD-1234").
@@ -84,11 +86,19 @@ pub fn generate_vfat_serial() -> Result<String> {
 
     // Take first 8 hex chars and format as XXXX-XXXX
     let uuid = String::from_utf8_lossy(&output.stdout);
-    let hex: String = uuid.chars().filter(|c| c.is_ascii_hexdigit()).take(8).collect();
+    let hex: String = uuid
+        .chars()
+        .filter(|c| c.is_ascii_hexdigit())
+        .take(8)
+        .collect();
     if hex.len() < 8 {
         bail!("Failed to generate vfat serial");
     }
-    Ok(format!("{}-{}", &hex[0..4].to_uppercase(), &hex[4..8].to_uppercase()))
+    Ok(format!(
+        "{}-{}",
+        &hex[0..4].to_uppercase(),
+        &hex[4..8].to_uppercase()
+    ))
 }
 
 /// Calculate total size of a directory (including all subdirectories).

@@ -68,12 +68,18 @@ impl PreflightReport {
 
     /// Count of failed checks.
     pub fn fail_count(&self) -> usize {
-        self.checks.iter().filter(|c| c.status == CheckStatus::Fail).count()
+        self.checks
+            .iter()
+            .filter(|c| c.status == CheckStatus::Fail)
+            .count()
     }
 
     /// Count of warnings.
     pub fn warn_count(&self) -> usize {
-        self.checks.iter().filter(|c| c.status == CheckStatus::Warn).count()
+        self.checks
+            .iter()
+            .filter(|c| c.status == CheckStatus::Warn)
+            .count()
     }
 
     /// Print the report to stdout.
@@ -105,7 +111,11 @@ impl PreflightReport {
 
         println!();
         let total = self.checks.len();
-        let passed = self.checks.iter().filter(|c| c.status == CheckStatus::Pass).count();
+        let passed = self
+            .checks
+            .iter()
+            .filter(|c| c.status == CheckStatus::Pass)
+            .count();
         let failed = self.fail_count();
         let warned = self.warn_count();
 

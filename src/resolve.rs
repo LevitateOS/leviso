@@ -31,7 +31,7 @@
 //! let rocky_path = resolve_dep("rocky")?;
 //! ```
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -196,6 +196,9 @@ mod tests {
         let build_dir = PathBuf::from("/tmp/test-build");
         let result = get_output_path_by_convention("unknown", &build_dir);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Unknown dependency"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unknown dependency"));
     }
 }

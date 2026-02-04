@@ -47,7 +47,7 @@ pub fn build_system(ctx: &BuildContext) -> Result<()> {
     let t = Timer::start("Systemd");
     executor::execute(ctx, &SYSTEMD_UNITS, &tracker)?;
     executor::execute(ctx, &GETTY, &tracker)?;
-    executor::execute(ctx, &EFIVARS, &tracker)?;  // EFI variable filesystem for efibootmgr
+    executor::execute(ctx, &EFIVARS, &tracker)?; // EFI variable filesystem for efibootmgr
     executor::execute(ctx, &UDEV, &tracker)?;
     executor::execute(ctx, &TMPFILES, &tracker)?;
     executor::execute(ctx, &LIVE_SYSTEMD, &tracker)?;
@@ -60,7 +60,7 @@ pub fn build_system(ctx: &BuildContext) -> Result<()> {
 
     // Phase 5: Services (using Service abstraction where applicable)
     let t = Timer::start("Services");
-    executor::execute(ctx, &NETWORK, &tracker)?;  // Has custom ops, keeping as Component
+    executor::execute(ctx, &NETWORK, &tracker)?; // Has custom ops, keeping as Component
     executor::execute(ctx, &CHRONY_SVC, &tracker)?;
     executor::execute(ctx, &OPENSSH_SVC, &tracker)?;
     executor::execute(ctx, &PAM, &tracker)?;
@@ -167,11 +167,7 @@ mod tests {
         let installables = all_installables();
         let mut names = std::collections::HashSet::new();
         for (name, _) in &installables {
-            assert!(
-                names.insert(*name),
-                "Duplicate component name: {}",
-                name
-            );
+            assert!(names.insert(*name), "Duplicate component name: {}", name);
         }
     }
 }

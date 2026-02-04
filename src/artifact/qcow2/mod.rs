@@ -22,26 +22,26 @@
 //! Key insight: We use rootfs-staging/ directly (the source for EROFS),
 //! so we don't need to extract EROFS which would require mounting.
 
-mod helpers;
 mod config;
-mod partitions;
-mod mtools;
-mod disk;
 mod conversion;
+mod disk;
+mod helpers;
+mod mtools;
+mod partitions;
 
 // Re-export public API
-pub use helpers::DiskUuids;
 pub use config::prepare_qcow2_rootfs;
-pub use partitions::{create_efi_partition, create_root_partition, EFI_SIZE_MB};
-pub use mtools::{mtools_mkdir, mtools_copy, mtools_write_file};
-pub use disk::assemble_disk;
 pub use conversion::convert_to_qcow2;
+pub use disk::assemble_disk;
+pub use helpers::DiskUuids;
+pub use mtools::{mtools_copy, mtools_mkdir, mtools_write_file};
+pub use partitions::{create_efi_partition, create_root_partition, EFI_SIZE_MB};
 
 use anyhow::{bail, Context, Result};
-use std::fs;
-use std::path::Path;
 use distro_builder::process::ensure_exists;
 use distro_spec::shared::QCOW2_IMAGE_FILENAME;
+use std::fs;
+use std::path::Path;
 
 // TEAM_151: Re-organized qcow2 module into dedicated submodules for better maintainability
 
@@ -62,9 +62,8 @@ pub fn build_qcow2(base_dir: &Path, disk_size_gb: u32) -> Result<()> {
     let qcow2_path = output_dir.join(QCOW2_IMAGE_FILENAME);
 
     // Step 2: Verify rootfs-staging exists (source for rootfs)
-    ensure_exists(&staging_dir, "rootfs-staging").with_context(|| {
-        "Run 'cargo run -- build rootfs' first to create rootfs-staging."
-    })?;
+    ensure_exists(&staging_dir, "rootfs-staging")
+        .with_context(|| "Run 'cargo run -- build rootfs' first to create rootfs-staging.")?;
 
     // Step 2b: Verify ALL dependencies exist upfront (fail fast)
     println!("\nVerifying dependencies...");
@@ -106,7 +105,10 @@ pub fn build_qcow2(base_dir: &Path, disk_size_gb: u32) -> Result<()> {
     let root_size_mb = (disk_size_gb as u64 * 1024) - EFI_SIZE_MB - (1 * 2);
     partitions::create_root_partition(&qcow2_staging, &root_image, root_size_mb, &uuids)?;
     if let Ok(meta) = fs::metadata(&root_image) {
-        println!("  Root partition size: {} MB (sparse file)", meta.len() / 1024 / 1024);
+        println!(
+            "  Root partition size: {} MB (sparse file)",
+            meta.len() / 1024 / 1024
+        );
     }
 
     // Step 8: Assemble the disk image
@@ -146,7 +148,9 @@ pub fn build_qcow2(base_dir: &Path, disk_size_gb: u32) -> Result<()> {
     }
     println!("\nTo boot:");
     println!("  qemu-system-x86_64 -enable-kvm -m 4G -cpu host \\");
-    println!("    -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd \\");
+    println!(
+        "    -drive if=pflash,format=raw,readonly=on,file=/usr/share/edk2/ovmf/OVMF_CODE.fd \\"
+    );
     println!("    -drive file={},format=qcow2 \\", qcow2_path.display());
     println!("    -device virtio-vga -device virtio-net-pci,netdev=net0 \\");
     println!("    -netdev user,id=net0");
@@ -180,7 +184,10 @@ pub fn verify_qcow2(base_dir: &Path) -> Result<()> {
     // if they want detailed verification.
     println!("  [OK] Basic verification passed");
     println!("\n  For detailed verification, run:");
-    println!("    sudo fsdbg verify {} --type qcow2", qcow2_path.display());
+    println!(
+        "    sudo fsdbg verify {} --type qcow2",
+        qcow2_path.display()
+    );
 
     Ok(())
 }
@@ -191,9 +198,8 @@ fn verify_build_dependencies(base_dir: &Path, rootfs: &Path) -> Result<()> {
 
     // Check kernel
     let kernel_path = output_dir.join("staging/boot/vmlinuz");
-    ensure_exists(&kernel_path, "Kernel").with_context(|| {
-        "Kernel not found. Run 'cargo run -- build kernel' first."
-    })?;
+    ensure_exists(&kernel_path, "Kernel")
+        .with_context(|| "Kernel not found. Run 'cargo run -- build kernel' first.")?;
 
     // Check install initramfs (REQUIRED for disk boot)
     let initramfs_path = output_dir.join("initramfs-installed.img");
@@ -233,8 +239,8 @@ fn validate_rootfs_content(rootfs: &Path) -> Result<()> {
     }
 
     // Check minimum size (rootfs should be at least 500 MB)
-    let size_mb = helpers::calculate_dir_size(rootfs)
-        .context("Failed to calculate rootfs size")? / (1024 * 1024);
+    let size_mb = helpers::calculate_dir_size(rootfs).context("Failed to calculate rootfs size")?
+        / (1024 * 1024);
 
     if size_mb < 500 {
         bail!(

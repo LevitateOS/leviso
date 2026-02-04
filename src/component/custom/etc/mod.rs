@@ -67,9 +67,9 @@ pub fn create_ssh_host_keys(ctx: &BuildContext) -> Result<()> {
 
     // Generate all three key types used by modern sshd
     let key_types = [
-        ("rsa", 3072),     // RSA with minimum recommended key size
-        ("ecdsa", 256),    // ECDSA with P-256 curve
-        ("ed25519", 0),    // Ed25519 (fixed size, no bits param needed)
+        ("rsa", 3072),  // RSA with minimum recommended key size
+        ("ecdsa", 256), // ECDSA with P-256 curve
+        ("ed25519", 0), // Ed25519 (fixed size, no bits param needed)
     ];
 
     for (key_type, bits) in key_types {
@@ -88,10 +88,13 @@ pub fn create_ssh_host_keys(ctx: &BuildContext) -> Result<()> {
         let _ = fs::remove_file(&pub_key_path);
 
         let mut cmd = Command::new("ssh-keygen");
-        cmd.arg("-t").arg(key_type)
-            .arg("-f").arg(&key_path)
-            .arg("-N").arg("")  // Empty passphrase
-            .arg("-q");         // Quiet mode
+        cmd.arg("-t")
+            .arg(key_type)
+            .arg("-f")
+            .arg(&key_path)
+            .arg("-N")
+            .arg("") // Empty passphrase
+            .arg("-q"); // Quiet mode
 
         // Add bits parameter for RSA and ECDSA
         if bits > 0 {
@@ -125,15 +128,24 @@ pub fn create_ssh_host_keys(ctx: &BuildContext) -> Result<()> {
 fn create_passwd_files(ctx: &BuildContext) -> Result<()> {
     let etc = ctx.staging.join("etc");
 
-    fs::write(etc.join("passwd"), read_manifest_file("etc/files", "passwd")?)?;
-    fs::write(etc.join("shadow"), read_manifest_file("etc/files", "shadow")?)?;
+    fs::write(
+        etc.join("passwd"),
+        read_manifest_file("etc/files", "passwd")?,
+    )?;
+    fs::write(
+        etc.join("shadow"),
+        read_manifest_file("etc/files", "shadow")?,
+    )?;
 
     let mut perms = fs::metadata(etc.join("shadow"))?.permissions();
     perms.set_mode(0o600);
     fs::set_permissions(etc.join("shadow"), perms)?;
 
     fs::write(etc.join("group"), read_manifest_file("etc/files", "group")?)?;
-    fs::write(etc.join("gshadow"), read_manifest_file("etc/files", "gshadow")?)?;
+    fs::write(
+        etc.join("gshadow"),
+        read_manifest_file("etc/files", "gshadow")?,
+    )?;
 
     let mut perms = fs::metadata(etc.join("gshadow"))?.permissions();
     perms.set_mode(0o600);
@@ -150,7 +162,8 @@ fn create_system_identity(ctx: &BuildContext) -> Result<()> {
     let id_like = std::env::var("OS_ID_LIKE").unwrap_or_else(|_| "fedora".to_string());
     let version = std::env::var("OS_VERSION").unwrap_or_else(|_| "1.0".to_string());
     let version_id = std::env::var("OS_VERSION_ID").unwrap_or_else(|_| "1".to_string());
-    let home_url = std::env::var("OS_HOME_URL").unwrap_or_else(|_| "https://levitateos.org".to_string());
+    let home_url =
+        std::env::var("OS_HOME_URL").unwrap_or_else(|_| "https://levitateos.org".to_string());
     let bug_url = std::env::var("OS_BUG_REPORT_URL")
         .unwrap_or_else(|_| "https://github.com/levitateos/levitateos/issues".to_string());
 
@@ -192,16 +205,28 @@ fn create_filesystem_config(ctx: &BuildContext) -> Result<()> {
 fn create_auth_config(ctx: &BuildContext) -> Result<()> {
     let etc = ctx.staging.join("etc");
 
-    fs::write(etc.join("shells"), read_manifest_file("etc/files", "shells")?)?;
-    fs::write(etc.join("login.defs"), read_manifest_file("etc/files", "login.defs")?)?;
-    fs::write(etc.join("sudoers"), read_manifest_file("etc/files", "sudoers")?)?;
+    fs::write(
+        etc.join("shells"),
+        read_manifest_file("etc/files", "shells")?,
+    )?;
+    fs::write(
+        etc.join("login.defs"),
+        read_manifest_file("etc/files", "login.defs")?,
+    )?;
+    fs::write(
+        etc.join("sudoers"),
+        read_manifest_file("etc/files", "sudoers")?,
+    )?;
 
     let mut perms = fs::metadata(etc.join("sudoers"))?.permissions();
     perms.set_mode(0o440);
     fs::set_permissions(etc.join("sudoers"), perms)?;
 
     fs::create_dir_all(etc.join("sudoers.d"))?;
-    fs::write(etc.join("sudo.conf"), read_manifest_file("etc/files", "sudo.conf")?)?;
+    fs::write(
+        etc.join("sudo.conf"),
+        read_manifest_file("etc/files", "sudo.conf")?,
+    )?;
 
     Ok(())
 }
@@ -214,9 +239,18 @@ fn create_locale_config(ctx: &BuildContext) -> Result<()> {
         std::os::unix::fs::symlink("/usr/share/zoneinfo/UTC", &localtime)?;
     }
 
-    fs::write(etc.join("adjtime"), read_manifest_file("etc/files", "adjtime")?)?;
-    fs::write(etc.join("locale.conf"), read_manifest_file("etc/files", "locale.conf")?)?;
-    fs::write(etc.join("vconsole.conf"), read_manifest_file("etc/files", "vconsole.conf")?)?;
+    fs::write(
+        etc.join("adjtime"),
+        read_manifest_file("etc/files", "adjtime")?,
+    )?;
+    fs::write(
+        etc.join("locale.conf"),
+        read_manifest_file("etc/files", "locale.conf")?,
+    )?;
+    fs::write(
+        etc.join("vconsole.conf"),
+        read_manifest_file("etc/files", "vconsole.conf")?,
+    )?;
 
     Ok(())
 }
@@ -237,19 +271,40 @@ fn create_network_config(ctx: &BuildContext) -> Result<()> {
 fn create_shell_config(ctx: &BuildContext) -> Result<()> {
     let etc = ctx.staging.join("etc");
 
-    fs::write(etc.join("profile"), read_manifest_file("etc/files", "profile")?)?;
+    fs::write(
+        etc.join("profile"),
+        read_manifest_file("etc/files", "profile")?,
+    )?;
 
     fs::create_dir_all(etc.join("profile.d"))?;
-    fs::write(etc.join("profile.d/xdg.sh"), read_manifest_file("etc/files", "profile.d/xdg.sh")?)?;
-    fs::write(etc.join("bashrc"), read_manifest_file("etc/files", "bashrc")?)?;
+    fs::write(
+        etc.join("profile.d/xdg.sh"),
+        read_manifest_file("etc/files", "profile.d/xdg.sh")?,
+    )?;
+    fs::write(
+        etc.join("bashrc"),
+        read_manifest_file("etc/files", "bashrc")?,
+    )?;
 
     let root_home = ctx.staging.join("root");
-    fs::write(root_home.join(".bashrc"), read_manifest_file("etc/files", "root/.bashrc")?)?;
-    fs::write(root_home.join(".bash_profile"), read_manifest_file("etc/files", "root/.bash_profile")?)?;
+    fs::write(
+        root_home.join(".bashrc"),
+        read_manifest_file("etc/files", "root/.bashrc")?,
+    )?;
+    fs::write(
+        root_home.join(".bash_profile"),
+        read_manifest_file("etc/files", "root/.bash_profile")?,
+    )?;
 
     fs::create_dir_all(etc.join("skel"))?;
-    fs::write(etc.join("skel/.bashrc"), read_manifest_file("etc/files", "skel/.bashrc")?)?;
-    fs::write(etc.join("skel/.bash_profile"), read_manifest_file("etc/files", "skel/.bash_profile")?)?;
+    fs::write(
+        etc.join("skel/.bashrc"),
+        read_manifest_file("etc/files", "skel/.bashrc")?,
+    )?;
+    fs::write(
+        etc.join("skel/.bash_profile"),
+        read_manifest_file("etc/files", "skel/.bash_profile")?,
+    )?;
 
     for xdg_dir in [".config", ".local/share", ".local/state", ".cache"] {
         let dir = etc.join("skel").join(xdg_dir);
@@ -261,7 +316,10 @@ fn create_shell_config(ctx: &BuildContext) -> Result<()> {
 }
 
 fn create_nsswitch(ctx: &BuildContext) -> Result<()> {
-    fs::write(ctx.staging.join("etc/nsswitch.conf"), read_manifest_file("etc/files", "nsswitch.conf")?)?;
+    fs::write(
+        ctx.staging.join("etc/nsswitch.conf"),
+        read_manifest_file("etc/files", "nsswitch.conf")?,
+    )?;
     Ok(())
 }
 

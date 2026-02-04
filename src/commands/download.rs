@@ -63,7 +63,12 @@ pub fn cmd_download(base_dir: &Path, target: DownloadTarget) -> Result<()> {
             for tool in LEVITATE_CARGO_TOOLS {
                 let path = staging_bin.join(tool);
                 let status = if path.exists() { "OK" } else { "MISSING" };
-                println!("  {:10} {} [{}]", format!("{}:", tool), path.display(), status);
+                println!(
+                    "  {:10} {} [{}]",
+                    format!("{}:", tool),
+                    path.display(),
+                    status
+                );
             }
         }
     }

@@ -125,7 +125,8 @@ pub fn create_sh_symlink(root: &Path) -> Result<()> {
         fs::remove_dir_all(&bin_link)?;
     }
     if !bin_link.exists() {
-        std::os::unix::fs::symlink("usr/bin", &bin_link).context("Failed to create /bin symlink")?;
+        std::os::unix::fs::symlink("usr/bin", &bin_link)
+            .context("Failed to create /bin symlink")?;
     }
 
     // /usr/bin/sh -> bash

@@ -3,7 +3,7 @@
 use anyhow::Result;
 use std::path::Path;
 
-use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, ROOTFS_NAME, ISO_FILENAME};
+use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, ISO_FILENAME, ROOTFS_NAME};
 
 use crate::artifact;
 use crate::qemu;

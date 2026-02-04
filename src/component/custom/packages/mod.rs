@@ -57,7 +57,10 @@ pub fn copy_systemd_boot_efi(ctx: &BuildContext) -> Result<()> {
             size as f64 / 1_000.0
         );
     } else {
-        bail!("EFI files not found in extracted RPM at {}", temp_dir.display());
+        bail!(
+            "EFI files not found in extracted RPM at {}",
+            temp_dir.display()
+        );
     }
 
     let _ = fs::remove_dir_all(&temp_dir);
@@ -166,11 +169,15 @@ pub fn setup_recipe_config(ctx: &BuildContext) -> Result<()> {
         fs::create_dir_all(ctx.staging.join(dir))?;
     }
 
-    fs::write(ctx.staging.join("etc/recipe/recipe.conf"), read_manifest_file("packages/files", "recipe.conf")?)?;
-    fs::write(ctx.staging.join("etc/profile.d/recipe.sh"), read_manifest_file("packages/files", "recipe.sh")?)?;
+    fs::write(
+        ctx.staging.join("etc/recipe/recipe.conf"),
+        read_manifest_file("packages/files", "recipe.conf")?,
+    )?;
+    fs::write(
+        ctx.staging.join("etc/profile.d/recipe.sh"),
+        read_manifest_file("packages/files", "recipe.sh")?,
+    )?;
 
     println!("  Created recipe configuration");
     Ok(())
 }
-
-

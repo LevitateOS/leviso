@@ -22,22 +22,38 @@
 //! This file imports those lists and uses them to define Components.
 
 use super::{
-    bins, copy_file, copy_tree, custom, dirs, enable_getty, enable_multi_user,
-    enable_sysinit, group, sbins, symlink, units, user, write_file, Component, CustomOp, Op,
-    Phase,
+    bins, copy_file, copy_tree, custom, dirs, enable_getty, enable_multi_user, enable_sysinit,
+    group, sbins, symlink, units, user, write_file, Component, CustomOp, Op, Phase,
 };
 
 // Import component definitions from distro-spec (SINGLE SOURCE OF TRUTH)
 use distro_spec::shared::{
-    FHS_DIRS, BIN_UTILS, AUTH_BIN, SBIN_UTILS, AUTH_SBIN,
-    SYSTEMD_BINARIES, ESSENTIAL_UNITS, DBUS_ACTIVATION_SYMLINKS,
-    UDEV_HELPERS, SUDO_LIBS, NM_BIN, NM_SBIN, WPA_SBIN, NM_UNITS, WPA_UNITS,
+    AUTH_BIN,
+    AUTH_SBIN,
+    BIN_UTILS,
     // Desktop services
-    BLUETOOTH_SBIN, BLUETOOTH_UNITS,
-    PIPEWIRE_SBIN, PIPEWIRE_UNITS,
-    POLKIT_SBIN, POLKIT_UNITS,
-    UDISKS_SBIN, UDISKS_UNITS,
-    UPOWER_SBIN, UPOWER_UNITS,
+    BLUETOOTH_SBIN,
+    BLUETOOTH_UNITS,
+    DBUS_ACTIVATION_SYMLINKS,
+    ESSENTIAL_UNITS,
+    FHS_DIRS,
+    NM_BIN,
+    NM_SBIN,
+    NM_UNITS,
+    PIPEWIRE_SBIN,
+    PIPEWIRE_UNITS,
+    POLKIT_SBIN,
+    POLKIT_UNITS,
+    SBIN_UTILS,
+    SUDO_LIBS,
+    SYSTEMD_BINARIES,
+    UDEV_HELPERS,
+    UDISKS_SBIN,
+    UDISKS_UNITS,
+    UPOWER_SBIN,
+    UPOWER_UNITS,
+    WPA_SBIN,
+    WPA_UNITS,
 };
 
 // =============================================================================
@@ -47,10 +63,7 @@ use distro_spec::shared::{
 pub static FILESYSTEM: Component = Component {
     name: "filesystem",
     phase: Phase::Filesystem,
-    ops: &[
-        dirs(FHS_DIRS),
-        custom(CustomOp::CreateFhsSymlinks),
-    ],
+    ops: &[dirs(FHS_DIRS), custom(CustomOp::CreateFhsSymlinks)],
 };
 
 // =============================================================================
@@ -66,10 +79,7 @@ pub static SHELL: Component = Component {
 pub static COREUTILS: Component = Component {
     name: "coreutils",
     phase: Phase::Binaries,
-    ops: &[
-        bins(BIN_UTILS),
-        bins(AUTH_BIN),
-    ],
+    ops: &[bins(BIN_UTILS), bins(AUTH_BIN)],
 };
 
 pub static SBIN_BINARIES: Component = Component {
@@ -133,7 +143,10 @@ pub static GETTY: Component = Component {
     ops: &[
         enable_getty("getty@tty1.service"),
         enable_multi_user("getty.target"),
-        symlink("etc/systemd/system/default.target", "/usr/lib/systemd/system/multi-user.target"),
+        symlink(
+            "etc/systemd/system/default.target",
+            "/usr/lib/systemd/system/multi-user.target",
+        ),
         // Serial console fix: add -L flag for virtual serial ports (CLOCAL - ignore modem control)
         // Without this, agetty waits for carrier detect that QEMU doesn't provide
         dirs(&["etc/systemd/system/serial-getty@.service.d"]),
@@ -228,9 +241,7 @@ pub static TMPFILES: Component = Component {
 pub static LIVE_SYSTEMD: Component = Component {
     name: "live-systemd",
     phase: Phase::Systemd,
-    ops: &[
-        custom(CustomOp::SetupLiveSystemdConfigs),
-    ],
+    ops: &[custom(CustomOp::SetupLiveSystemdConfigs)],
 };
 
 // =============================================================================
@@ -297,9 +308,7 @@ pub static PAM: Component = Component {
 pub static MODULES: Component = Component {
     name: "modules",
     phase: Phase::Services,
-    ops: &[
-        custom(CustomOp::CopyModules),
-    ],
+    ops: &[custom(CustomOp::CopyModules)],
 };
 
 // =============================================================================
@@ -340,9 +349,7 @@ pub static RECIPE: Component = Component {
 pub static BOOTLOADER: Component = Component {
     name: "bootloader",
     phase: Phase::Packages,
-    ops: &[
-        custom(CustomOp::CopySystemdBootEfi),
-    ],
+    ops: &[custom(CustomOp::CopySystemdBootEfi)],
 };
 
 // =============================================================================
@@ -393,10 +400,10 @@ pub static OPENSSH_SVC: Service = Service {
         "sshd@.service",
         "sshd-keygen.target",
         "sshd-keygen@.service",
-        "ssh-host-keys-migration.service",  // Required by sshd.service Wants=
+        "ssh-host-keys-migration.service", // Required by sshd.service Wants=
     ],
     user_units: &[],
-    enable: &[],  // Not enabled by default
+    enable: &[], // Not enabled by default
     config_trees: &[
         "usr/libexec/openssh",
         "etc/ssh",
@@ -404,7 +411,7 @@ pub static OPENSSH_SVC: Service = Service {
         "usr/share/crypto-policies",
     ],
     config_files: &["etc/pam.d/sshd", "etc/sysconfig/sshd"],
-    dirs: &["var/empty/sshd"],  // Note: /run/sshd is created by tmpfiles at boot
+    dirs: &["var/empty/sshd"], // Note: /run/sshd is created by tmpfiles at boot
     symlinks: &[],
     users: &[User {
         name: "sshd",
@@ -413,7 +420,10 @@ pub static OPENSSH_SVC: Service = Service {
         home: "/var/empty/sshd",
         shell: "/usr/sbin/nologin",
     }],
-    groups: &[Group { name: "sshd", gid: 74 }],
+    groups: &[Group {
+        name: "sshd",
+        gid: 74,
+    }],
     custom: &[],
 };
 
@@ -422,8 +432,8 @@ pub static CHRONY_SVC: Service = Service {
     name: "chrony",
     phase: Phase::Services,
     bins: &[],
-    sbins: &[],  // chronyd is already in SBIN_UTILS
-    units: &[],  // Already in ESSENTIAL_UNITS
+    sbins: &[], // chronyd is already in SBIN_UTILS
+    units: &[], // Already in ESSENTIAL_UNITS
     user_units: &[],
     enable: &[(Target::MultiUser, "chronyd.service")],
     config_trees: &[],
@@ -441,7 +451,10 @@ pub static CHRONY_SVC: Service = Service {
         home: "/var/lib/chrony",
         shell: "/sbin/nologin",
     }],
-    groups: &[Group { name: "chrony", gid: 987 }],
+    groups: &[Group {
+        name: "chrony",
+        gid: 987,
+    }],
     custom: &[],
 };
 
@@ -449,7 +462,13 @@ pub static CHRONY_SVC: Service = Service {
 pub static DBUS_SVC: Service = Service {
     name: "dbus",
     phase: Phase::Dbus,
-    bins: &["dbus-broker", "dbus-broker-launch", "dbus-send", "dbus-daemon", "busctl"],
+    bins: &[
+        "dbus-broker",
+        "dbus-broker-launch",
+        "dbus-send",
+        "dbus-daemon",
+        "busctl",
+    ],
     sbins: &[],
     units: &["dbus.socket", "dbus-daemon.service"],
     user_units: &[],
@@ -472,7 +491,10 @@ pub static DBUS_SVC: Service = Service {
         home: "/",
         shell: "/sbin/nologin",
     }],
-    groups: &[Group { name: "dbus", gid: 81 }],
+    groups: &[Group {
+        name: "dbus",
+        gid: 81,
+    }],
     custom: &[],
 };
 
@@ -488,18 +510,19 @@ pub static BLUETOOTH_SVC: Service = Service {
     sbins: BLUETOOTH_SBIN,
     units: BLUETOOTH_UNITS,
     user_units: &[],
-    enable: &[],  // Not enabled by default - user enables when needed
+    enable: &[], // Not enabled by default - user enables when needed
     config_trees: &[
         "etc/bluetooth",
-        "usr/libexec/bluetooth",  // Contains bluetoothd (not in /usr/sbin)
+        "usr/libexec/bluetooth", // Contains bluetoothd (not in /usr/sbin)
     ],
-    config_files: &[
-        "usr/share/dbus-1/system.d/bluetooth.conf",
-    ],
+    config_files: &["usr/share/dbus-1/system.d/bluetooth.conf"],
     dirs: &["var/lib/bluetooth"],
     symlinks: &[],
     users: &[],
-    groups: &[Group { name: "bluetooth", gid: 170 }],
+    groups: &[Group {
+        name: "bluetooth",
+        gid: 170,
+    }],
     custom: &[],
 };
 
@@ -510,29 +533,44 @@ pub static PIPEWIRE_SVC: Service = Service {
     phase: Phase::Services,
     // Client tools
     bins: &[
-        "pw-cli", "pw-dump", "pw-cat", "pw-play", "pw-record",
-        "pw-top", "pw-metadata", "pw-mon", "pw-link",
-        "wpctl",  // WirePlumber control
+        "pw-cli",
+        "pw-dump",
+        "pw-cat",
+        "pw-play",
+        "pw-record",
+        "pw-top",
+        "pw-metadata",
+        "pw-mon",
+        "pw-link",
+        "wpctl", // WirePlumber control
         // PulseAudio compatibility (pacmd not provided by pipewire-pulseaudio)
-        "pactl", "paplay", "parecord",
+        "pactl",
+        "paplay",
+        "parecord",
     ],
     sbins: PIPEWIRE_SBIN,
-    units: &[],  // No system units
-    user_units: PIPEWIRE_UNITS,  // User-level services
-    enable: &[],  // User units are socket-activated
+    units: &[],                 // No system units
+    user_units: PIPEWIRE_UNITS, // User-level services
+    enable: &[],                // User units are socket-activated
     config_trees: &[
         "usr/share/pipewire",
         "etc/pipewire",
         "usr/share/wireplumber",
         "etc/wireplumber",
     ],
-    config_files: &[],  // ReserveDevice1.service not present in Rocky
+    config_files: &[], // ReserveDevice1.service not present in Rocky
     dirs: &[],
     symlinks: &[],
     users: &[],
     groups: &[
-        Group { name: "pipewire", gid: 171 },
-        Group { name: "audio", gid: 63 },
+        Group {
+            name: "pipewire",
+            gid: 171,
+        },
+        Group {
+            name: "audio",
+            gid: 63,
+        },
     ],
     custom: &[],
 };
@@ -546,11 +584,11 @@ pub static POLKIT_SVC: Service = Service {
     sbins: POLKIT_SBIN,
     units: POLKIT_UNITS,
     user_units: &[],
-    enable: &[],  // Started on-demand by D-Bus
+    enable: &[], // Started on-demand by D-Bus
     config_trees: &[
         "usr/share/polkit-1",
         "etc/polkit-1",
-        "usr/lib/polkit-1",  // Contains polkitd (not in /usr/sbin)
+        "usr/lib/polkit-1", // Contains polkitd (not in /usr/sbin)
     ],
     config_files: &[
         "usr/share/dbus-1/system.d/org.freedesktop.PolicyKit1.conf",
@@ -565,7 +603,10 @@ pub static POLKIT_SVC: Service = Service {
         home: "/",
         shell: "/sbin/nologin",
     }],
-    groups: &[Group { name: "polkitd", gid: 27 }],
+    groups: &[Group {
+        name: "polkitd",
+        gid: 27,
+    }],
     custom: &[],
 };
 
@@ -578,11 +619,11 @@ pub static UDISKS_SVC: Service = Service {
     sbins: UDISKS_SBIN,
     units: UDISKS_UNITS,
     user_units: &[],
-    enable: &[],  // Started on-demand by D-Bus
+    enable: &[], // Started on-demand by D-Bus
     config_trees: &[
         "usr/lib/udisks2",
         "etc/udisks2",
-        "usr/libexec/udisks2",  // Contains udisksd (not in /usr/sbin)
+        "usr/libexec/udisks2", // Contains udisksd (not in /usr/sbin)
     ],
     config_files: &[
         "usr/share/dbus-1/system.d/org.freedesktop.UDisks2.conf",
@@ -604,7 +645,7 @@ pub static UPOWER_SVC: Service = Service {
     sbins: UPOWER_SBIN,
     units: UPOWER_UNITS,
     user_units: &[],
-    enable: &[],  // Started on-demand by D-Bus
+    enable: &[], // Started on-demand by D-Bus
     config_trees: &[
         "etc/UPower",
         // Note: upowerd is a standalone binary in /usr/libexec, handled via CopyFile
@@ -612,7 +653,7 @@ pub static UPOWER_SVC: Service = Service {
     config_files: &[
         "usr/share/dbus-1/system.d/org.freedesktop.UPower.conf",
         "usr/share/dbus-1/system-services/org.freedesktop.UPower.service",
-        "usr/libexec/upowerd",  // Contains upowerd (not in /usr/sbin)
+        "usr/libexec/upowerd", // Contains upowerd (not in /usr/sbin)
     ],
     dirs: &["var/lib/upower"],
     symlinks: &[],

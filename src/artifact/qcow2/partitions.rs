@@ -1,12 +1,12 @@
 //! EFI and root partition creation for qcow2 disk images.
 
-use anyhow::Result;
-use std::fs;
-use std::path::{Path, PathBuf};
-use distro_builder::process::{Cmd, ensure_exists, find_first_existing};
-use distro_spec::levitate::boot::{boot_entry_with_partuuid, default_loader_config};
 use super::helpers::DiskUuids;
 use super::mtools;
+use anyhow::Result;
+use distro_builder::process::{ensure_exists, find_first_existing, Cmd};
+use distro_spec::levitate::boot::{boot_entry_with_partuuid, default_loader_config};
+use std::fs;
+use std::path::{Path, PathBuf};
 
 /// EFI partition size in MB
 pub const EFI_SIZE_MB: u64 = 1024;
@@ -55,7 +55,11 @@ pub fn create_efi_partition(
     })?;
 
     mtools::mtools_copy(image_path, systemd_boot_src, "EFI/BOOT/BOOTX64.EFI")?;
-    mtools::mtools_copy(image_path, systemd_boot_src, "EFI/systemd/systemd-bootx64.efi")?;
+    mtools::mtools_copy(
+        image_path,
+        systemd_boot_src,
+        "EFI/systemd/systemd-bootx64.efi",
+    )?;
 
     // Write loader.conf
     let loader_config = default_loader_config();

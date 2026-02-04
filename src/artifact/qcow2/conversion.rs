@@ -1,9 +1,9 @@
 //! QCOW2 conversion from raw disk images.
 
 use anyhow::Result;
+use distro_builder::process::Cmd;
 use std::fs;
 use std::path::Path;
-use distro_builder::process::Cmd;
 
 /// Convert raw disk to qcow2 with compression.
 pub fn convert_to_qcow2(raw_path: &Path, qcow2_path: &Path) -> Result<()> {

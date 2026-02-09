@@ -19,8 +19,7 @@ mod tests {
 
     #[test]
     fn test_generate_vfat_serial_format() {
-        let serial =
-            distro_builder::artifact::disk::helpers::generate_vfat_serial().unwrap();
+        let serial = distro_builder::artifact::disk::helpers::generate_vfat_serial().unwrap();
         assert_eq!(serial.len(), 9); // XXXX-XXXX
         assert_eq!(&serial[4..5], "-");
     }

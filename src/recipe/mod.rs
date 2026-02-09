@@ -172,7 +172,7 @@ fn build_from_source(
 
     let output = cmd
         .output()
-        .with_context(|| format!("Failed to execute cargo build for recipe"))?;
+        .with_context(|| "Failed to execute cargo build for recipe".to_string())?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

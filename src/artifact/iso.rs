@@ -116,7 +116,7 @@ pub fn create_iso(base_dir: &Path) -> Result<()> {
         paths.output_dir.join(format!("{}.tmp", ISO_FILENAME)),
     )
     .with_os_release(OS_NAME, OS_ID, OS_VERSION)
-    .with_overlay(&paths.output_dir.join("live-overlay"));
+    .with_overlay(paths.output_dir.join("live-overlay"));
 
     // Add LevitateOS-specific UKI entries
     for entry in UKI_ENTRIES {
@@ -199,7 +199,7 @@ fn verify_hardware_compat(base_dir: &Path) -> Result<bool> {
         match checker.verify_profile(p.as_ref()) {
             Ok(report) => {
                 // Only show failures by default (verbose=false)
-                report.print_summary(false);
+                report.print_summary();
                 if report.has_critical_failures() {
                     has_critical = true;
                 }

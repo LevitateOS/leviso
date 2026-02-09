@@ -102,7 +102,7 @@ pub fn build_qcow2(base_dir: &Path, disk_size_gb: u32) -> Result<()> {
     // Step 7: Create root partition image
     println!("\nCreating root partition image (this may take a while)...");
     let root_image = work_dir.join("root.img");
-    let root_size_mb = (disk_size_gb as u64 * 1024) - EFI_SIZE_MB - (1 * 2);
+    let root_size_mb = (disk_size_gb as u64 * 1024) - EFI_SIZE_MB - 2;
     partitions::create_root_partition(&qcow2_staging, &root_image, root_size_mb, &uuids)?;
     if let Ok(meta) = fs::metadata(&root_image) {
         println!(

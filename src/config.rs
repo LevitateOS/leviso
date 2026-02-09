@@ -70,10 +70,9 @@ impl Config {
         let kernel_localversion = match env::var("KERNEL_LOCALVERSION") {
             Ok(v) => v,
             Err(_) => {
-                let default = "-levitate".to_string();
                 // Only log if there's something custom expected (don't spam on normal runs)
                 // For now, silent default is acceptable for this non-critical value
-                default
+                "-levitate".to_string()
             }
         };
 

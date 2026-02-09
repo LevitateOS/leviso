@@ -4,6 +4,7 @@
 //! - EROFS rootfs image (complete live system, ~400MB)
 //! - Tiny initramfs (mounts rootfs, ~5MB)
 //! - Bootable ISO with UKI (systemd-boot)
+#![allow(dead_code, unused_imports)]
 
 mod artifact;
 mod build;

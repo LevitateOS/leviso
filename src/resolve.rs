@@ -32,7 +32,7 @@
 //! ```
 
 use anyhow::{bail, Context, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Resolve a dependency using the recipe package manager.
@@ -115,7 +115,7 @@ pub fn resolve_dep(name: &str) -> Result<PathBuf> {
 /// Each dependency type has a known output location:
 /// - rocky: BUILD_DIR/rootfs (extracted Rocky Linux rootfs)
 /// - linux: BUILD_DIR/linux (kernel source tree)
-fn get_output_path_by_convention(name: &str, build_dir: &PathBuf) -> Result<PathBuf> {
+fn get_output_path_by_convention(name: &str, build_dir: &Path) -> Result<PathBuf> {
     match name {
         "rocky" => Ok(build_dir.join("rootfs")),
         "linux" => Ok(build_dir.join("linux")),

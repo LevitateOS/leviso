@@ -125,7 +125,7 @@ pub static SYSTEMD_UNITS: Component = Component {
 /// 2. TERM=linux sends cursor position queries ([6n) that require terminal response.
 ///    When using piped I/O (test harness), nothing responds, causing agetty to hang.
 ///    Using TERM=vt100 avoids these queries while preserving basic functionality.
-/// KNOWLEDGE: See .teams/KNOWLEDGE_login-prompt-debugging.md for root cause.
+///    KNOWLEDGE: See .teams/KNOWLEDGE_login-prompt-debugging.md for root cause.
 const SERIAL_GETTY_CONF: &str = "\
 [Service]
 # Override ExecStart for virtual serial consoles.

@@ -176,7 +176,7 @@ mod tests {
         let ctx = env.build_context();
         let tracker = LicenseTracker::new(
             std::path::PathBuf::from("/nonexistent"),
-            distro_builder::PackageManager::Rpm,
+            distro_contract::PackageManager::Rpm,
         );
 
         // Create a component that requires a binary that doesn't exist
@@ -220,7 +220,7 @@ mod tests {
         let ctx = env.build_context();
         let tracker = LicenseTracker::new(
             std::path::PathBuf::from("/nonexistent"),
-            distro_builder::PackageManager::Rpm,
+            distro_contract::PackageManager::Rpm,
         );
 
         // Create a component that requires multiple missing binaries

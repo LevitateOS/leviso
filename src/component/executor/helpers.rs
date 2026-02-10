@@ -137,7 +137,7 @@ pub fn assert_symlink(path: &std::path::Path, expected_target: &str) {
 macro_rules! setup_test_env {
     () => {{
         use distro_builder::LicenseTracker;
-        use distro_builder::PackageManager;
+        use distro_contract::PackageManager;
         let env = $crate::component::executor::helpers::TestEnv::new();
         $crate::component::executor::helpers::create_mock_rootfs(&env.rootfs);
         let ctx = env.build_context();

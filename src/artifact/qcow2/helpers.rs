@@ -3,7 +3,8 @@
 //! Delegates to shared infrastructure in distro-builder::artifact::disk::helpers.
 
 // Re-export shared types
-pub use distro_builder::artifact::disk::helpers::{calculate_dir_size, DiskUuids};
+pub use distro_builder::artifact::disk::helpers::calculate_dir_size;
+pub use distro_contract::disk::DiskUuids;
 
 use anyhow::Result;
 

@@ -9,7 +9,7 @@ use super::definitions::*;
 use super::executor;
 use crate::build::context::BuildContext;
 use crate::timing::Timer;
-use distro_builder::build::context::PackageManager;
+use distro_contract::PackageManager;
 use distro_builder::LicenseTracker;
 
 /// Build the complete system into the staging directory.

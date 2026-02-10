@@ -74,7 +74,7 @@ pub fn build_qcow2(base_dir: &Path, disk_size_gb: u32) -> Result<()> {
 
     // Step 3: Generate UUIDs upfront
     println!("Generating partition UUIDs...");
-    let uuids = DiskUuids::generate()?;
+    let uuids = distro_builder::generate_disk_uuids()?;
     println!("  Root FS UUID: {}", uuids.root_fs_uuid);
     println!("  EFI FS UUID:  {}", uuids.efi_fs_uuid);
     println!("  Root PARTUUID: {}", uuids.root_part_uuid);

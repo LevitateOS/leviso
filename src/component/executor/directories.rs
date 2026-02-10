@@ -32,7 +32,8 @@ pub fn handle_dirs(ctx: &BuildContext, paths: &[&str]) -> Result<()> {
 mod tests {
     use super::*;
     use crate::component::{Component, Op, Phase};
-    use distro_builder::{LicenseTracker, PackageManager};
+    use distro_builder::LicenseTracker;
+    use distro_contract::PackageManager;
     use leviso_cheat_test::cheat_aware;
 
     // Import test helpers from parent module

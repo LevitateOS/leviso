@@ -62,6 +62,10 @@ fn download_and_extract(cache_dir, rootfs, name, url) {
     log("  Extracting: " + name);
     let cmd = "rpm2cpio '" + rpm_path + "' | cpio -idmu --quiet 2>/dev/null";
     shell_status_in(rootfs, cmd);
+
+    // Register package in RPM database so rpm -qf works for license tracking.
+    let db_cmd = "rpm --root '" + rootfs + "' -ivh --justdb --nodeps --noscripts --force '" + rpm_path + "' 2>/dev/null";
+    shell_status(db_cmd);
 }
 
 fn build(ctx) {

@@ -244,6 +244,12 @@ fn build(ctx) {
         let cmd = "rpm2cpio '" + rpm_path + "' | cpio -idmu --quiet 2>/dev/null";
         shell_status_in(rootfs, cmd);
 
+        // Register package in RPM database so rpm -qf works for license tracking.
+        // --justdb only writes metadata (no file extraction), --nodeps/--noscripts
+        // skip dependency checks and scriptlets since files are already in place.
+        let db_cmd = "rpm --root '" + rootfs + "' -ivh --justdb --nodeps --noscripts --force '" + rpm_path + "' 2>/dev/null";
+        shell_status(db_cmd);
+
         extracted.push(pkg);
         new_count += 1;
     }

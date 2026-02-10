@@ -44,6 +44,14 @@ enum Commands {
     Build {
         #[command(subcommand)]
         target: Option<BuildTarget>,
+
+        /// Build the kernel from source (~1 hour). Requires --dangerously-waste-the-users-time.
+        #[arg(long)]
+        kernel: bool,
+
+        /// Confirm that you really want to spend ~1 hour building the kernel.
+        #[arg(long)]
+        dangerously_waste_the_users_time: bool,
     },
 
     /// Run the ISO in QEMU (UEFI boot, GUI)
@@ -178,12 +186,22 @@ fn main() -> Result<()> {
     let config = Config::load();
 
     match cli.command {
-        Commands::Build { target } => {
+        Commands::Build { target, kernel, dangerously_waste_the_users_time } => {
+            use distro_contract::kernel::{KernelBuildGuard, KernelGuard};
             let build_target = match target {
-                None => commands::build::BuildTarget::Full,
                 Some(BuildTarget::Kernel { clean }) => {
+                    KernelGuard::new(true, dangerously_waste_the_users_time,
+                        "cargo run -- build kernel --dangerously-waste-the-users-time",
+                    ).require_kernel_confirmation();
                     commands::build::BuildTarget::Kernel { clean }
                 }
+                None if kernel => {
+                    KernelGuard::new(true, dangerously_waste_the_users_time,
+                        "cargo run -- build --kernel --dangerously-waste-the-users-time",
+                    ).require_kernel_confirmation();
+                    commands::build::BuildTarget::FullWithKernel
+                }
+                None => commands::build::BuildTarget::Full,
                 Some(BuildTarget::Rootfs) => commands::build::BuildTarget::Rootfs,
                 Some(BuildTarget::Initramfs) => commands::build::BuildTarget::Initramfs,
                 Some(BuildTarget::Iso) => commands::build::BuildTarget::Iso,

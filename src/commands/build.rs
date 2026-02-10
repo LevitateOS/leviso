@@ -16,8 +16,10 @@ use crate::timing::Timer;
 
 /// Build target for the build command.
 pub enum BuildTarget {
-    /// Full build (all artifacts)
+    /// Full build (all artifacts, skip kernel if not available)
     Full,
+    /// Full build with kernel compilation
+    FullWithKernel,
     /// Kernel only
     Kernel { clean: bool },
     /// Rootfs (EROFS) only
@@ -33,7 +35,8 @@ pub enum BuildTarget {
 /// Execute the build command.
 pub fn cmd_build(base_dir: &Path, target: BuildTarget, config: &Config) -> Result<()> {
     match target {
-        BuildTarget::Full => build_full(base_dir, config),
+        BuildTarget::Full => build_full(base_dir, config, false),
+        BuildTarget::FullWithKernel => build_full(base_dir, config, true),
         BuildTarget::Kernel { clean } => build_kernel_only(base_dir, config, clean),
         BuildTarget::Rootfs => build_rootfs_only(base_dir),
         BuildTarget::Initramfs => build_initramfs_only(base_dir),
@@ -44,7 +47,7 @@ pub fn cmd_build(base_dir: &Path, target: BuildTarget, config: &Config) -> Resul
 
 /// Full build: rootfs (EROFS) + tiny initramfs + ISO.
 /// Skips anything already built, rebuilds only on changes.
-fn build_full(base_dir: &Path, _config: &Config) -> Result<()> {
+fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()> {
     println!("=== Full LevitateOS Build ===\n");
     let build_start = Instant::now();
 
@@ -55,27 +58,43 @@ fn build_full(base_dir: &Path, _config: &Config) -> Result<()> {
     }
 
     // 1b. Extract supplementary RPMs into rootfs
-    // (This is separate from rocky.rhai so changing the package list doesn't re-extract the 2GB install.img)
     println!("\nExtracting supplementary packages...");
     recipe::packages(base_dir)?;
 
-    // 1c. Download and extract EPEL packages (btrfs-progs, ntfs-3g, screen, pv, etc.)
-    // These packages are required but not available in Rocky 10 DVD
+    // 1c. Download and extract EPEL packages
     println!("\nDownloading EPEL packages...");
     recipe::epel(base_dir)?;
 
-    // 2. Build kernel via recipe (acquire + build + install)
-    // The recipe has is_acquired/is_built/is_installed checks for incremental builds
+    // 2. Kernel: build only if --kernel was passed, otherwise use existing or error
     let needs_compile = rebuild::kernel_needs_compile(base_dir);
     let needs_install = rebuild::kernel_needs_install(base_dir);
 
     if needs_compile || needs_install {
-        println!("\nBuilding kernel via recipe...");
-        let t = Timer::start("Kernel");
-        let linux = recipe::linux(base_dir)?;
-        rebuild::cache_kernel_hash(base_dir);
-        t.finish();
-        println!("  Kernel {} installed", linux.version);
+        if with_kernel {
+            println!("\nBuilding kernel via recipe...");
+            let t = Timer::start("Kernel");
+            let linux = recipe::linux(base_dir)?;
+            rebuild::cache_kernel_hash(base_dir);
+            t.finish();
+            println!("  Kernel {} installed", linux.version);
+        } else if needs_compile {
+            // No kernel at all
+            anyhow::bail!(
+                "No kernel available!\n\n\
+                 LevitateOS is the canonical kernel builder. To build:\n\
+                   cargo run -- build --kernel --dangerously-waste-the-users-time\n\n\
+                 Or build kernel only:\n\
+                   cargo run -- build kernel --dangerously-waste-the-users-time"
+            );
+        } else {
+            // Kernel exists but needs reinstall
+            println!("\nInstalling kernel (compile skipped)...");
+            let t = Timer::start("Kernel");
+            let linux = recipe::linux(base_dir)?;
+            rebuild::cache_kernel_hash(base_dir);
+            t.finish();
+            println!("  Kernel {} installed", linux.version);
+        }
     } else {
         println!("\n[SKIP] Kernel already built and installed");
     }

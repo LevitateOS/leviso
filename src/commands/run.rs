@@ -7,6 +7,7 @@ use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, ISO_FILENAME, ROOTFS_NAME};
 
 use crate::artifact;
 use crate::qemu;
+use crate::recipe;
 
 /// Ensure ISO exists, building if necessary.
 fn ensure_iso_built(base_dir: &Path) -> Result<()> {
@@ -32,6 +33,7 @@ fn ensure_iso_built(base_dir: &Path) -> Result<()> {
 
 /// Execute the run command.
 pub fn cmd_run(base_dir: &Path, no_disk: bool, disk_size: String) -> Result<()> {
+    recipe::ensure_qemu(base_dir)?;
     ensure_iso_built(base_dir)?;
 
     let disk = if no_disk { None } else { Some(disk_size) };
@@ -42,6 +44,7 @@ pub fn cmd_run(base_dir: &Path, no_disk: bool, disk_size: String) -> Result<()> 
 
 /// Execute the test command - headless boot verification.
 pub fn cmd_test(base_dir: &Path, timeout: u64) -> Result<()> {
+    recipe::ensure_qemu(base_dir)?;
     ensure_iso_built(base_dir)?;
     qemu::test_iso(base_dir, timeout)?;
     Ok(())

@@ -10,10 +10,12 @@
 
 mod host_tools;
 mod linux;
+mod qemu;
 mod rocky;
 
 pub use host_tools::ensure_host_tools;
 pub use linux::{has_linux_source, linux, LinuxPaths};
+pub use qemu::ensure_qemu;
 pub use rocky::{rocky, RockyPaths};
 
 // Re-export shared recipe infrastructure from distro-builder

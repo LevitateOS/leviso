@@ -8,9 +8,11 @@
 //!
 //! Resolution and execution are delegated to distro-builder's shared implementation.
 
+mod host_tools;
 mod linux;
 mod rocky;
 
+pub use host_tools::ensure_host_tools;
 pub use linux::{has_linux_source, linux, LinuxPaths};
 pub use rocky::{rocky, RockyPaths};
 

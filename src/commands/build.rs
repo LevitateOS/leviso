@@ -51,6 +51,10 @@ fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()
     println!("=== Full LevitateOS Build ===\n");
     let build_start = Instant::now();
 
+    // 0. Ensure host build tools are available (mkfs.erofs, xorriso, etc.)
+    println!("Ensuring host build tools...");
+    recipe::ensure_host_tools(base_dir)?;
+
     // 1. Ensure Rocky is available via recipe
     if !base_dir.join("downloads/iso-contents/BaseOS").exists() {
         println!("Resolving Rocky Linux via recipe...");

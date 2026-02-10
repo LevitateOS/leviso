@@ -114,11 +114,11 @@ pub fn resolve_dep(name: &str) -> Result<PathBuf> {
 ///
 /// Each dependency type has a known output location:
 /// - rocky: BUILD_DIR/rootfs (extracted Rocky Linux rootfs)
-/// - linux: BUILD_DIR/linux (kernel source tree)
+/// - linux: BUILD_DIR/linux-{version} (kernel source tree from tarball)
 fn get_output_path_by_convention(name: &str, build_dir: &Path) -> Result<PathBuf> {
     match name {
         "rocky" => Ok(build_dir.join("rootfs")),
-        "linux" => Ok(build_dir.join("linux")),
+        "linux" => Ok(build_dir.join(distro_spec::levitate::KERNEL_SOURCE.source_dir_name())),
         _ => bail!(
             "Unknown dependency '{}'. Add output path convention to get_output_path_by_convention()",
             name
@@ -188,7 +188,8 @@ mod tests {
     fn test_output_path_convention_linux() {
         let build_dir = PathBuf::from("/tmp/test-build");
         let path = get_output_path_by_convention("linux", &build_dir).unwrap();
-        assert_eq!(path, PathBuf::from("/tmp/test-build/linux"));
+        let expected = format!("/tmp/test-build/{}", distro_spec::levitate::KERNEL_SOURCE.source_dir_name());
+        assert_eq!(path, PathBuf::from(expected));
     }
 
     #[test]

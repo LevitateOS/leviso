@@ -137,15 +137,9 @@ fn print_dependency_status(base_dir: &Path) {
 
     // Linux
     if recipe::has_linux_source(base_dir) {
-        let submodule = monorepo.join("linux");
-        let downloaded = base_dir.join("downloads/linux");
-        if submodule.join("Makefile").exists() {
-            println!("  Linux: FOUND at {} (submodule)", submodule.display());
-        } else if downloaded.join("Makefile").exists() {
-            println!("  Linux: FOUND at {} (downloaded)", downloaded.display());
-        }
+        println!("  Linux: FOUND (tarball-extracted in downloads/)");
     } else {
-        println!("  Linux: NOT FOUND (will download via recipe)");
+        println!("  Linux: NOT FOUND (will download tarball from cdn.kernel.org)");
     }
 
     // Rocky

@@ -7,8 +7,8 @@ use crate::build::context::BuildContext;
 use crate::build::libdeps::{
     copy_bash, copy_binary_with_libs, copy_sbin_binary_with_libs, make_executable,
 };
-use crate::build::licenses::LicenseTracker;
 use crate::component::Dest;
+use distro_builder::LicenseTracker;
 
 /// Handle Op::Bin: Copy a required binary with libraries
 pub fn handle_bin(
@@ -174,7 +174,10 @@ mod tests {
         let env = TestEnv::new();
         create_mock_rootfs(&env.rootfs);
         let ctx = env.build_context();
-        let tracker = LicenseTracker::new();
+        let tracker = LicenseTracker::new(
+            std::path::PathBuf::from("/nonexistent"),
+            distro_builder::PackageManager::Rpm,
+        );
 
         // Create a component that requires a binary that doesn't exist
         let missing_binary_component = Component {
@@ -215,7 +218,10 @@ mod tests {
         let env = TestEnv::new();
         create_mock_rootfs(&env.rootfs);
         let ctx = env.build_context();
-        let tracker = LicenseTracker::new();
+        let tracker = LicenseTracker::new(
+            std::path::PathBuf::from("/nonexistent"),
+            distro_builder::PackageManager::Rpm,
+        );
 
         // Create a component that requires multiple missing binaries
         let missing_bins_component = Component {

@@ -19,7 +19,7 @@ use anyhow::Result;
 
 use super::CustomOp;
 use crate::build::context::BuildContext;
-use crate::build::licenses::LicenseTracker;
+use distro_builder::LicenseTracker;
 
 // Re-export public API
 pub use live::{create_live_overlay_at, read_test_instrumentation};

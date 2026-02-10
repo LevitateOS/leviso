@@ -31,8 +31,8 @@ pub fn handle_dirs(ctx: &BuildContext, paths: &[&str]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::build::licenses::LicenseTracker;
     use crate::component::{Component, Op, Phase};
+    use distro_builder::{LicenseTracker, PackageManager};
     use leviso_cheat_test::cheat_aware;
 
     // Import test helpers from parent module
@@ -54,7 +54,10 @@ mod tests {
         let env = TestEnv::new();
         create_mock_rootfs(&env.rootfs);
         let ctx = env.build_context();
-        let tracker = LicenseTracker::new();
+        let tracker = LicenseTracker::new(
+            std::path::PathBuf::from("/nonexistent"),
+            PackageManager::Rpm,
+        );
 
         let dir_component = Component {
             name: "TestDir",
@@ -89,7 +92,10 @@ mod tests {
         let env = TestEnv::new();
         create_mock_rootfs(&env.rootfs);
         let ctx = env.build_context();
-        let tracker = LicenseTracker::new();
+        let tracker = LicenseTracker::new(
+            std::path::PathBuf::from("/nonexistent"),
+            PackageManager::Rpm,
+        );
 
         let dir_component = Component {
             name: "TestDirMode",
@@ -128,7 +134,10 @@ mod tests {
         let env = TestEnv::new();
         create_mock_rootfs(&env.rootfs);
         let ctx = env.build_context();
-        let tracker = LicenseTracker::new();
+        let tracker = LicenseTracker::new(
+            std::path::PathBuf::from("/nonexistent"),
+            PackageManager::Rpm,
+        );
 
         let dirs_component = Component {
             name: "TestDirs",

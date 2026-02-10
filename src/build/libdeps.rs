@@ -7,8 +7,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::context::BuildContext;
-use super::licenses::LicenseTracker;
 use distro_builder::process::shell_in;
+use distro_builder::LicenseTracker;
 use leviso_elf::copy_library_to;
 
 // Re-export commonly used functions

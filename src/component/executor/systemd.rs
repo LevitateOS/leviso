@@ -86,8 +86,8 @@ pub fn handle_udev_helpers(ctx: &BuildContext, helpers: &[&str]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::build::licenses::LicenseTracker;
     use crate::component::{Component, Op, Phase, Target};
+    use distro_builder::{LicenseTracker, PackageManager};
     use leviso_cheat_test::cheat_aware;
     use std::fs;
 
@@ -110,7 +110,10 @@ mod tests {
         let env = TestEnv::new();
         create_mock_rootfs(&env.rootfs);
         let ctx = env.build_context();
-        let tracker = LicenseTracker::new();
+        let tracker = LicenseTracker::new(
+            std::path::PathBuf::from("/nonexistent"),
+            PackageManager::Rpm,
+        );
 
         let enable_component = Component {
             name: "TestEnable",
@@ -167,7 +170,10 @@ mod tests {
         .unwrap();
 
         let ctx = env.build_context();
-        let tracker = LicenseTracker::new();
+        let tracker = LicenseTracker::new(
+            std::path::PathBuf::from("/nonexistent"),
+            PackageManager::Rpm,
+        );
 
         let units_component = Component {
             name: "TestUnits",

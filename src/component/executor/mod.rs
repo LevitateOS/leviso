@@ -27,7 +27,7 @@ use anyhow::{Context, Result};
 
 use super::Installable;
 use crate::build::context::BuildContext;
-use crate::build::licenses::LicenseTracker;
+use distro_builder::LicenseTracker;
 
 use super::Op;
 

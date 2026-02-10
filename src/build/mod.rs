@@ -16,9 +16,7 @@
 pub mod context;
 pub mod filesystem;
 pub mod libdeps;
-pub mod licenses;
 pub mod users;
 
 // Re-export commonly used items
 pub use context::BuildContext;
-pub use licenses::LicenseTracker;

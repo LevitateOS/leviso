@@ -63,8 +63,8 @@ pub fn handle_symlink(ctx: &BuildContext, link: &str, target: &str) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::build::licenses::LicenseTracker;
     use crate::component::{Component, Op, Phase};
+    use distro_builder::{LicenseTracker, PackageManager};
     use leviso_cheat_test::cheat_aware;
     use std::os::unix::fs::PermissionsExt;
 
@@ -87,7 +87,10 @@ mod tests {
         let env = TestEnv::new();
         create_mock_rootfs(&env.rootfs);
         let ctx = env.build_context();
-        let tracker = LicenseTracker::new();
+        let tracker = LicenseTracker::new(
+            std::path::PathBuf::from("/nonexistent"),
+            PackageManager::Rpm,
+        );
 
         let content = "test-content-12345\nline two\n";
         let write_component = Component {
@@ -125,7 +128,10 @@ mod tests {
         let env = TestEnv::new();
         create_mock_rootfs(&env.rootfs);
         let ctx = env.build_context();
-        let tracker = LicenseTracker::new();
+        let tracker = LicenseTracker::new(
+            std::path::PathBuf::from("/nonexistent"),
+            PackageManager::Rpm,
+        );
 
         let symlink_component = Component {
             name: "TestSymlink",
@@ -163,7 +169,10 @@ mod tests {
         let env = TestEnv::new();
         create_mock_rootfs(&env.rootfs);
         let ctx = env.build_context();
-        let tracker = LicenseTracker::new();
+        let tracker = LicenseTracker::new(
+            std::path::PathBuf::from("/nonexistent"),
+            PackageManager::Rpm,
+        );
 
         let write_component = Component {
             name: "TestWriteFileMode",
@@ -206,7 +215,10 @@ mod tests {
         let env = TestEnv::new();
         create_mock_rootfs(&env.rootfs);
         let ctx = env.build_context();
-        let tracker = LicenseTracker::new();
+        let tracker = LicenseTracker::new(
+            std::path::PathBuf::from("/nonexistent"),
+            PackageManager::Rpm,
+        );
 
         let copy_component = Component {
             name: "TestCopyFileMissing",
@@ -250,7 +262,10 @@ mod tests {
         fs::write(&src_config, "setting=value\nother=123\n").unwrap();
 
         let ctx = env.build_context();
-        let tracker = LicenseTracker::new();
+        let tracker = LicenseTracker::new(
+            std::path::PathBuf::from("/nonexistent"),
+            PackageManager::Rpm,
+        );
 
         let copyfile_component = Component {
             name: "TestCopyFileSuccess",
@@ -291,7 +306,10 @@ mod tests {
         fs::write(src_tree.join("subdir/nested.conf"), "nested config").unwrap();
 
         let ctx = env.build_context();
-        let tracker = LicenseTracker::new();
+        let tracker = LicenseTracker::new(
+            std::path::PathBuf::from("/nonexistent"),
+            PackageManager::Rpm,
+        );
 
         let copytree_component = Component {
             name: "TestCopyTree",
@@ -338,7 +356,10 @@ mod tests {
         std::os::unix::fs::symlink("real.conf", src_tree.join("link.conf")).unwrap();
 
         let ctx = env.build_context();
-        let tracker = LicenseTracker::new();
+        let tracker = LicenseTracker::new(
+            std::path::PathBuf::from("/nonexistent"),
+            PackageManager::Rpm,
+        );
 
         let copytree_component = Component {
             name: "TestCopyTreeSymlink",
@@ -374,7 +395,10 @@ mod tests {
         let env = TestEnv::new();
         create_mock_rootfs(&env.rootfs);
         let ctx = env.build_context();
-        let tracker = LicenseTracker::new();
+        let tracker = LicenseTracker::new(
+            std::path::PathBuf::from("/nonexistent"),
+            PackageManager::Rpm,
+        );
 
         let multi_op_component = Component {
             name: "TestMultiOp",

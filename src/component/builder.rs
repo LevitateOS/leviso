@@ -8,8 +8,9 @@ use anyhow::Result;
 use super::definitions::*;
 use super::executor;
 use crate::build::context::BuildContext;
-use crate::build::licenses::LicenseTracker;
 use crate::timing::Timer;
+use distro_builder::build::context::PackageManager;
+use distro_builder::LicenseTracker;
 
 /// Build the complete system into the staging directory.
 ///
@@ -28,7 +29,7 @@ pub fn build_system(ctx: &BuildContext) -> Result<()> {
     println!("Building complete system for rootfs (EROFS)...");
 
     // Track licenses for all binaries we copy
-    let tracker = LicenseTracker::new();
+    let tracker = LicenseTracker::new(ctx.source.clone(), PackageManager::Rpm);
 
     // Phase 1: Filesystem
     let t = Timer::start("Filesystem");

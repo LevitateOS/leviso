@@ -88,6 +88,7 @@ pub fn build_tiny_initramfs(base_dir: &Path) -> Result<()> {
         module_preset: ModulePreset::Live,
         gzip_level: CPIO_GZIP_LEVEL,
         check_builtin: true,
+        extra_template_vars: Vec::new(),
     };
 
     recinit::build_tiny_initramfs(&config, true)?;

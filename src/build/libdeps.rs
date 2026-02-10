@@ -83,8 +83,19 @@ pub fn copy_binary_with_libs(
 
     // Copy binary
     let dest = ctx.staging.join(dest_dir).join(binary);
-    if !dest.exists() {
+    if dest.symlink_metadata().is_err() {
         fs::create_dir_all(dest.parent().unwrap())?;
+        if bin_path.is_symlink() {
+            let link_target = fs::read_link(&bin_path)?;
+            std::os::unix::fs::symlink(&link_target, &dest)?;
+            if let Some(target_name) = link_target.file_name() {
+                let target_name = target_name.to_string_lossy();
+                if find_binary(&ctx.source, &target_name).is_some() {
+                    let _ = copy_binary_with_libs(ctx, &target_name, dest_dir, tracker);
+                }
+            }
+            return Ok(true);
+        }
         fs::copy(&bin_path, &dest)?;
         make_executable(&dest)?;
     }
@@ -126,8 +137,22 @@ pub fn copy_sbin_binary_with_libs(
     }
 
     let dest = ctx.staging.join("usr/sbin").join(binary);
-    if !dest.exists() {
+    if dest.symlink_metadata().is_err() {
         fs::create_dir_all(dest.parent().unwrap())?;
+        if bin_path.is_symlink() {
+            // Preserve symlinks (e.g., mkfs.ntfs -> mkntfs)
+            let link_target = fs::read_link(&bin_path)?;
+            std::os::unix::fs::symlink(&link_target, &dest)?;
+            // Also copy the symlink target if it exists in the rootfs
+            if let Some(target_name) = link_target.file_name() {
+                let target_name = target_name.to_string_lossy();
+                // Recursively ensure the target is also copied
+                if find_sbin_binary(&ctx.source, &target_name).is_some() {
+                    let _ = copy_sbin_binary_with_libs(ctx, &target_name, tracker);
+                }
+            }
+            return Ok(true);
+        }
         fs::copy(&bin_path, &dest)?;
         make_executable(&dest)?;
     }

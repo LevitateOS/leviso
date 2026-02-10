@@ -186,19 +186,29 @@ fn main() -> Result<()> {
     let config = Config::load();
 
     match cli.command {
-        Commands::Build { target, kernel, dangerously_waste_the_users_time } => {
+        Commands::Build {
+            target,
+            kernel,
+            dangerously_waste_the_users_time,
+        } => {
             use distro_contract::kernel::{KernelBuildGuard, KernelGuard};
             let build_target = match target {
                 Some(BuildTarget::Kernel { clean }) => {
-                    KernelGuard::new(true, dangerously_waste_the_users_time,
+                    KernelGuard::new(
+                        true,
+                        dangerously_waste_the_users_time,
                         "cargo run -- build kernel --dangerously-waste-the-users-time",
-                    ).require_kernel_confirmation();
+                    )
+                    .require_kernel_confirmation();
                     commands::build::BuildTarget::Kernel { clean }
                 }
                 None if kernel => {
-                    KernelGuard::new(true, dangerously_waste_the_users_time,
+                    KernelGuard::new(
+                        true,
+                        dangerously_waste_the_users_time,
                         "cargo run -- build --kernel --dangerously-waste-the-users-time",
-                    ).require_kernel_confirmation();
+                    )
+                    .require_kernel_confirmation();
                     commands::build::BuildTarget::FullWithKernel
                 }
                 None => commands::build::BuildTarget::Full,

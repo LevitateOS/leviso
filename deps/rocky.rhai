@@ -68,16 +68,18 @@
 //   log(msg)                  - Print info message
 //   warn(msg)                 - Print warning message
 
+let deps = ["rocky-deps"];
+
 let ctx = #{
     description: "Rocky Linux rootfs (extracted from DVD ISO)",
     disk_buffer: 2147483648,
     http_url: "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/Rocky-10.1-x86_64-dvd1.iso",
-    iso_contents_path: "/home/vince/Projects/LevitateOS/leviso/downloads/iso-contents",
+    iso_contents_path: "/home/vince/LevitateOS/leviso/downloads/iso-contents",
     iso_name: "Rocky-10.1-x86_64-dvd1.iso",
-    iso_path: "/home/vince/Projects/LevitateOS/leviso/downloads/Rocky-10.1-x86_64-dvd1.iso",
+    iso_path: "/home/vince/LevitateOS/leviso/downloads/Rocky-10.1-x86_64-dvd1.iso",
     name: "rocky",
     packages_path: "",
-    rootfs_path: "/home/vince/Projects/LevitateOS/leviso/downloads/rootfs",
+    rootfs_path: "/home/vince/LevitateOS/leviso/downloads/rootfs",
     sha256: "55f96d45a052c0ed4f06309480155cb66281a008691eb7f3f359957205b1849a",
     sha256_url: "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/CHECKSUM",
     size_bytes: 9278128128,
@@ -239,7 +241,12 @@ fn build(ctx) {
         log("Extracting squashfs to " + rootfs_temp);
         // -no-xattrs: avoid exit code 2 when not root (can't write SELinux xattrs)
         shell("unsquashfs -no-xattrs -d " + rootfs_temp + " " + squashfs);
-        // NOTE: RPM merging is done by leviso (src/extract.rs), not the recipe
+        // Fix permissions: unsquashfs preserves root ownership, we need write access
+        // for packages.rhai to merge supplementary RPMs later
+        // Fix permissions: unsquashfs preserves root ownership and setuid bits
+        // Use u+rw (not u+rwX) to ensure ALL files are readable (setuid binaries like sudo have ---s--x--x)
+        log("Fixing permissions on extracted rootfs...");
+        shell("chmod -R u+rw " + rootfs_temp);
     }
 
     // Write version marker

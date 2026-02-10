@@ -295,7 +295,7 @@ fn is_installed(ctx) {
     // Quick verification of a few critical binaries
     let critical = ["usr/bin/sudo", "usr/bin/grep", "usr/sbin/parted"];
     for bin in critical {
-        if !is_file(join_path(rootfs, bin)) {
+        if !exists(join_path(rootfs, bin)) {
             throw "critical binary missing: " + bin;
         }
     }
@@ -408,7 +408,7 @@ fn install(ctx) {
         let bin_path = entry[0];
         let full_path = join_path(rootfs, bin_path);
 
-        if !is_file(full_path) {
+        if !exists(full_path) {
             missing.push(bin_path);
         }
     }

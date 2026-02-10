@@ -1,8 +1,9 @@
 //! Rocky Linux dependency via recipe.
 
-use super::{find_recipe, run_recipe_json};
+use super::find_recipe;
 use anyhow::{bail, Result};
 use distro_builder::process::ensure_exists;
+use distro_builder::recipe::run_recipe_json_with_defines;
 use std::path::{Path, PathBuf};
 
 /// Paths produced by the rocky.rhai recipe after execution.
@@ -51,8 +52,15 @@ pub fn rocky(base_dir: &Path) -> Result<RockyPaths> {
     })?;
 
     // Find and run recipe, parse JSON output
+    let recipes_dir = monorepo_dir.join("distro-builder/recipes");
     let recipe_bin = find_recipe(&monorepo_dir)?;
-    let ctx = run_recipe_json(&recipe_bin.path, &recipe_path, &downloads_dir)?;
+    let ctx = run_recipe_json_with_defines(
+        &recipe_bin.path,
+        &recipe_path,
+        &downloads_dir,
+        &[],
+        Some(&recipes_dir),
+    )?;
 
     // Extract paths from ctx (recipe sets these)
     let iso = ctx["iso_path"]

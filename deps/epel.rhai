@@ -144,7 +144,8 @@ fn is_installed(ctx) {
 
 fn check_binary(rootfs, path) {
     let full = join_path(rootfs, path);
-    if !is_file(full) {
+    // Use exists() instead of is_file() to handle symlinks (e.g., mkfs.ntfs -> mkntfs)
+    if !exists(full) {
         throw "Missing: " + path;
     }
 }

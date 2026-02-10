@@ -11,14 +11,14 @@
 
 let major = KERNEL_VERSION.split(".")[0];
 let ctx = #{
-    description: "Linux kernel source (LevitateOS " + KERNEL_VERSION + ")",
+    build_dir: "/home/vince/LevitateOS/leviso/output/kernel-build",
+    description: "Linux kernel source (LevitateOS 6.18.9)",
+    kernel_version: "6.18.9-levitate",
     name: "linux",
-    tarball_url: "https://cdn.kernel.org/pub/linux/kernel/v" + major + ".x/linux-" + KERNEL_VERSION + ".tar.xz",
-    tarball_filename: "linux-" + KERNEL_VERSION + ".tar.xz",
-    source_dir_name: "linux-" + KERNEL_VERSION,
-    kernel_version: KERNEL_VERSION,
-    build_dir: "",
-    source_path: "",
+    source_dir_name: "linux-6.18.9",
+    source_path: "/home/vince/LevitateOS/leviso/downloads/linux-6.18.9",
+    tarball_filename: "linux-6.18.9.tar.xz",
+    tarball_url: "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.18.9.tar.xz",
 };
 
 // === HOOKABLE OVERRIDES ===

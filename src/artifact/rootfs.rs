@@ -181,14 +181,14 @@ fn verify_staging(staging: &Path) -> Result<()> {
     // Check binaries (in usr/bin)
     for binary in &all_bins {
         let bin_path = format!("usr/bin/{}", binary);
-        if staging.join(&bin_path).exists() {
+        if staging.join(&bin_path).symlink_metadata().is_ok() {
             passed += 1;
         } else {
             missing.push(*binary);
         }
     }
     // Also check bash (handled separately)
-    if staging.join("usr/bin/bash").exists() {
+    if staging.join("usr/bin/bash").symlink_metadata().is_ok() {
         passed += 1;
     } else {
         missing.push("bash");
@@ -209,7 +209,7 @@ fn verify_staging(staging: &Path) -> Result<()> {
     // Check units
     for unit in &all_units {
         let unit_path = format!("usr/lib/systemd/system/{}", unit);
-        if staging.join(&unit_path).exists() {
+        if staging.join(&unit_path).symlink_metadata().is_ok() {
             passed += 1;
         } else {
             missing.push(*unit);
@@ -227,9 +227,9 @@ fn verify_staging(staging: &Path) -> Result<()> {
         }
     }
 
-    // Check /etc files
+    // Check /etc files (use symlink_metadata to handle dangling symlinks like resolv.conf)
     for etc_file in ETC_FILES {
-        if staging.join(etc_file).exists() {
+        if staging.join(etc_file).symlink_metadata().is_ok() {
             passed += 1;
         } else {
             missing.push(*etc_file);

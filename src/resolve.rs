@@ -188,7 +188,10 @@ mod tests {
     fn test_output_path_convention_linux() {
         let build_dir = PathBuf::from("/tmp/test-build");
         let path = get_output_path_by_convention("linux", &build_dir).unwrap();
-        let expected = format!("/tmp/test-build/{}", distro_spec::levitate::KERNEL_SOURCE.source_dir_name());
+        let expected = format!(
+            "/tmp/test-build/{}",
+            distro_spec::levitate::KERNEL_SOURCE.source_dir_name()
+        );
         assert_eq!(path, PathBuf::from(expected));
     }
 

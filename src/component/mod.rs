@@ -291,8 +291,6 @@ impl Target {
 /// pattern. Each variant maps to a function in custom.rs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CustomOp {
-    /// Create FHS symlinks (merged /usr).
-    CreateFhsSymlinks,
     /// Create live overlay directory.
     CreateLiveOverlay,
     /// Copy WiFi firmware (size tracking, multiple sources).

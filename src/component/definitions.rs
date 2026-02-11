@@ -63,7 +63,19 @@ use distro_spec::shared::{
 pub static FILESYSTEM: Component = Component {
     name: "filesystem",
     phase: Phase::Filesystem,
-    ops: &[dirs(FHS_DIRS), custom(CustomOp::CreateFhsSymlinks)],
+    ops: &[
+        dirs(FHS_DIRS),
+        // Merged /usr symlinks
+        symlink("bin", "usr/bin"),
+        symlink("sbin", "usr/sbin"),
+        symlink("lib", "usr/lib"),
+        symlink("lib64", "usr/lib64"),
+        // /var symlinks to /run
+        symlink("var/run", "/run"),
+        symlink("var/lock", "/run/lock"),
+        // Shell
+        symlink("usr/bin/sh", "bash"),
+    ],
 };
 
 // =============================================================================

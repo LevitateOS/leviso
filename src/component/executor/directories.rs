@@ -1,31 +1,25 @@
 //! Directory operation handlers: Op::Dir, Op::DirMode, Op::Dirs
-
-use anyhow::Result;
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
+//!
+//! These are wrappers around distro-builder's directory operations.
+//! They maintain the BuildContext-based API for backwards compatibility
+//! while delegating to the &Path-based implementations in distro-builder.
 
 use crate::build::context::BuildContext;
+use anyhow::Result;
 
 /// Handle Op::Dir: Create a directory
 pub fn handle_dir(ctx: &BuildContext, path: &str) -> Result<()> {
-    fs::create_dir_all(ctx.staging.join(path))?;
-    Ok(())
+    distro_builder::executor::directories::handle_dir(&ctx.staging, path)
 }
 
 /// Handle Op::DirMode: Create a directory with specific permissions
 pub fn handle_dirmode(ctx: &BuildContext, path: &str, mode: u32) -> Result<()> {
-    let full_path = ctx.staging.join(path);
-    fs::create_dir_all(&full_path)?;
-    fs::set_permissions(&full_path, fs::Permissions::from_mode(mode))?;
-    Ok(())
+    distro_builder::executor::directories::handle_dirmode(&ctx.staging, path, mode)
 }
 
 /// Handle Op::Dirs: Create multiple directories
 pub fn handle_dirs(ctx: &BuildContext, paths: &[&str]) -> Result<()> {
-    for path in paths {
-        fs::create_dir_all(ctx.staging.join(path))?;
-    }
-    Ok(())
+    distro_builder::executor::directories::handle_dirs(&ctx.staging, paths)
 }
 
 #[cfg(test)]
@@ -35,6 +29,8 @@ mod tests {
     use distro_builder::LicenseTracker;
     use distro_contract::PackageManager;
     use leviso_cheat_test::cheat_aware;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
 
     // Import test helpers from parent module
     use super::super::helpers::*;

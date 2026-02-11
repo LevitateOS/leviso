@@ -8,7 +8,6 @@
 
 // Submodules colocated with their configuration files
 mod etc; // src/component/custom/etc/ - contains etc/mod.rs and etc/files/
-mod filesystem;
 mod firmware;
 mod live; // src/component/custom/live/ - contains live/mod.rs and live/overlay/
 mod modules;
@@ -30,9 +29,6 @@ pub use live::{create_live_overlay_at, read_test_instrumentation};
 /// is used to register packages for license compliance.
 pub fn execute(ctx: &BuildContext, op: CustomOp, tracker: &LicenseTracker) -> Result<()> {
     match op {
-        // Filesystem operations (no content copying)
-        CustomOp::CreateFhsSymlinks => filesystem::create_fhs_symlinks(ctx),
-
         // Live overlay
         CustomOp::CreateLiveOverlay => live::create_live_overlay(ctx),
         CustomOp::CreateWelcomeMessage => live::create_welcome_message(ctx),

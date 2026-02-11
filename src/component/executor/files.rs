@@ -1,17 +1,21 @@
 //! File operation handlers: Op::CopyFile, Op::CopyTree, Op::WriteFile, Op::WriteFileMode, Op::Symlink
+//!
+//! Hybrid approach:
+//! - CopyFile/CopyTree: Keep leviso-specific logic (library deps, Rocky rootfs handling)
+//! - WriteFile/WriteFileMode/Symlink: Delegate to distro-builder (generic implementations)
 
 use anyhow::bail;
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
+use anyhow::Result;
 use std::path::Path;
 
 use crate::build::context::BuildContext;
 use crate::build::libdeps::{copy_dir_tree, copy_file};
 use crate::common::ensure_parent_exists;
-use anyhow::Result;
 use leviso_elf::create_symlink_if_missing;
 
 /// Handle Op::CopyFile: Copy a file from rootfs
+///
+/// Uses leviso-specific library dependency handling from libdeps
 pub fn handle_copyfile(ctx: &BuildContext, path: &str) -> Result<()> {
     let found = copy_file(ctx, path)?;
     if !found {
@@ -21,43 +25,37 @@ pub fn handle_copyfile(ctx: &BuildContext, path: &str) -> Result<()> {
 }
 
 /// Handle Op::CopyTree: Copy an entire directory tree
+///
+/// Uses leviso-specific handling from libdeps for Rocky rootfs layout
 pub fn handle_copytree(ctx: &BuildContext, path: &str) -> Result<()> {
     copy_dir_tree(ctx, path)?;
     Ok(())
 }
 
 /// Handle Op::WriteFile: Write a file with content
+///
+/// Delegates to distro-builder's generic implementation
 pub fn handle_writefile(ctx: &BuildContext, path: &str, content: &str) -> Result<()> {
-    let full_path = ctx.staging.join(path);
-    if let Some(parent) = full_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(&full_path, content)?;
-    Ok(())
+    distro_builder::executor::files::handle_writefile(&ctx.staging, path, content)
 }
 
 /// Handle Op::WriteFileMode: Write a file with specific permissions
+///
+/// Delegates to distro-builder's generic implementation
 pub fn handle_writefilemode(
     ctx: &BuildContext,
     path: &str,
     content: &str,
     mode: u32,
 ) -> Result<()> {
-    let full_path = ctx.staging.join(path);
-    if let Some(parent) = full_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(&full_path, content)?;
-    fs::set_permissions(&full_path, fs::Permissions::from_mode(mode))?;
-    Ok(())
+    distro_builder::executor::files::handle_writefilemode(&ctx.staging, path, content, mode)
 }
 
 /// Handle Op::Symlink: Create a symlink
+///
+/// Delegates to distro-builder's generic implementation
 pub fn handle_symlink(ctx: &BuildContext, link: &str, target: &str) -> Result<()> {
-    let link_path = ctx.staging.join(link);
-    ensure_parent_exists(&link_path)?;
-    create_symlink_if_missing(Path::new(target), &link_path)?;
-    Ok(())
+    distro_builder::executor::files::handle_symlink(&ctx.staging, link, target)
 }
 
 #[cfg(test)]
@@ -67,6 +65,7 @@ mod tests {
     use distro_builder::LicenseTracker;
     use distro_contract::PackageManager;
     use leviso_cheat_test::cheat_aware;
+    use std::fs;
     use std::os::unix::fs::PermissionsExt;
 
     // Import test helpers from parent module

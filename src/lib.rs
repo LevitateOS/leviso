@@ -12,7 +12,6 @@ pub mod component;
 pub mod config;
 pub mod recipe;
 pub mod resolve;
-pub mod timing;
 
 // Re-export extracted crates
 pub use leviso_elf as elf;

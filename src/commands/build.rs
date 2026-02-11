@@ -12,7 +12,7 @@ use crate::artifact;
 use crate::config::Config;
 use crate::rebuild;
 use crate::recipe;
-use crate::timing::Timer;
+use distro_builder::timing::Timer;
 
 /// Build target for the build command.
 pub enum BuildTarget {

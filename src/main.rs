@@ -8,7 +8,6 @@
 
 mod artifact;
 mod build;
-mod cache;
 mod clean;
 mod commands;
 mod common;
@@ -19,7 +18,6 @@ mod preflight;
 mod qemu;
 mod rebuild;
 mod recipe;
-mod timing;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};

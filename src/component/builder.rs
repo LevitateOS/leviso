@@ -8,7 +8,7 @@ use anyhow::Result;
 use super::definitions::*;
 use super::executor;
 use crate::build::context::BuildContext;
-use crate::timing::Timer;
+use distro_builder::timing::Timer;
 use distro_builder::LicenseTracker;
 use distro_contract::PackageManager;
 

@@ -28,37 +28,31 @@ pub fn create_live_overlay_at(output_dir: &Path, _base_dir: &Path) -> Result<()>
         fs::remove_dir_all(&overlay_dir)?;
     }
 
-    let systemd_dir = overlay_dir.join("etc/systemd/system");
-    let getty_wants = systemd_dir.join("getty.target.wants");
-    let multi_user_wants = systemd_dir.join("multi-user.target.wants");
-
-    fs::create_dir_all(&getty_wants)?;
-    fs::create_dir_all(&multi_user_wants)?;
     fs::create_dir_all(overlay_dir.join("etc"))?;
 
-    // Console autologin service (Conflicts=getty@tty1.service ensures no conflict)
+    // Autologin drop-ins (standard approach — same as Arch ISO, Fedora CoreOS, etc.)
+    // Override getty ExecStart to add --autologin root
+    let tty1_dropin = overlay_dir.join("etc/systemd/system/getty@tty1.service.d");
+    fs::create_dir_all(&tty1_dropin)?;
     fs::write(
-        systemd_dir.join("console-autologin.service"),
+        tty1_dropin.join("autologin.conf"),
         read_manifest_file(
             "live/overlay",
-            "etc/systemd/system/console-autologin.service",
+            "etc/systemd/system/getty@tty1.service.d/autologin.conf",
         )?,
     )?;
 
-    std::os::unix::fs::symlink(
-        "../console-autologin.service",
-        getty_wants.join("console-autologin.service"),
-    )?;
-
-    // Serial console service
+    // serial-getty: use the TEMPLATE drop-in dir (serial-getty@.service.d) so it
+    // merges with the existing local.conf from the EROFS rootfs via overlayfs.
+    // Named zz- to sort after local.conf and override ExecStart.
+    let serial_dropin = overlay_dir.join("etc/systemd/system/serial-getty@.service.d");
+    fs::create_dir_all(&serial_dropin)?;
     fs::write(
-        systemd_dir.join("serial-console.service"),
-        read_manifest_file("live/overlay", "etc/systemd/system/serial-console.service")?,
-    )?;
-
-    std::os::unix::fs::symlink(
-        "../serial-console.service",
-        multi_user_wants.join("serial-console.service"),
+        serial_dropin.join("zz-autologin.conf"),
+        read_manifest_file(
+            "live/overlay",
+            "etc/systemd/system/serial-getty@.service.d/zz-autologin.conf",
+        )?,
     )?;
 
     // Shadow file with empty root password
@@ -85,16 +79,6 @@ pub fn create_live_overlay_at(output_dir: &Path, _base_dir: &Path) -> Result<()>
         profile_d.join("live-docs.sh"),
         read_manifest_file("live/overlay", "etc/profile.d/live-docs.sh")?,
     )?;
-
-    // Autologin wrapper script
-    let usr_local_bin = overlay_dir.join("usr/local/bin");
-    fs::create_dir_all(&usr_local_bin)?;
-    let autologin_path = usr_local_bin.join("autologin-shell");
-    fs::write(
-        &autologin_path,
-        read_manifest_file("live/overlay", "usr/local/bin/autologin-shell")?,
-    )?;
-    fs::set_permissions(&autologin_path, fs::Permissions::from_mode(0o755))?;
 
     println!("  Created live overlay");
     Ok(())

@@ -11,7 +11,7 @@ use distro_spec::levitate::{
 };
 use distro_spec::shared::QCOW2_IMAGE_FILENAME;
 
-use crate::cache;
+use distro_builder::cache;
 
 /// An artifact that can be incrementally rebuilt.
 pub struct Artifact {
@@ -213,8 +213,10 @@ pub fn iso_needs_rebuild(base_dir: &Path) -> bool {
     // Live overlay files affect ISO content
     let live_overlay = base_dir.join("profile/live-overlay");
     let live_shadow = live_overlay.join("etc/shadow");
-    let live_autologin = live_overlay.join("etc/systemd/system/console-autologin.service");
-    let live_serial = live_overlay.join("etc/systemd/system/serial-console.service");
+    let live_autologin =
+        live_overlay.join("etc/systemd/system/getty@tty1.service.d/autologin.conf");
+    let live_serial =
+        live_overlay.join("etc/systemd/system/serial-getty@.service.d/zz-autologin.conf");
     let live_docs = live_overlay.join("etc/profile.d/live-docs.sh");
     let live_test = live_overlay.join("etc/profile.d/00-levitate-test.sh");
 

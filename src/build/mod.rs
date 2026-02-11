@@ -14,6 +14,7 @@
 //! Note: Kernel building is now handled by `crate::recipe::linux()`.
 
 pub mod context;
+pub mod distro_config;
 pub mod filesystem;
 pub mod libdeps;
 pub mod users;

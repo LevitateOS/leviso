@@ -3,6 +3,7 @@
 //! Provides paths needed to build the LevitateOS system image.
 
 use anyhow::Result;
+use distro_contract::context::BuildContext as BuildContextTrait;
 use std::path::{Path, PathBuf};
 
 /// Shared context for all build operations.
@@ -56,5 +57,28 @@ impl BuildContext {
             base_dir: base_dir.to_path_buf(),
             output: base_dir.join("output"),
         }
+    }
+}
+
+// Implement distro-contract's BuildContext trait
+impl BuildContextTrait for BuildContext {
+    fn source(&self) -> &Path {
+        &self.source
+    }
+
+    fn staging(&self) -> &Path {
+        &self.staging
+    }
+
+    fn base_dir(&self) -> &Path {
+        &self.base_dir
+    }
+
+    fn output(&self) -> &Path {
+        &self.output
+    }
+
+    fn config(&self) -> &dyn distro_contract::context::DistroConfig {
+        &super::distro_config::LevitateOsConfig
     }
 }

@@ -315,6 +315,8 @@ pub enum CustomOp {
     CreateWelcomeMessage,
     /// Install recstrap/recfstab/recchroot tools via recipes.
     InstallTools,
+    /// Install checkpoint test scripts into the live rootfs (/usr/local/bin/checkpoint-*.sh).
+    InstallCheckpointTests,
     /// Disable SELinux.
     DisableSelinux,
     /// Create PAM system-auth and related files.

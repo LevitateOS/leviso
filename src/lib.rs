@@ -10,6 +10,7 @@ pub mod build;
 pub mod common;
 pub mod component;
 pub mod config;
+pub mod rebuild;
 pub mod recipe;
 pub mod resolve;
 

@@ -14,6 +14,16 @@ use crate::rebuild;
 use crate::recipe;
 use distro_builder::timing::Timer;
 
+fn open_artifact_store(base_dir: &Path) -> Option<distro_builder::artifact_store::ArtifactStore> {
+    match distro_builder::artifact_store::ArtifactStore::open_for_distro(base_dir) {
+        Ok(s) => Some(s),
+        Err(e) => {
+            eprintln!("[WARN] Artifact store disabled: {:#}", e);
+            None
+        }
+    }
+}
+
 /// Build target for the build command.
 pub enum BuildTarget {
     /// Full build (all artifacts, skip kernel if not available)
@@ -50,6 +60,7 @@ pub fn cmd_build(base_dir: &Path, target: BuildTarget, config: &Config) -> Resul
 fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()> {
     println!("=== Full LevitateOS Build ===\n");
     let build_start = Instant::now();
+    let store = open_artifact_store(base_dir);
 
     // 0. Ensure host build tools are available (mkfs.erofs, xorriso, etc.)
     println!("Ensuring host build tools...");
@@ -69,6 +80,60 @@ fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()
     println!("\nDownloading EPEL packages...");
     recipe::epel(base_dir)?;
 
+    // Try to restore outputs from the centralized artifact store if the output
+    // files are missing but input hashes are known.
+    if let Some(store) = &store {
+        let out = base_dir.join("output");
+
+        let rootfs_key = out.join(".rootfs-inputs.hash");
+        let rootfs_out = out.join(ROOTFS_NAME);
+        match distro_builder::artifact_store::try_restore_file_from_key(
+            store,
+            "rootfs_erofs",
+            &rootfs_key,
+            &rootfs_out,
+        ) {
+            Ok(true) => println!("\n[RESTORE] Rootfs restored from artifact store"),
+            Ok(false) => {}
+            Err(e) => eprintln!(
+                "[WARN] Failed to restore rootfs from artifact store: {:#}",
+                e
+            ),
+        }
+
+        let initramfs_key = out.join(".initramfs-inputs.hash");
+        let initramfs_out = out.join(INITRAMFS_LIVE_OUTPUT);
+        match distro_builder::artifact_store::try_restore_file_from_key(
+            store,
+            "initramfs",
+            &initramfs_key,
+            &initramfs_out,
+        ) {
+            Ok(true) => println!("\n[RESTORE] Initramfs restored from artifact store"),
+            Ok(false) => {}
+            Err(e) => eprintln!(
+                "[WARN] Failed to restore initramfs from artifact store: {:#}",
+                e
+            ),
+        }
+
+        let install_initramfs_key = out.join(".install-initramfs-inputs.hash");
+        let install_initramfs_out = out.join(INITRAMFS_INSTALLED_OUTPUT);
+        match distro_builder::artifact_store::try_restore_file_from_key(
+            store,
+            "install_initramfs",
+            &install_initramfs_key,
+            &install_initramfs_out,
+        ) {
+            Ok(true) => println!("\n[RESTORE] Install initramfs restored from artifact store"),
+            Ok(false) => {}
+            Err(e) => eprintln!(
+                "[WARN] Failed to restore install initramfs from artifact store: {:#}",
+                e
+            ),
+        }
+    }
+
     // 2. Kernel: build only if --kernel was passed, otherwise use existing or error
     let needs_compile = rebuild::kernel_needs_compile(base_dir);
     let needs_install = rebuild::kernel_needs_install(base_dir);
@@ -79,6 +144,21 @@ fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()
             let t = Timer::start("Kernel");
             let linux = recipe::linux(base_dir)?;
             rebuild::cache_kernel_hash(base_dir);
+            if let Some(store) = &store {
+                let key = base_dir.join("output/.kernel-inputs.hash");
+                let staging = base_dir.join("output/staging");
+                if let Err(e) = distro_builder::artifact_store::try_store_kernel_payload_from_key(
+                    store,
+                    &key,
+                    &staging,
+                    std::collections::BTreeMap::new(),
+                ) {
+                    eprintln!(
+                        "[WARN] Failed to store kernel payload in artifact store: {:#}",
+                        e
+                    );
+                }
+            }
             t.finish();
             println!("  Kernel {} installed", linux.version);
         } else if needs_compile {
@@ -96,6 +176,21 @@ fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()
             let t = Timer::start("Kernel");
             let linux = recipe::linux(base_dir)?;
             rebuild::cache_kernel_hash(base_dir);
+            if let Some(store) = &store {
+                let key = base_dir.join("output/.kernel-inputs.hash");
+                let staging = base_dir.join("output/staging");
+                if let Err(e) = distro_builder::artifact_store::try_store_kernel_payload_from_key(
+                    store,
+                    &key,
+                    &staging,
+                    std::collections::BTreeMap::new(),
+                ) {
+                    eprintln!(
+                        "[WARN] Failed to store kernel payload in artifact store: {:#}",
+                        e
+                    );
+                }
+            }
             t.finish();
             println!("  Kernel {} installed", linux.version);
         }
@@ -109,6 +204,19 @@ fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()
         let t = Timer::start("Rootfs");
         artifact::build_rootfs(base_dir)?;
         rebuild::cache_rootfs_hash(base_dir);
+        if let Some(store) = &store {
+            let key = base_dir.join("output/.rootfs-inputs.hash");
+            let out = base_dir.join("output").join(ROOTFS_NAME);
+            if let Err(e) = distro_builder::artifact_store::try_store_file_from_key(
+                store,
+                "rootfs_erofs",
+                &key,
+                &out,
+                std::collections::BTreeMap::new(),
+            ) {
+                eprintln!("[WARN] Failed to store rootfs in artifact store: {:#}", e);
+            }
+        }
         t.finish();
     } else {
         println!("\n[SKIP] Rootfs already built (inputs unchanged)");
@@ -120,6 +228,22 @@ fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()
         let t = Timer::start("Initramfs");
         artifact::build_tiny_initramfs(base_dir)?;
         rebuild::cache_initramfs_hash(base_dir);
+        if let Some(store) = &store {
+            let key = base_dir.join("output/.initramfs-inputs.hash");
+            let out = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
+            if let Err(e) = distro_builder::artifact_store::try_store_file_from_key(
+                store,
+                "initramfs",
+                &key,
+                &out,
+                std::collections::BTreeMap::new(),
+            ) {
+                eprintln!(
+                    "[WARN] Failed to store initramfs in artifact store: {:#}",
+                    e
+                );
+            }
+        }
         t.finish();
     } else {
         println!("\n[SKIP] Initramfs already built (inputs unchanged)");
@@ -133,6 +257,22 @@ fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()
         let t = Timer::start("Install Initramfs");
         artifact::build_install_initramfs(base_dir)?;
         rebuild::cache_install_initramfs_hash(base_dir);
+        if let Some(store) = &store {
+            let key = base_dir.join("output/.install-initramfs-inputs.hash");
+            let out = base_dir.join("output").join(INITRAMFS_INSTALLED_OUTPUT);
+            if let Err(e) = distro_builder::artifact_store::try_store_file_from_key(
+                store,
+                "install_initramfs",
+                &key,
+                &out,
+                std::collections::BTreeMap::new(),
+            ) {
+                eprintln!(
+                    "[WARN] Failed to store install initramfs in artifact store: {:#}",
+                    e
+                );
+            }
+        }
         t.finish();
     } else {
         println!("\n[SKIP] Install initramfs already built (inputs unchanged)");
@@ -220,6 +360,7 @@ fn verify_hardware_compat(base_dir: &Path) -> Result<()> {
 fn build_kernel_only(base_dir: &Path, _config: &Config, clean: bool) -> Result<()> {
     let needs_compile = clean || rebuild::kernel_needs_compile(base_dir);
     let needs_install = rebuild::kernel_needs_install(base_dir);
+    let store = open_artifact_store(base_dir);
 
     if clean {
         // Clean kernel build directory before recipe runs
@@ -234,6 +375,21 @@ fn build_kernel_only(base_dir: &Path, _config: &Config, clean: bool) -> Result<(
         println!("Building kernel via recipe...");
         let linux = recipe::linux(base_dir)?;
         rebuild::cache_kernel_hash(base_dir);
+        if let Some(store) = &store {
+            let key = base_dir.join("output/.kernel-inputs.hash");
+            let staging = base_dir.join("output/staging");
+            if let Err(e) = distro_builder::artifact_store::try_store_kernel_payload_from_key(
+                store,
+                &key,
+                &staging,
+                std::collections::BTreeMap::new(),
+            ) {
+                eprintln!(
+                    "[WARN] Failed to store kernel payload in artifact store: {:#}",
+                    e
+                );
+            }
+        }
         println!("\n=== Kernel build complete ===");
         println!("  Version: {}", linux.version);
         println!("  Kernel:  output/staging/boot/vmlinuz");
@@ -246,9 +402,42 @@ fn build_kernel_only(base_dir: &Path, _config: &Config, clean: bool) -> Result<(
 
 /// Build rootfs (EROFS) only.
 fn build_rootfs_only(base_dir: &Path) -> Result<()> {
+    let store = open_artifact_store(base_dir);
+
+    if let Some(store) = &store {
+        let key = base_dir.join("output/.rootfs-inputs.hash");
+        let out = base_dir.join("output").join(ROOTFS_NAME);
+        match distro_builder::artifact_store::try_restore_file_from_key(
+            store,
+            "rootfs_erofs",
+            &key,
+            &out,
+        ) {
+            Ok(true) => println!("[RESTORE] Rootfs restored from artifact store"),
+            Ok(false) => {}
+            Err(e) => eprintln!(
+                "[WARN] Failed to restore rootfs from artifact store: {:#}",
+                e
+            ),
+        }
+    }
+
     if rebuild::rootfs_needs_rebuild(base_dir) {
         artifact::build_rootfs(base_dir)?;
         rebuild::cache_rootfs_hash(base_dir);
+        if let Some(store) = &store {
+            let key = base_dir.join("output/.rootfs-inputs.hash");
+            let out = base_dir.join("output").join(ROOTFS_NAME);
+            if let Err(e) = distro_builder::artifact_store::try_store_file_from_key(
+                store,
+                "rootfs_erofs",
+                &key,
+                &out,
+                std::collections::BTreeMap::new(),
+            ) {
+                eprintln!("[WARN] Failed to store rootfs in artifact store: {:#}", e);
+            }
+        }
     } else {
         println!("[SKIP] Rootfs already built (inputs unchanged)");
         println!("  Use 'clean rootfs' then rebuild to force");
@@ -260,9 +449,45 @@ fn build_rootfs_only(base_dir: &Path) -> Result<()> {
 
 /// Build initramfs only.
 fn build_initramfs_only(base_dir: &Path) -> Result<()> {
+    let store = open_artifact_store(base_dir);
+
+    if let Some(store) = &store {
+        let key = base_dir.join("output/.initramfs-inputs.hash");
+        let out = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
+        match distro_builder::artifact_store::try_restore_file_from_key(
+            store,
+            "initramfs",
+            &key,
+            &out,
+        ) {
+            Ok(true) => println!("[RESTORE] Initramfs restored from artifact store"),
+            Ok(false) => {}
+            Err(e) => eprintln!(
+                "[WARN] Failed to restore initramfs from artifact store: {:#}",
+                e
+            ),
+        }
+    }
+
     if rebuild::initramfs_needs_rebuild(base_dir) {
         artifact::build_tiny_initramfs(base_dir)?;
         rebuild::cache_initramfs_hash(base_dir);
+        if let Some(store) = &store {
+            let key = base_dir.join("output/.initramfs-inputs.hash");
+            let out = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
+            if let Err(e) = distro_builder::artifact_store::try_store_file_from_key(
+                store,
+                "initramfs",
+                &key,
+                &out,
+                std::collections::BTreeMap::new(),
+            ) {
+                eprintln!(
+                    "[WARN] Failed to store initramfs in artifact store: {:#}",
+                    e
+                );
+            }
+        }
     } else {
         println!("[SKIP] Initramfs already built (inputs unchanged)");
         println!("  Use 'clean iso' then rebuild to force");
@@ -276,13 +501,46 @@ fn build_initramfs_only(base_dir: &Path) -> Result<()> {
 
 /// Build ISO only.
 fn build_iso_only(base_dir: &Path) -> Result<()> {
+    let store = open_artifact_store(base_dir);
     let output_dir = base_dir.join("output");
     let rootfs_path = output_dir.join(ROOTFS_NAME);
     let initramfs_path = output_dir.join(INITRAMFS_LIVE_OUTPUT);
 
     if !rootfs_path.exists() {
+        if let Some(store) = &store {
+            let key = base_dir.join("output/.rootfs-inputs.hash");
+            if let Err(e) = distro_builder::artifact_store::try_restore_file_from_key(
+                store,
+                "rootfs_erofs",
+                &key,
+                &rootfs_path,
+            ) {
+                eprintln!(
+                    "[WARN] Failed to restore rootfs from artifact store: {:#}",
+                    e
+                );
+            }
+        }
+    }
+    if !rootfs_path.exists() {
         println!("Rootfs not found, building...");
         artifact::build_rootfs(base_dir)?;
+    }
+    if !initramfs_path.exists() {
+        if let Some(store) = &store {
+            let key = base_dir.join("output/.initramfs-inputs.hash");
+            if let Err(e) = distro_builder::artifact_store::try_restore_file_from_key(
+                store,
+                "initramfs",
+                &key,
+                &initramfs_path,
+            ) {
+                eprintln!(
+                    "[WARN] Failed to restore initramfs from artifact store: {:#}",
+                    e
+                );
+            }
+        }
     }
     if !initramfs_path.exists() {
         println!("Tiny initramfs not found, building...");

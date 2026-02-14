@@ -3,7 +3,9 @@
 use anyhow::Result;
 use std::path::Path;
 
-use distro_spec::levitate::{INITRAMFS_LIVE_OUTPUT, ISO_FILENAME, ROOTFS_NAME};
+use distro_spec::levitate::{
+    INITRAMFS_INSTALLED_OUTPUT, INITRAMFS_LIVE_OUTPUT, ISO_FILENAME, ROOTFS_NAME,
+};
 
 use crate::config::Config;
 use crate::rebuild;
@@ -57,6 +59,7 @@ fn show_build_status(base_dir: &Path) -> Result<()> {
     let vmlinuz = base_dir.join("output/staging/boot/vmlinuz");
     let rootfs = base_dir.join("output").join(ROOTFS_NAME);
     let initramfs = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
+    let install_initramfs = base_dir.join("output").join(INITRAMFS_INSTALLED_OUTPUT);
     let iso = base_dir.join("output").join(ISO_FILENAME);
 
     // Kernel
@@ -102,6 +105,17 @@ fn show_build_status(base_dir: &Path) -> Result<()> {
         println!("OK (up to date)");
     }
 
+    // Install initramfs
+    let install_initramfs_rebuild = rebuild::install_initramfs_needs_rebuild(base_dir);
+    print!("Install initramfs: ");
+    if !install_initramfs.exists() {
+        println!("MISSING → will build");
+    } else if install_initramfs_rebuild {
+        println!("STALE → will rebuild");
+    } else {
+        println!("OK (up to date)");
+    }
+
     // ISO
     let iso_rebuild = rebuild::iso_needs_rebuild(base_dir);
     print!("ISO:               ");
@@ -115,8 +129,12 @@ fn show_build_status(base_dir: &Path) -> Result<()> {
 
     // Summary
     println!();
-    let any_work =
-        kernel_compile || kernel_install || rootfs_rebuild || initramfs_rebuild || iso_rebuild;
+    let any_work = kernel_compile
+        || kernel_install
+        || rootfs_rebuild
+        || initramfs_rebuild
+        || install_initramfs_rebuild
+        || iso_rebuild;
     if any_work {
         println!("Run 'leviso build' to rebuild stale/missing artifacts.");
     } else {

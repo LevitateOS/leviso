@@ -36,7 +36,7 @@ use std::path::Path;
 /// Run the tool recipes to install recstrap, recfstab, recchroot to staging.
 ///
 /// These tools are required for the live ISO to be able to install itself.
-/// The recipes install binaries to output/staging/usr/bin/.
+/// The recipes install binaries to the staging dir under the centralized output tree.
 ///
 /// # Arguments
 /// * `base_dir` - leviso crate root (e.g., `/path/to/leviso`)
@@ -47,7 +47,8 @@ pub fn install_tools(base_dir: &Path) -> Result<()> {
         .unwrap_or_else(|| base_dir.to_path_buf());
 
     let downloads_dir = base_dir.join("downloads");
-    let staging_bin = base_dir.join("output/staging/usr/bin");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
+    let staging_bin = output_dir.join("staging/usr/bin");
 
     // Find recipe binary once
     let recipe_bin = find_recipe(&monorepo_dir)?;

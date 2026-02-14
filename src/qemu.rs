@@ -40,7 +40,7 @@ const FAILURE_PATTERNS: &[&str] = &[
 
 /// Run the ISO in QEMU GUI (closest to bare metal).
 pub fn run_iso(base_dir: &Path, disk_size: Option<String>) -> Result<()> {
-    let output_dir = base_dir.join("output");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
     let iso_path = output_dir.join(ISO_FILENAME);
 
     if !iso_path.exists() {
@@ -110,7 +110,7 @@ pub fn run_iso(base_dir: &Path, disk_size: Option<String>) -> Result<()> {
 /// Returns Ok(()) if boot succeeds (login prompt reached).
 /// Returns Err if boot fails or times out.
 pub fn test_iso(base_dir: &Path, timeout_secs: u64) -> Result<()> {
-    let output_dir = base_dir.join("output");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
     let iso_path = output_dir.join(ISO_FILENAME);
 
     if !iso_path.exists() {

@@ -25,11 +25,13 @@ pub fn cmd_extract(base_dir: &Path, target: ExtractTarget) -> Result<()> {
             extract::extract_rocky_iso(base_dir, &rocky.iso)?;
         }
         ExtractTarget::Rootfs { output } => {
-            let rootfs = base_dir.join("output").join(ROOTFS_NAME);
+            let central_output_dir =
+                distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
+            let rootfs = central_output_dir.join(ROOTFS_NAME);
             if !rootfs.exists() {
                 anyhow::bail!("Rootfs not found. Run 'leviso build rootfs' first.");
             }
-            let output_dir = output.unwrap_or_else(|| base_dir.join("output/rootfs-extracted"));
+            let output_dir = output.unwrap_or_else(|| central_output_dir.join("rootfs-extracted"));
             println!("Extracting EROFS rootfs to {}...", output_dir.display());
             // EROFS extraction requires mounting or using fsck.erofs --extract
             // For inspection, dump the image info instead

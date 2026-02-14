@@ -27,7 +27,7 @@ impl BuildContext {
     pub fn new(base_dir: &Path, staging: &Path) -> Result<Self> {
         let downloads = base_dir.join("downloads");
         let source = downloads.join("rootfs");
-        let output = base_dir.join("output");
+        let output = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
 
         if !source.exists() {
             anyhow::bail!(

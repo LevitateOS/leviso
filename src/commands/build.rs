@@ -61,6 +61,7 @@ fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()
     println!("=== Full LevitateOS Build ===\n");
     let build_start = Instant::now();
     let store = open_artifact_store(base_dir);
+    let out = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
 
     // 0. Ensure host build tools are available (mkfs.erofs, xorriso, etc.)
     println!("Ensuring host build tools...");
@@ -83,8 +84,6 @@ fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()
     // Try to restore outputs from the centralized artifact store if the output
     // files are missing but input hashes are known.
     if let Some(store) = &store {
-        let out = base_dir.join("output");
-
         let rootfs_key = out.join(".rootfs-inputs.hash");
         let rootfs_out = out.join(ROOTFS_NAME);
         match distro_builder::artifact_store::try_restore_file_from_key(
@@ -145,8 +144,8 @@ fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()
             let linux = recipe::linux(base_dir)?;
             rebuild::cache_kernel_hash(base_dir);
             if let Some(store) = &store {
-                let key = base_dir.join("output/.kernel-inputs.hash");
-                let staging = base_dir.join("output/staging");
+                let key = out.join(".kernel-inputs.hash");
+                let staging = out.join("staging");
                 if let Err(e) = distro_builder::artifact_store::try_store_kernel_payload_from_key(
                     store,
                     &key,
@@ -177,8 +176,8 @@ fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()
             let linux = recipe::linux(base_dir)?;
             rebuild::cache_kernel_hash(base_dir);
             if let Some(store) = &store {
-                let key = base_dir.join("output/.kernel-inputs.hash");
-                let staging = base_dir.join("output/staging");
+                let key = out.join(".kernel-inputs.hash");
+                let staging = out.join("staging");
                 if let Err(e) = distro_builder::artifact_store::try_store_kernel_payload_from_key(
                     store,
                     &key,
@@ -205,13 +204,13 @@ fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()
         artifact::build_rootfs(base_dir)?;
         rebuild::cache_rootfs_hash(base_dir);
         if let Some(store) = &store {
-            let key = base_dir.join("output/.rootfs-inputs.hash");
-            let out = base_dir.join("output").join(ROOTFS_NAME);
+            let key = out.join(".rootfs-inputs.hash");
+            let out_file = out.join(ROOTFS_NAME);
             if let Err(e) = distro_builder::artifact_store::try_store_file_from_key(
                 store,
                 "rootfs_erofs",
                 &key,
-                &out,
+                &out_file,
                 std::collections::BTreeMap::new(),
             ) {
                 eprintln!("[WARN] Failed to store rootfs in artifact store: {:#}", e);
@@ -229,13 +228,13 @@ fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()
         artifact::build_tiny_initramfs(base_dir)?;
         rebuild::cache_initramfs_hash(base_dir);
         if let Some(store) = &store {
-            let key = base_dir.join("output/.initramfs-inputs.hash");
-            let out = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
+            let key = out.join(".initramfs-inputs.hash");
+            let out_file = out.join(INITRAMFS_LIVE_OUTPUT);
             if let Err(e) = distro_builder::artifact_store::try_store_file_from_key(
                 store,
                 "initramfs",
                 &key,
-                &out,
+                &out_file,
                 std::collections::BTreeMap::new(),
             ) {
                 eprintln!(
@@ -258,13 +257,13 @@ fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()
         artifact::build_install_initramfs(base_dir)?;
         rebuild::cache_install_initramfs_hash(base_dir);
         if let Some(store) = &store {
-            let key = base_dir.join("output/.install-initramfs-inputs.hash");
-            let out = base_dir.join("output").join(INITRAMFS_INSTALLED_OUTPUT);
+            let key = out.join(".install-initramfs-inputs.hash");
+            let out_file = out.join(INITRAMFS_INSTALLED_OUTPUT);
             if let Err(e) = distro_builder::artifact_store::try_store_file_from_key(
                 store,
                 "install_initramfs",
                 &key,
-                &out,
+                &out_file,
                 std::collections::BTreeMap::new(),
             ) {
                 eprintln!(
@@ -291,10 +290,9 @@ fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()
     // 7. ALWAYS verify all artifacts (whether just built or skipped)
     // This catches broken artifacts from previous runs
     println!("\n=== Artifact Verification ===");
-    let output_dir = base_dir.join("output");
-    artifact::verify_live_initramfs(&output_dir.join(INITRAMFS_LIVE_OUTPUT))?;
-    artifact::verify_install_initramfs(&output_dir.join(INITRAMFS_INSTALLED_OUTPUT))?;
-    artifact::verify_iso(&output_dir.join(ISO_FILENAME))?;
+    artifact::verify_live_initramfs(&out.join(INITRAMFS_LIVE_OUTPUT))?;
+    artifact::verify_install_initramfs(&out.join(INITRAMFS_INSTALLED_OUTPUT))?;
+    artifact::verify_iso(&out.join(ISO_FILENAME))?;
 
     // 8. Verify hardware compatibility
     verify_hardware_compat(base_dir)?;
@@ -305,8 +303,8 @@ fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()
     } else {
         println!("\n=== Build Complete ({:.1}s) ===", total);
     }
-    println!("  ISO: output/{}", ISO_FILENAME);
-    println!("  Rootfs: output/{}", ROOTFS_NAME);
+    println!("  ISO: {}", out.join(ISO_FILENAME).display());
+    println!("  Rootfs: {}", out.join(ROOTFS_NAME).display());
     println!("\nNext: leviso run");
 
     Ok(())
@@ -316,7 +314,7 @@ fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()
 fn verify_hardware_compat(base_dir: &Path) -> Result<()> {
     println!("\n=== Hardware Compatibility Verification ===");
 
-    let output_dir = base_dir.join("output");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
     // Firmware is installed to rootfs-staging during rootfs build, not staging
     let checker = hardware_compat::HardwareCompatChecker::new(
         output_dir.join("kernel-build/.config"),
@@ -361,10 +359,11 @@ fn build_kernel_only(base_dir: &Path, _config: &Config, clean: bool) -> Result<(
     let needs_compile = clean || rebuild::kernel_needs_compile(base_dir);
     let needs_install = rebuild::kernel_needs_install(base_dir);
     let store = open_artifact_store(base_dir);
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
 
     if clean {
         // Clean kernel build directory before recipe runs
-        let kernel_build = base_dir.join("output/kernel-build");
+        let kernel_build = output_dir.join("kernel-build");
         if kernel_build.exists() {
             println!("Cleaning kernel build directory...");
             std::fs::remove_dir_all(&kernel_build)?;
@@ -376,8 +375,8 @@ fn build_kernel_only(base_dir: &Path, _config: &Config, clean: bool) -> Result<(
         let linux = recipe::linux(base_dir)?;
         rebuild::cache_kernel_hash(base_dir);
         if let Some(store) = &store {
-            let key = base_dir.join("output/.kernel-inputs.hash");
-            let staging = base_dir.join("output/staging");
+            let key = output_dir.join(".kernel-inputs.hash");
+            let staging = output_dir.join("staging");
             if let Err(e) = distro_builder::artifact_store::try_store_kernel_payload_from_key(
                 store,
                 &key,
@@ -392,7 +391,10 @@ fn build_kernel_only(base_dir: &Path, _config: &Config, clean: bool) -> Result<(
         }
         println!("\n=== Kernel build complete ===");
         println!("  Version: {}", linux.version);
-        println!("  Kernel:  output/staging/boot/vmlinuz");
+        println!(
+            "  Kernel:  {}",
+            output_dir.join("staging/boot/vmlinuz").display()
+        );
     } else {
         println!("[SKIP] Kernel already built and installed");
         println!("  Use 'build kernel --clean' to force rebuild");
@@ -403,10 +405,11 @@ fn build_kernel_only(base_dir: &Path, _config: &Config, clean: bool) -> Result<(
 /// Build rootfs (EROFS) only.
 fn build_rootfs_only(base_dir: &Path) -> Result<()> {
     let store = open_artifact_store(base_dir);
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
 
     if let Some(store) = &store {
-        let key = base_dir.join("output/.rootfs-inputs.hash");
-        let out = base_dir.join("output").join(ROOTFS_NAME);
+        let key = output_dir.join(".rootfs-inputs.hash");
+        let out = output_dir.join(ROOTFS_NAME);
         match distro_builder::artifact_store::try_restore_file_from_key(
             store,
             "rootfs_erofs",
@@ -426,8 +429,8 @@ fn build_rootfs_only(base_dir: &Path) -> Result<()> {
         artifact::build_rootfs(base_dir)?;
         rebuild::cache_rootfs_hash(base_dir);
         if let Some(store) = &store {
-            let key = base_dir.join("output/.rootfs-inputs.hash");
-            let out = base_dir.join("output").join(ROOTFS_NAME);
+            let key = output_dir.join(".rootfs-inputs.hash");
+            let out = output_dir.join(ROOTFS_NAME);
             if let Err(e) = distro_builder::artifact_store::try_store_file_from_key(
                 store,
                 "rootfs_erofs",
@@ -450,10 +453,11 @@ fn build_rootfs_only(base_dir: &Path) -> Result<()> {
 /// Build initramfs only.
 fn build_initramfs_only(base_dir: &Path) -> Result<()> {
     let store = open_artifact_store(base_dir);
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
 
     if let Some(store) = &store {
-        let key = base_dir.join("output/.initramfs-inputs.hash");
-        let out = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
+        let key = output_dir.join(".initramfs-inputs.hash");
+        let out = output_dir.join(INITRAMFS_LIVE_OUTPUT);
         match distro_builder::artifact_store::try_restore_file_from_key(
             store,
             "initramfs",
@@ -473,8 +477,8 @@ fn build_initramfs_only(base_dir: &Path) -> Result<()> {
         artifact::build_tiny_initramfs(base_dir)?;
         rebuild::cache_initramfs_hash(base_dir);
         if let Some(store) = &store {
-            let key = base_dir.join("output/.initramfs-inputs.hash");
-            let out = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
+            let key = output_dir.join(".initramfs-inputs.hash");
+            let out = output_dir.join(INITRAMFS_LIVE_OUTPUT);
             if let Err(e) = distro_builder::artifact_store::try_store_file_from_key(
                 store,
                 "initramfs",
@@ -494,7 +498,6 @@ fn build_initramfs_only(base_dir: &Path) -> Result<()> {
     }
 
     // Always verify (whether just built or skipped)
-    let output_dir = base_dir.join("output");
     artifact::verify_live_initramfs(&output_dir.join(INITRAMFS_LIVE_OUTPUT))?;
     Ok(())
 }
@@ -502,13 +505,13 @@ fn build_initramfs_only(base_dir: &Path) -> Result<()> {
 /// Build ISO only.
 fn build_iso_only(base_dir: &Path) -> Result<()> {
     let store = open_artifact_store(base_dir);
-    let output_dir = base_dir.join("output");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
     let rootfs_path = output_dir.join(ROOTFS_NAME);
     let initramfs_path = output_dir.join(INITRAMFS_LIVE_OUTPUT);
 
     if !rootfs_path.exists() {
         if let Some(store) = &store {
-            let key = base_dir.join("output/.rootfs-inputs.hash");
+            let key = output_dir.join(".rootfs-inputs.hash");
             if let Err(e) = distro_builder::artifact_store::try_restore_file_from_key(
                 store,
                 "rootfs_erofs",
@@ -528,7 +531,7 @@ fn build_iso_only(base_dir: &Path) -> Result<()> {
     }
     if !initramfs_path.exists() {
         if let Some(store) = &store {
-            let key = base_dir.join("output/.initramfs-inputs.hash");
+            let key = output_dir.join(".initramfs-inputs.hash");
             if let Err(e) = distro_builder::artifact_store::try_restore_file_from_key(
                 store,
                 "initramfs",
@@ -567,7 +570,7 @@ fn build_iso_only(base_dir: &Path) -> Result<()> {
 
 /// Build qcow2 VM disk image only.
 fn build_qcow2_only(base_dir: &Path, disk_size: u32) -> Result<()> {
-    let output_dir = base_dir.join("output");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
     let rootfs_staging = output_dir.join("rootfs-staging");
 
     // Rootfs-staging is required for qcow2 building (we use it directly, not EROFS)

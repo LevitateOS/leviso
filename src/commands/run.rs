@@ -11,14 +11,15 @@ use crate::recipe;
 
 /// Ensure ISO exists, building if necessary.
 fn ensure_iso_built(base_dir: &Path) -> Result<()> {
-    let iso_path = base_dir.join("output").join(ISO_FILENAME);
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
+    let iso_path = output_dir.join(ISO_FILENAME);
     if iso_path.exists() {
         return Ok(());
     }
 
     println!("ISO not found, building...\n");
-    let rootfs_path = base_dir.join("output").join(ROOTFS_NAME);
-    let initramfs_path = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
+    let rootfs_path = output_dir.join(ROOTFS_NAME);
+    let initramfs_path = output_dir.join(INITRAMFS_LIVE_OUTPUT);
 
     if !rootfs_path.exists() {
         artifact::build_rootfs(base_dir)?;

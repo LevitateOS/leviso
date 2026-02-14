@@ -55,7 +55,8 @@ pub fn prepare_qcow2_rootfs(
     regenerate_ssh_keys(target)?;
 
     // Copy kernel to rootfs /boot (for reference, actual boot uses EFI partition)
-    let kernel_src = base_dir.join("output/staging/boot/vmlinuz");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
+    let kernel_src = output_dir.join("staging/boot/vmlinuz");
     if kernel_src.exists() {
         let boot_dir = target.join("boot");
         fs::create_dir_all(&boot_dir)?;

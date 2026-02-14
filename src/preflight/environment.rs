@@ -12,19 +12,19 @@ pub fn check_build_environment(base_dir: &Path) -> Vec<CheckResult> {
     let mut results = Vec::new();
 
     // Check output directory is writable
-    let output_dir = base_dir.join("output");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
     if output_dir.exists() {
         // Check if we can write
         let test_file = output_dir.join(".preflight-test");
         match std::fs::write(&test_file, "test") {
             Ok(_) => {
                 let _ = std::fs::remove_file(&test_file);
-                results.push(CheckResult::pass("output/ writable"));
+                results.push(CheckResult::pass("central output writable"));
             }
             Err(e) => {
                 results.push(CheckResult::fail(
-                    "output/ writable",
-                    &format!("Cannot write to output/: {}", e),
+                    "central output writable",
+                    &format!("Cannot write to {}: {}", output_dir.display(), e),
                 ));
             }
         }
@@ -32,12 +32,12 @@ pub fn check_build_environment(base_dir: &Path) -> Vec<CheckResult> {
         // Try to create it
         match std::fs::create_dir_all(&output_dir) {
             Ok(_) => {
-                results.push(CheckResult::pass("output/ writable"));
+                results.push(CheckResult::pass("central output writable"));
             }
             Err(e) => {
                 results.push(CheckResult::fail(
-                    "output/ writable",
-                    &format!("Cannot create output/: {}", e),
+                    "central output writable",
+                    &format!("Cannot create {}: {}", output_dir.display(), e),
                 ));
             }
         }

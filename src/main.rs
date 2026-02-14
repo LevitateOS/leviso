@@ -169,7 +169,7 @@ enum ExtractTarget {
     Rocky,
     /// Extract rootfs for inspection (extracts EROFS)
     Rootfs {
-        /// Output directory (default: output/rootfs-extracted)
+        /// Output directory (default: .artifacts/out/leviso/rootfs-extracted)
         #[arg(short, long)]
         output: Option<PathBuf>,
     },

@@ -57,7 +57,7 @@ pub fn build_qcow2(base_dir: &Path, disk_size_gb: u32) -> Result<()> {
     println!("Checking host tools...");
     helpers::check_host_tools()?;
 
-    let output_dir = base_dir.join("output");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
     let staging_dir = output_dir.join("rootfs-staging");
     let qcow2_path = output_dir.join(QCOW2_IMAGE_FILENAME);
 
@@ -160,7 +160,8 @@ pub fn build_qcow2(base_dir: &Path, disk_size_gb: u32) -> Result<()> {
 
 /// Verify the qcow2 image using fsdbg static checks.
 pub fn verify_qcow2(base_dir: &Path) -> Result<()> {
-    let qcow2_path = base_dir.join("output").join(QCOW2_IMAGE_FILENAME);
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
+    let qcow2_path = output_dir.join(QCOW2_IMAGE_FILENAME);
     ensure_exists(&qcow2_path, "qcow2 image")?;
 
     println!("\n=== Verifying qcow2 Image ===");
@@ -194,7 +195,7 @@ pub fn verify_qcow2(base_dir: &Path) -> Result<()> {
 
 /// Verify all build dependencies exist and are valid.
 fn verify_build_dependencies(base_dir: &Path, rootfs: &Path) -> Result<()> {
-    let output_dir = base_dir.join("output");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
 
     // Check kernel
     let kernel_path = output_dir.join("staging/boot/vmlinuz");

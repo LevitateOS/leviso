@@ -38,7 +38,7 @@ pub fn copy_systemd_boot_efi(ctx: &BuildContext) -> Result<()> {
         );
     };
 
-    let temp_dir = ctx.base_dir.join("output/.systemd-boot-extract");
+    let temp_dir = ctx.output.join(".systemd-boot-extract");
     if temp_dir.exists() {
         fs::remove_dir_all(&temp_dir)?;
     }

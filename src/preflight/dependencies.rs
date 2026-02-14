@@ -64,7 +64,8 @@ pub fn check_dependencies(base_dir: &Path) -> Result<Vec<CheckResult>> {
 
     // Installation tools (recstrap, recfstab, recchroot)
     // Check if installed in staging (placed there by recipes)
-    let staging_bin = base_dir.join("output/staging/usr/bin");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
+    let staging_bin = output_dir.join("staging/usr/bin");
     for tool in LEVITATE_CARGO_TOOLS {
         let path = staging_bin.join(tool);
         if path.exists() {

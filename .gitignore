@@ -2,7 +2,7 @@
 downloads/
 
 # Build output
-output/
+output
 squashfs-root/
 
 # Local configuration (user-specific paths)

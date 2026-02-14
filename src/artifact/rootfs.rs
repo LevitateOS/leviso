@@ -70,10 +70,11 @@ pub fn build_rootfs(base_dir: &Path) -> Result<()> {
     check_host_tools()?;
 
     // Gentoo-style: separate "work" vs "final" locations
-    let work_staging = base_dir.join("output/rootfs-staging.work");
-    let work_output = base_dir.join("output/filesystem.erofs.work");
-    let final_staging = base_dir.join("output/rootfs-staging");
-    let final_output = base_dir.join("output").join(ROOTFS_NAME);
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
+    let work_staging = output_dir.join("rootfs-staging.work");
+    let work_output = output_dir.join("filesystem.erofs.work");
+    let final_staging = output_dir.join("rootfs-staging");
+    let final_output = output_dir.join(ROOTFS_NAME);
 
     // 1. Clean WORK directories only (preserve final)
     // Use let _ = to ignore errors (may not exist)

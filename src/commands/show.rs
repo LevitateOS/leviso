@@ -31,7 +31,9 @@ pub fn cmd_show(base_dir: &Path, target: ShowTarget, config: &Config) -> Result<
             print_dependency_status(base_dir);
         }
         ShowTarget::Rootfs => {
-            let rootfs = base_dir.join("output").join(ROOTFS_NAME);
+            let output_dir =
+                distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
+            let rootfs = output_dir.join(ROOTFS_NAME);
             if !rootfs.exists() {
                 anyhow::bail!("Rootfs not found. Run 'leviso build rootfs' first.");
             }
@@ -55,12 +57,13 @@ fn show_build_status(base_dir: &Path) -> Result<()> {
     println!("=== Build Status ===\n");
 
     // Check each artifact
-    let bzimage = base_dir.join("output/kernel-build/arch/x86/boot/bzImage");
-    let vmlinuz = base_dir.join("output/staging/boot/vmlinuz");
-    let rootfs = base_dir.join("output").join(ROOTFS_NAME);
-    let initramfs = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
-    let install_initramfs = base_dir.join("output").join(INITRAMFS_INSTALLED_OUTPUT);
-    let iso = base_dir.join("output").join(ISO_FILENAME);
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
+    let bzimage = output_dir.join("kernel-build/arch/x86/boot/bzImage");
+    let vmlinuz = output_dir.join("staging/boot/vmlinuz");
+    let rootfs = output_dir.join(ROOTFS_NAME);
+    let initramfs = output_dir.join(INITRAMFS_LIVE_OUTPUT);
+    let install_initramfs = output_dir.join(INITRAMFS_INSTALLED_OUTPUT);
+    let iso = output_dir.join(ISO_FILENAME);
 
     // Kernel
     let kernel_compile = rebuild::kernel_needs_compile(base_dir);

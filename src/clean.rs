@@ -11,7 +11,7 @@ use distro_spec::levitate::{
 
 /// Clean all build outputs (preserves downloads).
 pub fn clean_outputs(base_dir: &Path) -> Result<()> {
-    let output_dir = base_dir.join("output");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
 
     if output_dir.exists() {
         println!("Removing {}...", output_dir.display());
@@ -24,10 +24,11 @@ pub fn clean_outputs(base_dir: &Path) -> Result<()> {
 
 /// Clean kernel build artifacts only.
 pub fn clean_kernel(base_dir: &Path) -> Result<()> {
-    let kernel_build = base_dir.join("output/kernel-build");
-    let vmlinuz = base_dir.join("output/staging/boot/vmlinuz");
-    let modules = base_dir.join("output/staging/usr/lib/modules");
-    let kconfig_hash = base_dir.join("output/.kconfig.hash");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
+    let kernel_build = output_dir.join("kernel-build");
+    let vmlinuz = output_dir.join("staging/boot/vmlinuz");
+    let modules = output_dir.join("staging/usr/lib/modules");
+    let kconfig_hash = output_dir.join(".kconfig.hash");
 
     let mut cleaned = false;
 
@@ -65,17 +66,17 @@ pub fn clean_kernel(base_dir: &Path) -> Result<()> {
 
 /// Clean ISO and initramfs only.
 pub fn clean_iso(base_dir: &Path) -> Result<()> {
-    let iso = base_dir.join("output").join(ISO_FILENAME);
-    let checksum = base_dir
-        .join("output")
-        .join(format!("{}{}", ISO_FILENAME, ISO_CHECKSUM_SUFFIX));
-    let initramfs = base_dir.join("output").join(INITRAMFS_FILENAME);
-    let initramfs_live = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
-    let initramfs_dir = base_dir.join("output/initramfs");
-    let initramfs_live_root = base_dir.join("output").join(INITRAMFS_BUILD_DIR);
-    let efiboot = base_dir.join("output").join(EFIBOOT_FILENAME);
-    let live_overlay = base_dir.join("output/live-overlay");
-    let initramfs_hash = base_dir.join("output/.initramfs-inputs.hash");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
+    let iso = output_dir.join(ISO_FILENAME);
+    let checksum = iso.with_extension(ISO_CHECKSUM_SUFFIX.trim_start_matches('.'));
+    let checksum_legacy = output_dir.join(format!("{}{}", ISO_FILENAME, ISO_CHECKSUM_SUFFIX));
+    let initramfs = output_dir.join(INITRAMFS_FILENAME);
+    let initramfs_live = output_dir.join(INITRAMFS_LIVE_OUTPUT);
+    let initramfs_dir = output_dir.join("initramfs");
+    let initramfs_live_root = output_dir.join(INITRAMFS_BUILD_DIR);
+    let efiboot = output_dir.join(EFIBOOT_FILENAME);
+    let live_overlay = output_dir.join("live-overlay");
+    let initramfs_hash = output_dir.join(".initramfs-inputs.hash");
 
     let mut cleaned = false;
 
@@ -88,6 +89,12 @@ pub fn clean_iso(base_dir: &Path) -> Result<()> {
     if checksum.exists() {
         println!("Removing ISO checksum...");
         fs::remove_file(&checksum)?;
+        cleaned = true;
+    }
+
+    if checksum_legacy.exists() {
+        println!("Removing legacy ISO checksum...");
+        fs::remove_file(&checksum_legacy)?;
         cleaned = true;
     }
 
@@ -143,10 +150,11 @@ pub fn clean_iso(base_dir: &Path) -> Result<()> {
 
 /// Clean rootfs (EROFS) only.
 pub fn clean_rootfs(base_dir: &Path) -> Result<()> {
-    let rootfs = base_dir.join("output").join(ROOTFS_NAME);
-    let rootfs_staging = base_dir.join("output/rootfs-staging");
-    let rootfs_extracted = base_dir.join("output/rootfs-extracted");
-    let rootfs_hash = base_dir.join("output/.rootfs-inputs.hash");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
+    let rootfs = output_dir.join(ROOTFS_NAME);
+    let rootfs_staging = output_dir.join("rootfs-staging");
+    let rootfs_extracted = output_dir.join("rootfs-extracted");
+    let rootfs_hash = output_dir.join(".rootfs-inputs.hash");
 
     let mut cleaned = false;
 

@@ -55,7 +55,7 @@ struct IsoPaths {
 
 impl IsoPaths {
     fn new(base_dir: &Path) -> Self {
-        let output_dir = base_dir.join("output");
+        let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
         Self {
             output_dir: output_dir.clone(),
             rootfs: output_dir.join(ROOTFS_NAME),
@@ -185,7 +185,7 @@ pub fn create_iso(base_dir: &Path) -> Result<()> {
 
 /// Helper to run hardware compat verification.
 fn verify_hardware_compat(base_dir: &Path) -> Result<bool> {
-    let output_dir = base_dir.join("output");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
     // Firmware is installed to rootfs-staging during rootfs build, not staging
     let checker = hardware_compat::HardwareCompatChecker::new(
         output_dir.join("kernel-build/.config"),

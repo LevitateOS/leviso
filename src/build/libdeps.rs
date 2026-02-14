@@ -205,7 +205,7 @@ fn extract_binary_from_rpm(ctx: &BuildContext, binary: &str) -> Option<PathBuf> 
     let packages_dir = ctx.base_dir.join("downloads/iso-contents/BaseOS/Packages");
     let rpm_path = find_rpm_by_pattern(&packages_dir, rpm_pattern)?;
 
-    let extract_dir = ctx.base_dir.join("output/rpm-tmp");
+    let extract_dir = ctx.output.join("rpm-tmp");
     let _ = fs::create_dir_all(&extract_dir);
 
     let cmd = format!(

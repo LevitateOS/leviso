@@ -54,7 +54,7 @@ fn busybox_url() -> String {
 /// 3. Creates an overlay for writable storage
 /// 4. switch_root to the live system
 pub fn build_tiny_initramfs(base_dir: &Path) -> Result<()> {
-    let output_dir = base_dir.join("output");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
     let downloads_dir = base_dir.join("downloads");
 
     // Find kernel modules directory
@@ -111,7 +111,7 @@ pub fn build_tiny_initramfs(base_dir: &Path) -> Result<()> {
 /// By pre-building this during ISO creation, we save time during installation.
 /// The initramfs is generic (all drivers) so it works on any hardware.
 pub fn build_install_initramfs(base_dir: &Path) -> Result<()> {
-    let output_dir = base_dir.join("output");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
     let downloads_rootfs = base_dir.join("downloads/rootfs");
 
     // Use downloads/rootfs for install initramfs - it has the full systemd units
@@ -163,9 +163,10 @@ pub fn build_install_initramfs(base_dir: &Path) -> Result<()> {
 ///
 /// ANTI-CHEAT: If using custom modules, the vmlinuz must also exist.
 fn find_kernel_modules_dir(base_dir: &Path) -> Result<std::path::PathBuf> {
-    let custom_modules_path = base_dir.join("output/staging/usr/lib/modules");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
+    let custom_modules_path = output_dir.join("staging/usr/lib/modules");
     let rocky_modules_path = base_dir.join("downloads/rootfs/usr/lib/modules");
-    let vmlinuz_path = base_dir.join("output/staging/boot/vmlinuz");
+    let vmlinuz_path = output_dir.join("staging/boot/vmlinuz");
 
     if custom_modules_path.exists() {
         // ANTI-CHEAT: Ensure the kernel binary ACTUALLY exists if we use custom modules

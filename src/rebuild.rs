@@ -54,6 +54,7 @@ impl Artifact {
 
 /// Kernel compilation artifact (bzImage).
 pub fn kernel_artifact(base_dir: &Path) -> Artifact {
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
     let kernel_makefile = base_dir.join("../linux/Makefile");
     let mut inputs = vec![base_dir.join("kconfig")];
     if kernel_makefile.exists() {
@@ -61,19 +62,20 @@ pub fn kernel_artifact(base_dir: &Path) -> Artifact {
     }
 
     Artifact {
-        output: base_dir.join("output/kernel-build/arch/x86/boot/bzImage"),
-        hash_file: base_dir.join("output/.kernel-inputs.hash"),
+        output: output_dir.join("kernel-build/arch/x86/boot/bzImage"),
+        hash_file: output_dir.join(".kernel-inputs.hash"),
         inputs,
     }
 }
 
 /// Rootfs (EROFS) artifact.
 pub fn rootfs_artifact(base_dir: &Path) -> Artifact {
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
     let distro_spec_base = base_dir.join("../distro-spec/src/shared");
 
     Artifact {
-        output: base_dir.join("output").join(ROOTFS_NAME),
-        hash_file: base_dir.join("output/.rootfs-inputs.hash"),
+        output: output_dir.join(ROOTFS_NAME),
+        hash_file: output_dir.join(".rootfs-inputs.hash"),
         inputs: vec![
             // Rocky rootfs marker
             base_dir.join("downloads/rootfs/usr/bin/bash"),
@@ -126,9 +128,10 @@ pub fn rootfs_artifact(base_dir: &Path) -> Artifact {
 
 /// Live initramfs artifact (tiny busybox-based).
 pub fn initramfs_artifact(base_dir: &Path) -> Artifact {
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
     Artifact {
-        output: base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT),
-        hash_file: base_dir.join("output/.initramfs-inputs.hash"),
+        output: output_dir.join(INITRAMFS_LIVE_OUTPUT),
+        hash_file: output_dir.join(".initramfs-inputs.hash"),
         inputs: vec![
             base_dir.join("profile/init_tiny.template"),
             base_dir.join("downloads/busybox-static"),
@@ -138,12 +141,13 @@ pub fn initramfs_artifact(base_dir: &Path) -> Artifact {
 
 /// Install initramfs artifact (systemd-based, copied to installed systems).
 pub fn install_initramfs_artifact(base_dir: &Path) -> Artifact {
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
     let recinit_base = base_dir.join("../tools/recinit/src");
     let distro_spec_base = base_dir.join("../distro-spec/src/shared");
 
     Artifact {
-        output: base_dir.join("output").join(INITRAMFS_INSTALLED_OUTPUT),
-        hash_file: base_dir.join("output/.install-initramfs-inputs.hash"),
+        output: output_dir.join(INITRAMFS_INSTALLED_OUTPUT),
+        hash_file: output_dir.join(".install-initramfs-inputs.hash"),
         inputs: vec![
             // recinit source files
             recinit_base.join("systemd.rs"),
@@ -170,14 +174,15 @@ pub fn install_initramfs_artifact(base_dir: &Path) -> Artifact {
 /// qcow2 VM disk image artifact.
 #[allow(dead_code)]
 pub fn qcow2_artifact(base_dir: &Path) -> Artifact {
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
     Artifact {
-        output: base_dir.join("output").join(QCOW2_IMAGE_FILENAME),
-        hash_file: base_dir.join("output/.qcow2-inputs.hash"),
+        output: output_dir.join(QCOW2_IMAGE_FILENAME),
+        hash_file: output_dir.join(".qcow2-inputs.hash"),
         inputs: vec![
             // Primary input: rootfs-staging directory marker
-            base_dir.join("output/rootfs-staging/usr/bin/bash"),
+            output_dir.join("rootfs-staging/usr/bin/bash"),
             // Install initramfs (required for boot - changes trigger rebuild)
-            base_dir.join("output").join(INITRAMFS_INSTALLED_OUTPUT),
+            output_dir.join(INITRAMFS_INSTALLED_OUTPUT),
             // qcow2-specific config
             base_dir.join("src/artifact/qcow2.rs"),
         ],
@@ -193,8 +198,9 @@ pub fn kernel_needs_compile(base_dir: &Path) -> bool {
 }
 
 pub fn kernel_needs_install(base_dir: &Path) -> bool {
-    let bzimage = base_dir.join("output/kernel-build/arch/x86/boot/bzImage");
-    let vmlinuz = base_dir.join("output/staging/boot/vmlinuz");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
+    let bzimage = output_dir.join("kernel-build/arch/x86/boot/bzImage");
+    let vmlinuz = output_dir.join("staging/boot/vmlinuz");
 
     if !bzimage.exists() {
         return false;
@@ -218,10 +224,11 @@ pub fn install_initramfs_needs_rebuild(base_dir: &Path) -> bool {
 }
 
 pub fn iso_needs_rebuild(base_dir: &Path) -> bool {
-    let iso = base_dir.join("output").join(ISO_FILENAME);
-    let rootfs = base_dir.join("output").join(ROOTFS_NAME);
-    let initramfs = base_dir.join("output").join(INITRAMFS_LIVE_OUTPUT);
-    let vmlinuz = base_dir.join("output/staging/boot/vmlinuz");
+    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
+    let iso = output_dir.join(ISO_FILENAME);
+    let rootfs = output_dir.join(ROOTFS_NAME);
+    let initramfs = output_dir.join(INITRAMFS_LIVE_OUTPUT);
+    let vmlinuz = output_dir.join("staging/boot/vmlinuz");
 
     // Live overlay files affect ISO content
     let live_overlay = base_dir.join("profile/live-overlay");

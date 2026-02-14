@@ -58,7 +58,9 @@ pub fn cmd_download(base_dir: &Path, target: DownloadTarget) -> Result<()> {
             recipe::install_tools(base_dir)?;
 
             // Show what was installed
-            let staging_bin = base_dir.join("output/staging/usr/bin");
+            let output_dir =
+                distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
+            let staging_bin = output_dir.join("staging/usr/bin");
             println!("\nTools installed:");
             for tool in LEVITATE_CARGO_TOOLS {
                 let path = staging_bin.join(tool);

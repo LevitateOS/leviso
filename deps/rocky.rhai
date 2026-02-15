@@ -35,8 +35,8 @@
 //   shell_status(cmd)         - Run command, return exit code (don't throw)
 //
 // Network:
-//   download(url, dest)       - HTTP download, returns path or ""
-//   torrent(url, dest)        - BitTorrent download, returns path or ""
+//   download(url, dest)       - HTTP download (throws on failure)
+//   torrent(url, dest)        - BitTorrent download (throws on failure)
 //   http_get(url)             - Fetch URL content as string
 //
 // Verification:
@@ -72,8 +72,6 @@ let deps = ["rocky-deps"];
 
 let ctx = #{
     description: "Rocky Linux rootfs (extracted from DVD ISO)",
-    disk_buffer: 2147483648,
-    http_url: "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/Rocky-10.1-x86_64-dvd1.iso",
     iso_contents_path: "/home/vince/LevitateOS/leviso/downloads/iso-contents",
     iso_name: "Rocky-10.1-x86_64-dvd1.iso",
     iso_path: "/home/vince/LevitateOS/leviso/downloads/Rocky-10.1-x86_64-dvd1.iso",
@@ -82,7 +80,6 @@ let ctx = #{
     rootfs_path: "/home/vince/LevitateOS/leviso/downloads/rootfs",
     sha256: "55f96d45a052c0ed4f06309480155cb66281a008691eb7f3f359957205b1849a",
     sha256_url: "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/CHECKSUM",
-    size_bytes: 9278128128,
     torrent_url: "https://download.rockylinux.org/pub/rocky/10/isos/x86_64/Rocky-10.1-x86_64-dvd1.torrent",
     version: "10.1",
 };
@@ -123,57 +120,28 @@ fn acquire(ctx) {
     // Ensure BUILD_DIR exists
     mkdir(BUILD_DIR);
 
-    // Fetch and parse checksum using shell (Rhai has complexity limits)
     log("Fetching checksum for " + ctx.iso_name);
-    // Rocky CHECKSUM format: "SHA256 (Rocky-10.1-x86_64-dvd1.iso) = abc123..."
-    let cmd = "curl -sL '" + ctx.sha256_url + "' | grep '" + ctx.iso_name + "' | awk -F' = ' '{print $2}'";
-    ctx.sha256 = trim(shell_output(cmd));
-
-    if ctx.sha256 == "" {
-        throw "Could not find checksum for " + ctx.iso_name;
-    }
+    ctx.sha256 = fetch_sha256(ctx.sha256_url, ctx.iso_name);
     log("Found checksum: " + ctx.sha256);
 
     // Check if ISO already exists and is valid
     if is_file(dest) {
         log("Found existing ISO, verifying checksum...");
-        let status = shell_status("sha256sum -c --status <<< '" + ctx.sha256 + "  " + dest + "'");
-        if status == 0 {
-            log("Existing ISO is valid, skipping download");
-            ctx.iso_path = dest;
-            return ctx;
-        }
-        log("Existing ISO is corrupted or wrong version, re-downloading...");
-        rm(dest);
+        verify_sha256(dest, ctx.sha256);
+        log("Existing ISO is valid, skipping download");
+        ctx.iso_path = dest;
+        return ctx;
     }
 
     // Download via torrent (faster, distributed)
     log("Downloading " + ctx.iso_name + " via torrent (~9GB)...");
     let path = torrent(ctx.torrent_url, BUILD_DIR);
 
-    // HTTP fallback (commented out for testing torrent)
-    // if path == "" {
-    //     log("Torrent failed, falling back to HTTP...");
-    //     path = download(ctx.http_url, dest);
-    // }
-
-    if path == "" {
-        throw "torrent download failed for " + ctx.iso_name;
-    }
-
-    // Torrent may create a directory with the ISO inside
-    // e.g., Rocky-10.1-x86_64-dvd1/Rocky-10.1-x86_64-dvd1.iso
     if is_dir(path) {
-        let iso_in_dir = join_path(path, ctx.iso_name);
-        if is_file(iso_in_dir) {
-            log("Found ISO inside torrent directory, moving to " + dest);
-            mv(iso_in_dir, dest);
-            // Clean up the torrent directory
-            rm(path);
-            path = dest;
-        } else {
-            throw "Torrent downloaded directory but ISO not found at " + iso_in_dir;
-        }
+        throw "torrent produced a directory, expected a single ISO file: " + path;
+    }
+    if basename(path) != ctx.iso_name {
+        throw "torrent produced unexpected filename: " + basename(path) + " (expected " + ctx.iso_name + ")";
     }
 
     log("Verifying checksum...");

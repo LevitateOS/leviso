@@ -52,10 +52,7 @@ fn download_and_extract(cache_dir, rootfs, name, url) {
     // Download if not cached
     if !is_file(rpm_path) {
         log("  Downloading: " + name);
-        let result = download(url, rpm_path);
-        if result == "" {
-            throw "Failed to download " + name;
-        }
+        download(url, rpm_path);
     }
 
     // Extract to rootfs

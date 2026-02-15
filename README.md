@@ -50,17 +50,23 @@ cargo run -- preflight   # Check dependencies before building
 cargo run -- build rootfs      # Build EROFS rootfs only
 cargo run -- build initramfs   # Build initramfs only
 cargo run -- build iso         # Build ISO only
-cargo run -- build kernel      # Build kernel only
 ```
 
 ### Download/Extract
 
 ```bash
 cargo run -- download rocky    # Fetch Rocky ISO
-cargo run -- download linux    # Fetch Linux kernel source
 cargo run -- download tools    # Build/fetch recstrap, recfstab, recchroot
 cargo run -- extract rocky     # Extract Rocky ISO contents
 cargo run -- extract rootfs    # Extract rootfs for inspection
+```
+
+### Kernel Builds (Centralized)
+
+Kernel compilation is centralized in xtask (nightly policy window).
+
+```bash
+cargo xtask kernels build leviso
 ```
 
 ### Other Commands

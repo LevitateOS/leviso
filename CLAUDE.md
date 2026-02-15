@@ -24,7 +24,7 @@ Builds the LevitateOS ISO and rootfs tarball. Downloads Rocky Linux, extracts pa
 
 ```bash
 cargo run -- build              # Full build (download, extract, assemble)
-cargo run -- build kernel       # Rebuild kernel only
+cargo xtask kernels build leviso      # Build kernel (nightly policy)
 cargo run -- build rootfs       # Rebuild rootfs image only
 cargo run -- build initramfs    # Rebuild tiny initramfs only
 cargo run -- build iso          # Rebuild ISO only

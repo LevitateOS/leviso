@@ -10,8 +10,6 @@ use crate::recipe;
 pub enum DownloadTarget {
     /// Download all dependencies
     All,
-    /// Download Linux kernel source
-    Linux,
     /// Download Rocky ISO (via recipe)
     Rocky,
     /// Download installation tools (via recipe)
@@ -28,21 +26,10 @@ pub fn cmd_download(base_dir: &Path, target: DownloadTarget) -> Result<()> {
             let rocky = recipe::rocky(base_dir)?;
             println!("Rocky: {} [OK]", rocky.iso.display());
 
-            // Linux via recipe
-            let linux = recipe::linux(base_dir)?;
-            println!("Linux: {} [OK]", linux.source.display());
-
             // Tools via recipe
             recipe::install_tools(base_dir)?;
 
             println!("\nAll dependencies resolved.");
-        }
-        DownloadTarget::Linux => {
-            let linux = recipe::linux(base_dir)?;
-            println!("Linux source: {}", linux.source.display());
-            if linux.is_installed() {
-                println!("Kernel: {} (installed)", linux.version);
-            }
         }
         DownloadTarget::Rocky => {
             // Use recipe for Rocky

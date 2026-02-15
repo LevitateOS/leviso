@@ -197,7 +197,7 @@ fn find_kernel_modules_dir(base_dir: &Path) -> Result<std::path::PathBuf> {
              CDROM kernel modules (sr_mod, cdrom, isofs) are REQUIRED.\n\
              Without them, the ISO cannot boot.\n\
              \n\
-             Run 'leviso build kernel' or 'leviso extract rocky' first.",
+             Run 'cargo xtask kernels build leviso' or 'leviso extract rocky' first.",
             custom_modules_path.display(),
             rocky_modules_path.display()
         );

@@ -172,7 +172,12 @@ fn install(ctx) {
 
 // === CLEANUP ===
 
-fn cleanup(ctx) {
+fn cleanup(ctx, reason) {
+    // Only clean up after a full run (or when manually requested).
+    if reason != "manual" && reason != "auto.install.success" && reason != "auto.install.failure" {
+        return ctx;
+    }
+
     // Note: We don't remove the built binary from docs/tui
     // It's useful to keep for faster rebuilds
     log("Cleanup complete (binary preserved in source dir)");

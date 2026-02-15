@@ -31,3 +31,6 @@ fn is_installed(ctx) {
 
 fn acquire(ctx) { ctx }
 fn install(ctx) { ctx }
+
+// === CLEANUP ===
+fn cleanup(ctx, reason) { ctx }

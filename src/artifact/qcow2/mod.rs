@@ -6,7 +6,7 @@
 //! Build process (dependencies must be built in order):
 //! 0. Prerequisites: kernel, initramfs, and rootfs must be built first
 //!    Run: cargo run -- build (full build) OR individually:
-//!      cargo run -- build kernel
+//!      cargo xtask kernels build leviso
 //!      cargo run -- build initramfs
 //!      cargo run -- build rootfs
 //! 1. Verify all dependencies exist (kernel, initramfs-installed, rootfs content)
@@ -200,7 +200,7 @@ fn verify_build_dependencies(base_dir: &Path, rootfs: &Path) -> Result<()> {
     // Check kernel
     let kernel_path = output_dir.join("staging/boot/vmlinuz");
     ensure_exists(&kernel_path, "Kernel")
-        .with_context(|| "Kernel not found. Run 'cargo run -- build kernel' first.")?;
+        .with_context(|| "Kernel not found. Run 'cargo xtask kernels build leviso' first.")?;
 
     // Check install initramfs (REQUIRED for disk boot)
     let initramfs_path = output_dir.join("initramfs-installed.img");
@@ -266,7 +266,7 @@ fn verify_qcow2_internal(qcow2_path: &Path) -> Result<()> {
              This usually means the build failed to populate the partitions.\n\
              Expected size: 500-2000 MB (compressed).\n\n\
              Check that all dependencies were built first:\n\
-             - cargo run -- build kernel\n\
+             - cargo xtask kernels build leviso\n\
              - cargo run -- build initramfs\n\
              - cargo run -- build rootfs",
             size_mb

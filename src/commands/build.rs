@@ -28,10 +28,6 @@ fn open_artifact_store(base_dir: &Path) -> Option<distro_builder::artifact_store
 pub enum BuildTarget {
     /// Full build (all artifacts, skip kernel if not available)
     Full,
-    /// Full build with kernel compilation
-    FullWithKernel,
-    /// Kernel only
-    Kernel { clean: bool },
     /// Rootfs (EROFS) only
     Rootfs,
     /// Initramfs only
@@ -45,9 +41,7 @@ pub enum BuildTarget {
 /// Execute the build command.
 pub fn cmd_build(base_dir: &Path, target: BuildTarget, config: &Config) -> Result<()> {
     match target {
-        BuildTarget::Full => build_full(base_dir, config, false),
-        BuildTarget::FullWithKernel => build_full(base_dir, config, true),
-        BuildTarget::Kernel { clean } => build_kernel_only(base_dir, config, clean),
+        BuildTarget::Full => build_full(base_dir, config),
         BuildTarget::Rootfs => build_rootfs_only(base_dir),
         BuildTarget::Initramfs => build_initramfs_only(base_dir),
         BuildTarget::Iso => build_iso_only(base_dir),
@@ -57,7 +51,7 @@ pub fn cmd_build(base_dir: &Path, target: BuildTarget, config: &Config) -> Resul
 
 /// Full build: rootfs (EROFS) + tiny initramfs + ISO.
 /// Skips anything already built, rebuilds only on changes.
-fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()> {
+fn build_full(base_dir: &Path, _config: &Config) -> Result<()> {
     println!("=== Full LevitateOS Build ===\n");
     let build_start = Instant::now();
     let store = open_artifact_store(base_dir);
@@ -133,44 +127,21 @@ fn build_full(base_dir: &Path, _config: &Config, with_kernel: bool) -> Result<()
         }
     }
 
-    // 2. Kernel: build only if --kernel was passed, otherwise use existing or error
+    // 2. Kernel: compilation is centralized in xtask; leviso should only use existing artifacts.
     let needs_compile = rebuild::kernel_needs_compile(base_dir);
     let needs_install = rebuild::kernel_needs_install(base_dir);
 
     if needs_compile || needs_install {
-        if with_kernel {
-            println!("\nBuilding kernel via recipe...");
-            let t = Timer::start("Kernel");
-            let linux = recipe::linux(base_dir)?;
-            rebuild::cache_kernel_hash(base_dir);
-            if let Some(store) = &store {
-                let key = out.join(".kernel-inputs.hash");
-                let staging = out.join("staging");
-                if let Err(e) = distro_builder::artifact_store::try_store_kernel_payload_from_key(
-                    store,
-                    &key,
-                    &staging,
-                    std::collections::BTreeMap::new(),
-                ) {
-                    eprintln!(
-                        "[WARN] Failed to store kernel payload in artifact store: {:#}",
-                        e
-                    );
-                }
-            }
-            t.finish();
-            println!("  Kernel {} installed", linux.version);
-        } else if needs_compile {
+        if needs_compile {
             // No kernel at all
             anyhow::bail!(
                 "No kernel available!\n\n\
-                 LevitateOS is the canonical kernel builder. To build:\n\
-                   cargo run -- build --kernel --dangerously-waste-the-users-time\n\n\
-                 Or build kernel only:\n\
-                   cargo run -- build kernel --dangerously-waste-the-users-time"
+                 Kernel compilation is centralized in xtask (nightly build-hours policy).\n\
+                 Build the kernels first, then re-run this command:\n\
+                   cargo xtask kernels build leviso"
             );
         } else {
-            // Kernel exists but needs reinstall
+            // Kernel exists but needs reinstall (compile skipped)
             println!("\nInstalling kernel (compile skipped)...");
             let t = Timer::start("Kernel");
             let linux = recipe::linux(base_dir)?;
@@ -351,54 +322,6 @@ fn verify_hardware_compat(base_dir: &Path) -> Result<()> {
         println!("\n[PASS] All hardware compatibility profiles passed (or have only non-critical warnings).");
     }
 
-    Ok(())
-}
-
-/// Build kernel only.
-fn build_kernel_only(base_dir: &Path, _config: &Config, clean: bool) -> Result<()> {
-    let needs_compile = clean || rebuild::kernel_needs_compile(base_dir);
-    let needs_install = rebuild::kernel_needs_install(base_dir);
-    let store = open_artifact_store(base_dir);
-    let output_dir = distro_builder::artifact_store::central_output_dir_for_distro(base_dir);
-
-    if clean {
-        // Clean kernel build directory before recipe runs
-        let kernel_build = output_dir.join("kernel-build");
-        if kernel_build.exists() {
-            println!("Cleaning kernel build directory...");
-            std::fs::remove_dir_all(&kernel_build)?;
-        }
-    }
-
-    if needs_compile || needs_install || clean {
-        println!("Building kernel via recipe...");
-        let linux = recipe::linux(base_dir)?;
-        rebuild::cache_kernel_hash(base_dir);
-        if let Some(store) = &store {
-            let key = output_dir.join(".kernel-inputs.hash");
-            let staging = output_dir.join("staging");
-            if let Err(e) = distro_builder::artifact_store::try_store_kernel_payload_from_key(
-                store,
-                &key,
-                &staging,
-                std::collections::BTreeMap::new(),
-            ) {
-                eprintln!(
-                    "[WARN] Failed to store kernel payload in artifact store: {:#}",
-                    e
-                );
-            }
-        }
-        println!("\n=== Kernel build complete ===");
-        println!("  Version: {}", linux.version);
-        println!(
-            "  Kernel:  {}",
-            output_dir.join("staging/boot/vmlinuz").display()
-        );
-    } else {
-        println!("[SKIP] Kernel already built and installed");
-        println!("  Use 'build kernel --clean' to force rebuild");
-    }
     Ok(())
 }
 

@@ -42,14 +42,6 @@ enum Commands {
     Build {
         #[command(subcommand)]
         target: Option<BuildTarget>,
-
-        /// Build the kernel from source (~1 hour). Requires --dangerously-waste-the-users-time.
-        #[arg(long)]
-        kernel: bool,
-
-        /// Confirm that you really want to spend ~1 hour building the kernel.
-        #[arg(long)]
-        dangerously_waste_the_users_time: bool,
     },
 
     /// Run the ISO in QEMU (UEFI boot, GUI)
@@ -103,12 +95,6 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum BuildTarget {
-    /// Build only the Linux kernel
-    Kernel {
-        /// Clean kernel build directory first
-        #[arg(long)]
-        clean: bool,
-    },
     /// Build rootfs image (EROFS, complete live system)
     Rootfs,
     /// Build tiny initramfs (mounts rootfs, ~5MB)
@@ -151,12 +137,6 @@ enum CleanTarget {
 
 #[derive(Subcommand)]
 enum DownloadTarget {
-    /// Download Linux kernel source
-    Linux {
-        /// Full clone instead of shallow (slower but complete history)
-        #[arg(long)]
-        full: bool,
-    },
     /// Download Rocky Linux ISO
     Rocky,
     /// Build or download installation tools (recstrap, recfstab, recchroot)
@@ -184,31 +164,8 @@ fn main() -> Result<()> {
     let config = Config::load();
 
     match cli.command {
-        Commands::Build {
-            target,
-            kernel,
-            dangerously_waste_the_users_time,
-        } => {
-            use distro_contract::kernel::{KernelBuildGuard, KernelGuard};
+        Commands::Build { target } => {
             let build_target = match target {
-                Some(BuildTarget::Kernel { clean }) => {
-                    KernelGuard::new(
-                        true,
-                        dangerously_waste_the_users_time,
-                        "cargo run -- build kernel --dangerously-waste-the-users-time",
-                    )
-                    .require_kernel_confirmation();
-                    commands::build::BuildTarget::Kernel { clean }
-                }
-                None if kernel => {
-                    KernelGuard::new(
-                        true,
-                        dangerously_waste_the_users_time,
-                        "cargo run -- build --kernel --dangerously-waste-the-users-time",
-                    )
-                    .require_kernel_confirmation();
-                    commands::build::BuildTarget::FullWithKernel
-                }
                 None => commands::build::BuildTarget::Full,
                 Some(BuildTarget::Rootfs) => commands::build::BuildTarget::Rootfs,
                 Some(BuildTarget::Initramfs) => commands::build::BuildTarget::Initramfs,
@@ -253,9 +210,6 @@ fn main() -> Result<()> {
         Commands::Download { what } => {
             let download_target = match what {
                 None => commands::download::DownloadTarget::All,
-                Some(DownloadTarget::Linux { full: _ }) => {
-                    commands::download::DownloadTarget::Linux
-                }
                 Some(DownloadTarget::Rocky) => commands::download::DownloadTarget::Rocky,
                 Some(DownloadTarget::Tools) => commands::download::DownloadTarget::Tools,
             };

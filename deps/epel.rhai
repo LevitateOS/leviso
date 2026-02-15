@@ -173,7 +173,12 @@ fn install(ctx) {
 
 // === CLEANUP ===
 
-fn cleanup(ctx) {
+fn cleanup(ctx, reason) {
+    // Only clean up after a full run (or when manually requested).
+    if reason != "manual" && reason != "auto.install.success" && reason != "auto.install.failure" {
+        return ctx;
+    }
+
     let version_file = join_path(BUILD_DIR, ".epel-version");
     let install_marker = join_path(BUILD_DIR, ".epel-installed");
 

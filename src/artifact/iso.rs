@@ -271,7 +271,7 @@ fn find_kernel(paths: &IsoPaths) -> Result<PathBuf> {
     if !kernel.exists() {
         bail!(
             "LevitateOS kernel not found at: {}\n\
-             Run 'leviso build kernel' first.",
+             Run 'cargo xtask kernels build leviso' first.",
             kernel.display()
         );
     }

@@ -368,7 +368,13 @@ fn install(ctx) {
 
 // === CLEANUP ===
 
-fn cleanup(ctx) {
+fn cleanup(ctx, reason) {
+    // Only clean up after a full run (or when manually requested).
+    // Avoid deleting inputs needed by later phases.
+    if reason != "manual" && reason != "auto.install.success" && reason != "auto.install.failure" {
+        return ctx;
+    }
+
     let iso_contents = join_path(BUILD_DIR, "iso-contents");
     let rootfs_temp = join_path(BUILD_DIR, "rootfs");
     let version_file = join_path(BUILD_DIR, ".rocky-built-version");

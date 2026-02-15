@@ -256,7 +256,7 @@ Result: Live = Installed (same files!)
 
 **Build Commands:**
 - [x] `leviso build` - Full build (kernel + rootfs + initramfs + ISO)
-- [x] `leviso build kernel [--clean]` - Kernel compilation only
+- [x] Kernel compilation moved to `cargo xtask kernels build <distro>` (nightly policy)
 - [x] `leviso build rootfs` - EROFS image only
 - [x] `leviso build initramfs` - Live initramfs only
 - [x] `leviso build iso` - ISO only
@@ -280,7 +280,7 @@ Result: Live = Installed (same files!)
 - [x] `leviso clean all` - Remove everything
 
 **Dependency Management:**
-- [x] `leviso download [linux|rocky|tools]` - Download dependencies manually
+- [x] `leviso download [rocky|tools]` - Download dependencies manually
 - [x] `leviso preflight [--strict]` - Validate build environment
 
 **Extraction & Inspection:**

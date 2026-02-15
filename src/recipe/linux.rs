@@ -16,5 +16,9 @@ use std::path::Path;
 /// # Arguments
 /// * `base_dir` - leviso crate root (e.g., `/path/to/leviso`)
 pub fn linux(base_dir: &Path) -> Result<LinuxPaths> {
-    distro_builder::recipe::linux::linux(base_dir, &KERNEL_SOURCE)
+    distro_builder::recipe::linux::linux(
+        base_dir,
+        &KERNEL_SOURCE,
+        distro_spec::levitate::MODULE_INSTALL_PATH,
+    )
 }

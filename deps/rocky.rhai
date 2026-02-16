@@ -136,18 +136,25 @@ fn acquire(ctx) {
     // Download via torrent (faster, distributed)
     log("Downloading " + ctx.iso_name + " via torrent (~9GB)...");
     let path = torrent(ctx.torrent_url, BUILD_DIR);
+    let iso_path = path;
 
     if is_dir(path) {
-        throw "torrent produced a directory, expected a single ISO file: " + path;
+        let expected = join_path(path, ctx.iso_name);
+        if is_file(expected) {
+            log("Torrent returned directory; using expected ISO: " + expected);
+            iso_path = expected;
+        } else {
+            throw "torrent produced a directory without expected ISO file: " + path;
+        }
     }
-    if basename(path) != ctx.iso_name {
-        throw "torrent produced unexpected filename: " + basename(path) + " (expected " + ctx.iso_name + ")";
+    if basename(iso_path) != ctx.iso_name {
+        throw "torrent produced unexpected filename: " + basename(iso_path) + " (expected " + ctx.iso_name + ")";
     }
 
     log("Verifying checksum...");
-    verify_sha256(path, ctx.sha256);
+    verify_sha256(iso_path, ctx.sha256);
 
-    ctx.iso_path = path;
+    ctx.iso_path = iso_path;
     ctx
 }
 
@@ -369,9 +376,9 @@ fn install(ctx) {
 // === CLEANUP ===
 
 fn cleanup(ctx, reason) {
-    // Only clean up after a full run (or when manually requested).
-    // Avoid deleting inputs needed by later phases.
-    if reason != "manual" && reason != "auto.install.success" && reason != "auto.install.failure" {
+    // Keep extracted payload after install; later recipes/components consume it.
+    // Only perform destructive cleanup on explicit manual request.
+    if reason != "manual" {
         return ctx;
     }
 

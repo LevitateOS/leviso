@@ -82,7 +82,7 @@ pub fn execute(ctx: &BuildContext, op: CustomOp, tracker: &LicenseTracker) -> Re
         CustomOp::CopyRecipe => packages::copy_recipe(ctx),
         CustomOp::SetupRecipeConfig => packages::setup_recipe_config(ctx),
         CustomOp::CopyDocsTui => install_docs_tui(ctx),
-        CustomOp::InstallCheckpointTests => install_checkpoint_tests(ctx),
+        CustomOp::InstallStageTests => install_stage_tests(ctx),
     }
 }
 
@@ -172,12 +172,12 @@ fn install_docs_tui(ctx: &BuildContext) -> Result<()> {
     Ok(())
 }
 
-/// Install checkpoint test scripts to the rootfs staging directory.
+/// Install stage test scripts to the rootfs staging directory.
 ///
 /// Source (monorepo): `testing/install-tests/test-scripts/`
-/// Destination (in rootfs/ISO): `/usr/local/bin/checkpoint-*.sh`
-/// Libraries: `/usr/local/lib/checkpoint-tests/`
-fn install_checkpoint_tests(ctx: &BuildContext) -> Result<()> {
+/// Destination (in rootfs/ISO): `/usr/local/bin/stage-*.sh`
+/// Libraries: `/usr/local/lib/stage-tests/`
+fn install_stage_tests(ctx: &BuildContext) -> Result<()> {
     use std::fs;
 
     let monorepo_root = ctx
@@ -189,14 +189,14 @@ fn install_checkpoint_tests(ctx: &BuildContext) -> Result<()> {
     if !test_scripts_src.exists() {
         anyhow::bail!(
             "Test scripts not found at: {}\n\
-             Expected checkpoint test scripts in testing/install-tests/test-scripts/",
+             Expected stage test scripts in testing/install-tests/test-scripts/",
             test_scripts_src.display()
         );
     }
 
-    // Destination: /usr/local/bin/ for scripts, /usr/local/lib/checkpoint-tests/ for libraries
+    // Destination: /usr/local/bin/ for scripts, /usr/local/lib/stage-tests/ for libraries
     let bin_dst = ctx.staging.join("usr/local/bin");
-    let lib_dst = ctx.staging.join("usr/local/lib/checkpoint-tests");
+    let lib_dst = ctx.staging.join("usr/local/lib/stage-tests");
 
     fs::create_dir_all(&bin_dst)?;
     fs::create_dir_all(&lib_dst)?;
@@ -228,7 +228,7 @@ fn install_checkpoint_tests(ctx: &BuildContext) -> Result<()> {
         }
     }
 
-    // Copy lib/ directory to /usr/local/lib/checkpoint-tests/
+    // Copy lib/ directory to /usr/local/lib/stage-tests/
     let lib_src = test_scripts_src.join("lib");
     if lib_src.exists() {
         for entry in fs::read_dir(&lib_src)? {
@@ -256,10 +256,10 @@ fn install_checkpoint_tests(ctx: &BuildContext) -> Result<()> {
     }
 
     println!(
-        "  Installed {} checkpoint test scripts to /usr/local/bin/",
+        "  Installed {} stage test scripts to /usr/local/bin/",
         script_count
     );
-    println!("  Installed checkpoint test libraries to /usr/local/lib/checkpoint-tests/");
+    println!("  Installed stage test libraries to /usr/local/lib/stage-tests/");
 
     Ok(())
 }

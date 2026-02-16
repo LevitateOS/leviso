@@ -387,7 +387,7 @@ pub static FINAL: Component = Component {
     ops: &[
         custom(CustomOp::CreateWelcomeMessage),
         custom(CustomOp::InstallTools),
-        custom(CustomOp::InstallCheckpointTests),
+        custom(CustomOp::InstallStageTests),
         custom(CustomOp::CopyDocsTui),
     ],
 };

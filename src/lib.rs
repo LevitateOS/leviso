@@ -1,5 +1,10 @@
 //! Leviso library exports for testing.
 //!
+//! # Deprecation Notice
+//!
+//! This crate is deprecated as the primary LevitateOS entrypoint.
+//! New conformance-driven work belongs in `distro-variants/levitate`.
+//!
 //! This module exposes internal components for integration testing.
 //!
 //! See `leviso/tests/README.md` for what tests belong where.

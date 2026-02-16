@@ -1,5 +1,10 @@
 //! Leviso - LevitateOS ISO builder.
 //!
+//! # Deprecation Notice
+//!
+//! This CLI is deprecated as the primary LevitateOS entrypoint.
+//! New conformance-driven work belongs in `distro-variants/levitate`.
+//!
 //! Builds LevitateOS with EROFS-based architecture:
 //! - EROFS rootfs image (complete live system, ~400MB)
 //! - Tiny initramfs (mounts rootfs, ~5MB)

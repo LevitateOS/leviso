@@ -2,7 +2,7 @@
 name = "leviso"
 version = "0.1.0"
 edition = "2021"
-description = "Minimal bootable Linux ISO builder"
+description = "DEPRECATED: legacy LevitateOS crate; active variant work moves to distro-variants/levitate"
 license = "MIT OR Apache-2.0"
 
 [dependencies]

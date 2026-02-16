@@ -10,7 +10,7 @@ use super::executor;
 use crate::build::context::BuildContext;
 use distro_builder::timing::Timer;
 use distro_builder::LicenseTracker;
-use distro_contract::PackageManager;
+use distro_builder::PackageManager;
 
 /// Build the complete system into the staging directory.
 ///

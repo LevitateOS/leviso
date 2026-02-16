@@ -4,7 +4,7 @@
 
 // Re-export shared types
 pub use distro_builder::artifact::disk::helpers::calculate_dir_size;
-pub use distro_contract::disk::DiskUuids;
+pub use distro_builder::DiskUuids;
 
 use anyhow::Result;
 

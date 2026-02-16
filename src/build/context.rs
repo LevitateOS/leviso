@@ -3,7 +3,7 @@
 //! Provides paths needed to build the LevitateOS system image.
 
 use anyhow::Result;
-use distro_contract::context::BuildContext as BuildContextTrait;
+use distro_builder::BuildContext as BuildContextTrait;
 use std::path::{Path, PathBuf};
 
 /// Shared context for all build operations.
@@ -60,7 +60,7 @@ impl BuildContext {
     }
 }
 
-// Implement distro-contract's BuildContext trait
+// Implement distro-builder's BuildContext trait
 impl BuildContextTrait for BuildContext {
     fn source(&self) -> &Path {
         &self.source
@@ -78,7 +78,7 @@ impl BuildContextTrait for BuildContext {
         &self.output
     }
 
-    fn config(&self) -> &dyn distro_contract::context::DistroConfig {
+    fn config(&self) -> &dyn distro_builder::DistroConfig {
         &super::distro_config::LevitateOsConfig
     }
 }

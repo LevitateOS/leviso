@@ -63,7 +63,7 @@ mod tests {
     use super::*;
     use crate::component::{Component, Op, Phase};
     use distro_builder::LicenseTracker;
-    use distro_contract::PackageManager;
+    use distro_builder::PackageManager;
     use leviso_cheat_test::cheat_aware;
     use std::fs;
     use std::os::unix::fs::PermissionsExt;

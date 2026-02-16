@@ -24,6 +24,11 @@ fn open_artifact_store(base_dir: &Path) -> Option<distro_builder::artifact_store
     }
 }
 
+fn require_conformance_contract() -> Result<()> {
+    distro_spec::conformance::require_valid_contract_for_distro("levitate")
+        .map_err(|e| anyhow::anyhow!(e))
+}
+
 /// Build target for the build command.
 pub enum BuildTarget {
     /// Full build (all artifacts, skip kernel if not available)
@@ -40,6 +45,8 @@ pub enum BuildTarget {
 
 /// Execute the build command.
 pub fn cmd_build(base_dir: &Path, target: BuildTarget, config: &Config) -> Result<()> {
+    require_conformance_contract()?;
+
     match target {
         BuildTarget::Full => build_full(base_dir, config),
         BuildTarget::Rootfs => build_rootfs_only(base_dir),

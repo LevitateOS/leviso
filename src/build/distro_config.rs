@@ -1,11 +1,8 @@
 //! LevitateOS DistroConfig implementation.
 //!
-//! Implements the distro-contract traits for LevitateOS configuration.
+//! Implements the distro-builder traits for LevitateOS configuration.
 
-use distro_contract::{
-    context::{DistroConfig, InitSystem},
-    KernelInstallConfig,
-};
+use distro_builder::{DistroConfig, InitSystem, KernelInstallConfig};
 use distro_spec::levitate::*;
 
 /// LevitateOS configuration - implements DistroConfig trait.

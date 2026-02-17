@@ -161,6 +161,14 @@ enum ExtractTarget {
 }
 
 fn main() -> Result<()> {
+    anyhow::bail!(
+        "Deprecated entrypoint blocked: 'leviso'.\n\
+         Use the new Stage 00 endpoint instead:\n\
+           just build levitate\n\
+         or:\n\
+           cargo run -p distro-builder --bin distro-builder -- iso build levitate"
+    );
+
     let cli = Cli::parse();
     let base_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 

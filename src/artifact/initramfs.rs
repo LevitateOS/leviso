@@ -80,6 +80,7 @@ pub fn build_tiny_initramfs(base_dir: &Path) -> Result<()> {
         output: output_dir.join(INITRAMFS_LIVE_OUTPUT),
         iso_label: ISO_LABEL.to_string(),
         rootfs_path: ROOTFS_ISO_PATH.to_string(),
+        live_overlay_image_path: Some(LIVE_OVERLAY_ISO_PATH.to_string()),
         live_overlay_path: Some(LIVE_OVERLAY_ISO_PATH.to_string()),
         boot_devices: BOOT_DEVICE_PROBE_ORDER
             .iter()
